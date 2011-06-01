@@ -11,6 +11,7 @@
 #include "debugfs.h"
 #include "leds.h"
 #include "rfkill.h"
+#include "bus.h"
 #include "lo.h"
 #include "phy_common.h"
 
@@ -707,7 +708,8 @@ enum {
 
 /* Data structure for one wireless device (802.11 core) */
 struct b43_wldev {
-	struct ssb_device *sdev;
+	struct ssb_device *sdev; /* TODO: remove when b43_bus_dev is ready */
+	struct b43_bus_dev *dev;
 	struct b43_wl *wl;
 
 	/* The device initialization status.
@@ -879,36 +881,59 @@ static inline enum ieee80211_band b43_current_band(struct b43_wl *wl)
 	return wl->hw->conf.channel->band;
 }
 
+static inline int b43_bus_may_powerdown(struct b43_wldev *wldev)
+{
+	return wldev->dev->bus_may_powerdown(wldev->dev);
+}
+static inline int b43_bus_powerup(struct b43_wldev *wldev, bool dynamic_pctl)
+{
+	return wldev->dev->bus_powerup(wldev->dev, dynamic_pctl);
+}
+static inline int b43_device_is_enabled(struct b43_wldev *wldev)
+{
+	return wldev->dev->device_is_enabled(wldev->dev);
+}
+static inline void b43_device_enable(struct b43_wldev *wldev,
+				     u32 core_specific_flags)
+{
+	wldev->dev->device_enable(wldev->dev, core_specific_flags);
+}
+static inline void b43_device_disable(struct b43_wldev *wldev,
+				      u32 core_specific_flags)
+{
+	wldev->dev->device_disable(wldev->dev, core_specific_flags);
+}
+
 static inline u16 b43_read16(struct b43_wldev *dev, u16 offset)
 {
-	return ssb_read16(dev->sdev, offset);
+	return dev->dev->read16(dev->dev, offset);
 }
 
 static inline void b43_write16(struct b43_wldev *dev, u16 offset, u16 value)
 {
-	ssb_write16(dev->sdev, offset, value);
+	dev->dev->write16(dev->dev, offset, value);
 }
 
 static inline u32 b43_read32(struct b43_wldev *dev, u16 offset)
 {
-	return ssb_read32(dev->sdev, offset);
+	return dev->dev->read32(dev->dev, offset);
 }
 
 static inline void b43_write32(struct b43_wldev *dev, u16 offset, u32 value)
 {
-	ssb_write32(dev->sdev, offset, value);
+	dev->dev->write32(dev->dev, offset, value);
 }
 
 static inline void b43_block_read(struct b43_wldev *dev, void *buffer,
 				 size_t count, u16 offset, u8 reg_width)
 {
-	ssb_block_read(dev->sdev, buffer, count, offset, reg_width);
+	dev->dev->block_read(dev->dev, buffer, count, offset, reg_width);
 }
 
 static inline void b43_block_write(struct b43_wldev *dev, const void *buffer,
 				   size_t count, u16 offset, u8 reg_width)
 {
-	ssb_block_write(dev->sdev, buffer, count, offset, reg_width);
+	dev->dev->block_write(dev->dev, buffer, count, offset, reg_width);
 }
 
 static inline bool b43_using_pio_transfers(struct b43_wldev *dev)
