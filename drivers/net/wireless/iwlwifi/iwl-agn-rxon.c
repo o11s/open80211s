@@ -291,6 +291,12 @@ static int iwlagn_rxon_connect(struct iwl_priv *priv,
 		IWL_ERR(priv, "Error sending TX power (%d)\n", ret);
 		return ret;
 	}
+
+	if ((ctx->vif && ctx->vif->type == NL80211_IFTYPE_STATION) &&
+	    priv->cfg->ht_params->smps_mode)
+		ieee80211_request_smps(ctx->vif,
+				       priv->cfg->ht_params->smps_mode);
+
 	return 0;
 }
 
@@ -395,6 +401,10 @@ int iwlagn_commit_rxon(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 		 * do it now if after settings changed.
 		 */
 		iwl_set_tx_power(priv, priv->tx_power_next, false);
+
+		/* make sure we are in the right PS state */
+		iwl_power_update_mode(priv, true);
+
 		return 0;
 	}
 
@@ -788,6 +798,13 @@ void iwlagn_bss_info_changed(struct ieee80211_hw *hw,
 void iwlagn_post_scan(struct iwl_priv *priv)
 {
 	struct iwl_rxon_context *ctx;
+
+	/*
+	 * We do not commit power settings while scan is pending,
+	 * do it now if the settings changed.
+	 */
+	iwl_power_set_mode(priv, &priv->power_data.sleep_cmd_next, false);
+	iwl_set_tx_power(priv, priv->tx_power_next, false);
 
 	/*
 	 * Since setting the RXON may have been deferred while
