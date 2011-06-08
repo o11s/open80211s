@@ -1,8 +1,8 @@
-VERSION = 2
-PATCHLEVEL = 6
-SUBLEVEL = 39
+VERSION = 3
+PATCHLEVEL = 0
+SUBLEVEL = 0
 EXTRAVERSION = -rc1
-NAME = Flesh-Eating Bats with Fangs
+NAME = Sneaky Weasel
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -218,6 +218,14 @@ endif
 # Additional ARCH settings for sh
 ifeq ($(ARCH),sh64)
        SRCARCH := sh
+endif
+
+# Additional ARCH settings for tile
+ifeq ($(ARCH),tilepro)
+       SRCARCH := tile
+endif
+ifeq ($(ARCH),tilegx)
+       SRCARCH := tile
 endif
 
 # Where to locate arch specific headers
@@ -1292,6 +1300,7 @@ help:
 	@echo  '		2: warnings which occur quite often but may still be relevant'
 	@echo  '		3: more obscure warnings, can most likely be ignored'
 	@echo  '		Multiple levels can be combined with W=12 or W=123'
+	@echo  '  make RECORDMCOUNT_WARN=1 [targets] Warn about ignored mcount sections'
 	@echo  ''
 	@echo  'Execute "make" or "make all" to build all targets marked with [*] '
 	@echo  'For further info see the ./README file'
