@@ -295,6 +295,7 @@ struct l2cap_chan {
 	__u16		omtu;
 	__u16		flush_to;
 	__u8		mode;
+	__u8		chan_type;
 
 	__le16		sport;
 
@@ -302,6 +303,7 @@ struct l2cap_chan {
 	__u8		role_switch;
 	__u8		force_reliable;
 	__u8		flushable;
+	__u8		force_active;
 
 	__u8		ident;
 
@@ -339,6 +341,7 @@ struct l2cap_chan {
 	__u8		remote_max_tx;
 	__u16		remote_mps;
 
+	struct timer_list	chan_timer;
 	struct timer_list	retrans_timer;
 	struct timer_list	monitor_timer;
 	struct timer_list	ack_timer;
@@ -383,6 +386,10 @@ struct l2cap_conn {
 #define L2CAP_INFO_CL_MTU_REQ_SENT	0x01
 #define L2CAP_INFO_FEAT_MASK_REQ_SENT	0x04
 #define L2CAP_INFO_FEAT_MASK_REQ_DONE	0x08
+
+#define L2CAP_CHAN_RAW			1
+#define L2CAP_CHAN_CONN_LESS		2
+#define L2CAP_CHAN_CONN_ORIENTED	3
 
 /* ----- L2CAP socket info ----- */
 #define l2cap_pi(sk) ((struct l2cap_pinfo *) sk)
@@ -446,32 +453,21 @@ extern int disable_ertm;
 int l2cap_init_sockets(void);
 void l2cap_cleanup_sockets(void);
 
-void l2cap_send_cmd(struct l2cap_conn *conn, u8 ident, u8 code, u16 len, void *data);
 void __l2cap_connect_rsp_defer(struct l2cap_chan *chan);
 int __l2cap_wait_ack(struct sock *sk);
-
-struct sk_buff *l2cap_create_connless_pdu(struct l2cap_chan *chan, struct msghdr *msg, size_t len);
-struct sk_buff *l2cap_create_basic_pdu(struct l2cap_chan *chan, struct msghdr *msg, size_t len);
-struct sk_buff *l2cap_create_iframe_pdu(struct l2cap_chan *chan, struct msghdr *msg, size_t len, u16 control, u16 sdulen);
-int l2cap_sar_segment_sdu(struct l2cap_chan *chan, struct msghdr *msg, size_t len);
-void l2cap_do_send(struct l2cap_chan *chan, struct sk_buff *skb);
-void l2cap_streaming_send(struct l2cap_chan *chan);
-int l2cap_ertm_send(struct l2cap_chan *chan);
 
 int l2cap_add_psm(struct l2cap_chan *chan, bdaddr_t *src, __le16 psm);
 int l2cap_add_scid(struct l2cap_chan *chan,  __u16 scid);
 
-void l2cap_sock_set_timer(struct sock *sk, long timeout);
-void l2cap_sock_clear_timer(struct sock *sk);
-void __l2cap_sock_close(struct sock *sk, int reason);
 void l2cap_sock_kill(struct sock *sk);
 void l2cap_sock_init(struct sock *sk, struct sock *parent);
 struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock,
 							int proto, gfp_t prio);
-void l2cap_send_disconn_req(struct l2cap_conn *conn, struct l2cap_chan *chan, int err);
+
 struct l2cap_chan *l2cap_chan_create(struct sock *sk);
-void l2cap_chan_del(struct l2cap_chan *chan, int err);
+void l2cap_chan_close(struct l2cap_chan *chan, int reason);
 void l2cap_chan_destroy(struct l2cap_chan *chan);
 int l2cap_chan_connect(struct l2cap_chan *chan);
+int l2cap_chan_send(struct l2cap_chan *chan, struct msghdr *msg, size_t len);
 
 #endif /* __L2CAP_H */
