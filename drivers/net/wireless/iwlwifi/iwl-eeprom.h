@@ -110,12 +110,10 @@ enum {
 };
 
 /* SKU Capabilities */
-/* 5000 and up */
-#define EEPROM_SKU_CAP_BAND_POS				(4)
-#define EEPROM_SKU_CAP_BAND_SELECTION	                \
-		(3 << EEPROM_SKU_CAP_BAND_POS)
+#define EEPROM_SKU_CAP_BAND_24GHZ			(1 << 4)
+#define EEPROM_SKU_CAP_BAND_52GHZ			(1 << 5)
 #define EEPROM_SKU_CAP_11N_ENABLE	                (1 << 6)
-#define EEPROM_SKU_CAP_AMT_ENABLE	                (1 << 7)
+#define EEPROM_SKU_CAP_AMT_ENABLE			(1 << 7)
 #define EEPROM_SKU_CAP_IPAN_ENABLE	                (1 << 8)
 
 /* *regulatory* channel data format in eeprom, one for each channel.
@@ -164,16 +162,12 @@ struct iwl_eeprom_enhanced_txpwr {
 	s8 mimo3_max;
 } __packed;
 
-/* 5000 Specific */
-#define EEPROM_5000_TX_POWER_VERSION    (4)
-#define EEPROM_5000_EEPROM_VERSION	(0x11A)
-
-/* 5000 and up calibration */
+/* calibration */
 #define EEPROM_CALIB_ALL	(INDIRECT_ADDRESS | INDIRECT_CALIBRATION)
 #define EEPROM_XTAL		((2*0x128) | EEPROM_CALIB_ALL)
 
-/* 5000 temperature */
-#define EEPROM_5000_TEMPERATURE ((2*0x12A) | EEPROM_CALIB_ALL)
+/* temperature */
+#define EEPROM_TEMPERATURE ((2*0x12A) | EEPROM_CALIB_ALL)
 
 /* agn links */
 #define EEPROM_LINK_HOST             (2*0x64)
@@ -204,6 +198,10 @@ struct iwl_eeprom_enhanced_txpwr {
 /* 6000 regulatory - indirect access */
 #define EEPROM_6000_REG_BAND_24_HT40_CHANNELS  ((0x80)\
 		| INDIRECT_ADDRESS | INDIRECT_REGULATORY)   /* 14  bytes */
+
+/* 5000 Specific */
+#define EEPROM_5000_TX_POWER_VERSION    (4)
+#define EEPROM_5000_EEPROM_VERSION	(0x11A)
 
 /* 5050 Specific */
 #define EEPROM_5050_TX_POWER_VERSION    (4)

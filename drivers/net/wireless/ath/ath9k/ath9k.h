@@ -54,8 +54,6 @@ struct ath_node;
 		(_l) &= ((_sz) - 1);		\
 	} while (0)
 
-#define A_MAX(a, b) ((a) > (b) ? (a) : (b))
-
 #define TSF_TO_TU(_h,_l) \
 	((((u32)(_h)) << 22) | (((u32)(_l)) >> 10))
 
@@ -579,7 +577,7 @@ struct ath9k_vif_iter_data {
 	int naps;      /* number of AP vifs */
 	int nmeshes;   /* number of mesh vifs */
 	int nstations; /* number of station vifs */
-	int nwds;      /* number of nwd vifs */
+	int nwds;      /* number of WDS vifs */
 	int nadhocs;   /* number of adhoc vifs */
 	int nothers;   /* number of vifs not specified above. */
 };

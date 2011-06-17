@@ -83,10 +83,6 @@ struct iwl_cmd;
 
 #define TIME_UNIT		1024
 
-#define IWL_SKU_G       0x1
-#define IWL_SKU_A       0x2
-#define IWL_SKU_N       0x8
-
 #define IWL_CMD(x) case x: return #x
 
 struct iwl_hcmd_ops {
@@ -173,6 +169,9 @@ struct iwl_mod_params {
 	int restart_fw;		/* def: 1 = restart firmware */
 	bool plcp_check;	/* def: true = enable plcp health check */
 	bool ack_check;		/* def: false = disable ack health check */
+	bool bt_coex_active;	/* def: true = enable bt coex */
+	int led_mode;		/* def: 0 = system default */
+	bool no_sleep_autoadjust; /* def: true = disable autoadjust */
 };
 
 /*
@@ -289,7 +288,7 @@ struct iwl_cfg {
 	const unsigned int ucode_api_min;
 	u8   valid_tx_ant;
 	u8   valid_rx_ant;
-	unsigned int sku;
+	u16  sku;
 	u16  eeprom_ver;
 	u16  eeprom_calib_ver;
 	const struct iwl_ops *ops;
@@ -624,7 +623,6 @@ static inline bool iwl_advanced_bt_coexist(struct iwl_priv *priv)
 	       priv->cfg->bt_params->advanced_bt_coexist;
 }
 
-extern bool bt_coex_active;
 extern bool bt_siso_mode;
 
 
