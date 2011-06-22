@@ -45,6 +45,7 @@
 #define AR9300_DEVID_PCIE	0x0030
 #define AR9300_DEVID_AR9340	0x0031
 #define AR9300_DEVID_AR9485_PCIE 0x0032
+#define AR9300_DEVID_AR9330	0x0035
 
 #define AR5416_AR9100_DEVID	0x000b
 
@@ -861,6 +862,8 @@ struct ath_hw {
 	u32 ent_mode;
 
 	bool is_clk_25mhz;
+	int (*get_mac_revision)(void);
+	int (*external_reset)(void);
 };
 
 struct ath_bus_ops {
