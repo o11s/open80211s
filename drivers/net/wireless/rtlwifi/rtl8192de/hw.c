@@ -627,11 +627,11 @@ static void _rtl92de_gen_refresh_led_state(struct ieee80211_hw *hw)
 	if (rtlpci->up_first_time)
 		return;
 	if (ppsc->rfoff_reason == RF_CHANGE_BY_IPS)
-		rtl92ce_sw_led_on(hw, pLed0);
+		rtl92de_sw_led_on(hw, pLed0);
 	else if (ppsc->rfoff_reason == RF_CHANGE_BY_INIT)
-		rtl92ce_sw_led_on(hw, pLed0);
+		rtl92de_sw_led_on(hw, pLed0);
 	else
-		rtl92ce_sw_led_off(hw, pLed0);
+		rtl92de_sw_led_off(hw, pLed0);
 }
 
 static bool _rtl92de_init_mac(struct ieee80211_hw *hw)
@@ -908,7 +908,8 @@ int rtl92de_hw_init(struct ieee80211_hw *hw)
 	struct rtl_pci *rtlpci = rtl_pcidev(rtl_pcipriv(hw));
 	struct rtl_ps_ctl *ppsc = rtl_psc(rtl_priv(hw));
 	bool rtstatus = true;
-	u8 tmp_u1b, i;
+	u8 tmp_u1b;
+	int i;
 	int err;
 	unsigned long flags;
 
