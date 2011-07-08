@@ -96,8 +96,7 @@ struct ath5k_txq {
 /*
  * State for LED triggers
  */
-struct ath5k_led
-{
+struct ath5k_led {
 	char name[ATH5K_LED_MAX_NAME_LEN + 1];	/* name of the LED in sysfs */
 	struct ath5k_softc *sc;			/* driver state */
 	struct led_classdev led_dev;		/* led classdev */
@@ -154,9 +153,9 @@ struct ath5k_statistics {
 };
 
 #if CHAN_DEBUG
-#define ATH_CHAN_MAX	(26+26+26+200+200)
+#define ATH_CHAN_MAX	(26 + 26 + 26 + 200 + 200)
 #else
-#define ATH_CHAN_MAX	(14+14+14+252+20)
+#define ATH_CHAN_MAX	(14 + 14 + 14 + 252 + 20)
 #endif
 
 struct ath5k_vif {
@@ -251,7 +250,7 @@ struct ath5k_softc {
 	unsigned int		nexttbtt;	/* next beacon time in TU */
 	struct ath5k_txq	*cabq;		/* content after beacon */
 
-	int 			power_level;	/* Requested tx power in dbm */
+	int			power_level;	/* Requested tx power in dbm */
 	bool			assoc;		/* associate state */
 	bool			enable_beacon;	/* true if beacons are on */
 

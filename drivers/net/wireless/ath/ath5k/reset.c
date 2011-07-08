@@ -25,7 +25,7 @@
 
 #include <asm/unaligned.h>
 
-#include <linux/pci.h> 		/* To determine if a card is pci-e */
+#include <linux/pci.h>		/* To determine if a card is pci-e */
 #include <linux/log2.h>
 #include <linux/platform_device.h>
 #include "ath5k.h"
@@ -142,10 +142,10 @@ static void ath5k_hw_init_core_clock(struct ath5k_hw *ah)
 
 	/* Set 32MHz USEC counter */
 	if ((ah->ah_radio == AR5K_RF5112) ||
-		(ah->ah_radio == AR5K_RF5413) ||
-		(ah->ah_radio == AR5K_RF2316) ||
-		(ah->ah_radio == AR5K_RF2317))
-	/* Remain on 40MHz clock ? */
+	    (ah->ah_radio == AR5K_RF5413) ||
+	    (ah->ah_radio == AR5K_RF2316) ||
+	    (ah->ah_radio == AR5K_RF2317))
+		/* Remain on 40MHz clock ? */
 		sclock = 40 - 1;
 	else
 		sclock = 32 - 1;
@@ -375,7 +375,7 @@ static int ath5k_hw_nic_reset(struct ath5k_hw *ah, u32 val)
 static int ath5k_hw_wisoc_reset(struct ath5k_hw *ah, u32 flags)
 {
 	u32 mask = flags ? flags : ~0U;
-	volatile __iomem u32 *reg;
+	u32 __iomem *reg;
 	u32 regval;
 	u32 val = 0;
 
