@@ -74,7 +74,7 @@ ath5k_ani_set_noise_immunity_level(struct ath5k_hw *ah, int level)
 	static const s8 fr[] = { -78, -80 };
 #endif
 	if (level < 0 || level >= ARRAY_SIZE(sz)) {
-		ATH5K_ERR(ah->ah_sc, "noise immuniy level %d out of range",
+		ATH5K_ERR(ah->ah_sc, "noise immunity level %d out of range",
 			  level);
 		return;
 	}
@@ -629,6 +629,11 @@ ath5k_ani_init(struct ath5k_hw *ah, enum ath5k_ani_mode mode)
 	/* ANI is only possible on 5212 and newer */
 	if (ah->ah_version < AR5K_AR5212)
 		return;
+
+	if (mode < ATH5K_ANI_MODE_OFF || mode > ATH5K_ANI_MODE_AUTO) {
+		ATH5K_ERR(ah->ah_sc, "ANI mode %d out of range", mode);
+		return;
+	}
 
 	/* clear old state information */
 	memset(&ah->ah_sc->ani_state, 0, sizeof(ah->ah_sc->ani_state));
