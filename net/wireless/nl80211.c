@@ -205,6 +205,10 @@ nl80211_wowlan_policy[NUM_NL80211_WOWLAN_TRIG] = {
 	[NL80211_WOWLAN_TRIG_DISCONNECT] = { .type = NLA_FLAG },
 	[NL80211_WOWLAN_TRIG_MAGIC_PKT] = { .type = NLA_FLAG },
 	[NL80211_WOWLAN_TRIG_PKT_PATTERN] = { .type = NLA_NESTED },
+	[NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE] = { .type = NLA_FLAG },
+	[NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST] = { .type = NLA_FLAG },
+	[NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE] = { .type = NLA_FLAG },
+	[NL80211_WOWLAN_TRIG_RFKILL_RELEASE] = { .type = NLA_FLAG },
 };
 
 /* policy for GTK rekey offload attributes */
@@ -692,8 +696,12 @@ static int nl80211_send_wiphy(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 		    dev->wiphy.coverage_class);
 	NLA_PUT_U8(msg, NL80211_ATTR_MAX_NUM_SCAN_SSIDS,
 		   dev->wiphy.max_scan_ssids);
+	NLA_PUT_U8(msg, NL80211_ATTR_MAX_NUM_SCHED_SCAN_SSIDS,
+		   dev->wiphy.max_sched_scan_ssids);
 	NLA_PUT_U16(msg, NL80211_ATTR_MAX_SCAN_IE_LEN,
 		    dev->wiphy.max_scan_ie_len);
+	NLA_PUT_U16(msg, NL80211_ATTR_MAX_SCHED_SCAN_IE_LEN,
+		    dev->wiphy.max_sched_scan_ie_len);
 
 	if (dev->wiphy.flags & WIPHY_FLAG_IBSS_RSN)
 		NLA_PUT_FLAG(msg, NL80211_ATTR_SUPPORT_IBSS_RSN);
@@ -929,6 +937,16 @@ static int nl80211_send_wiphy(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_DISCONNECT);
 		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_MAGIC_PKT)
 			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_MAGIC_PKT);
+		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_SUPPORTS_GTK_REKEY)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_GTK_REKEY_SUPPORTED);
+		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_GTK_REKEY_FAILURE)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE);
+		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_EAP_IDENTITY_REQ)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST);
+		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_4WAY_HANDSHAKE)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE);
+		if (dev->wiphy.wowlan.flags & WIPHY_WOWLAN_RFKILL_RELEASE)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_RFKILL_RELEASE);
 		if (dev->wiphy.wowlan.n_patterns) {
 			struct nl80211_wowlan_pattern_support pat = {
 				.max_patterns = dev->wiphy.wowlan.n_patterns,
@@ -3497,7 +3515,7 @@ static int nl80211_start_sched_scan(struct sk_buff *skb,
 				    tmp)
 			n_ssids++;
 
-	if (n_ssids > wiphy->max_scan_ssids)
+	if (n_ssids > wiphy->max_sched_scan_ssids)
 		return -EINVAL;
 
 	if (info->attrs[NL80211_ATTR_IE])
@@ -3505,7 +3523,7 @@ static int nl80211_start_sched_scan(struct sk_buff *skb,
 	else
 		ie_len = 0;
 
-	if (ie_len > wiphy->max_scan_ie_len)
+	if (ie_len > wiphy->max_sched_scan_ie_len)
 		return -EINVAL;
 
 	mutex_lock(&rdev->sched_scan_mtx);
@@ -5272,6 +5290,14 @@ static int nl80211_get_wowlan(struct sk_buff *skb, struct genl_info *info)
 			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_DISCONNECT);
 		if (rdev->wowlan->magic_pkt)
 			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_MAGIC_PKT);
+		if (rdev->wowlan->gtk_rekey_failure)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE);
+		if (rdev->wowlan->eap_identity_req)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST);
+		if (rdev->wowlan->four_way_handshake)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE);
+		if (rdev->wowlan->rfkill_release)
+			NLA_PUT_FLAG(msg, NL80211_WOWLAN_TRIG_RFKILL_RELEASE);
 		if (rdev->wowlan->n_patterns) {
 			struct nlattr *nl_pats, *nl_pat;
 			int i, pat_len;
@@ -5346,6 +5372,33 @@ static int nl80211_set_wowlan(struct sk_buff *skb, struct genl_info *info)
 		if (!(wowlan->flags & WIPHY_WOWLAN_MAGIC_PKT))
 			return -EINVAL;
 		new_triggers.magic_pkt = true;
+	}
+
+	if (tb[NL80211_WOWLAN_TRIG_GTK_REKEY_SUPPORTED])
+		return -EINVAL;
+
+	if (tb[NL80211_WOWLAN_TRIG_GTK_REKEY_FAILURE]) {
+		if (!(wowlan->flags & WIPHY_WOWLAN_GTK_REKEY_FAILURE))
+			return -EINVAL;
+		new_triggers.gtk_rekey_failure = true;
+	}
+
+	if (tb[NL80211_WOWLAN_TRIG_EAP_IDENT_REQUEST]) {
+		if (!(wowlan->flags & WIPHY_WOWLAN_EAP_IDENTITY_REQ))
+			return -EINVAL;
+		new_triggers.eap_identity_req = true;
+	}
+
+	if (tb[NL80211_WOWLAN_TRIG_4WAY_HANDSHAKE]) {
+		if (!(wowlan->flags & WIPHY_WOWLAN_4WAY_HANDSHAKE))
+			return -EINVAL;
+		new_triggers.four_way_handshake = true;
+	}
+
+	if (tb[NL80211_WOWLAN_TRIG_RFKILL_RELEASE]) {
+		if (!(wowlan->flags & WIPHY_WOWLAN_RFKILL_RELEASE))
+			return -EINVAL;
+		new_triggers.rfkill_release = true;
 	}
 
 	if (tb[NL80211_WOWLAN_TRIG_PKT_PATTERN]) {
