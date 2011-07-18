@@ -1234,29 +1234,45 @@ struct iwl_trans;
 
 /**
  * struct iwl_trans_ops - transport specific operations
-
  * @rx_init: inits the rx memory, allocate it if needed
- * @rx_stop: stop the rx
  * @rx_free: frees the rx memory
  * @tx_init:inits the tx memory, allocate if needed
- * @tx_stop: stop the tx
+ * @tx_start: starts and configures all the Tx fifo - usually done once the fw
+ *           is alive.
  * @tx_free: frees the tx memory
+ * @stop_device:stops the whole device (embedded CPU put to reset)
  * @send_cmd:send a host command
  * @send_cmd_pdu:send a host command: flags can be CMD_*
+ * @get_tx_cmd: returns a pointer to a new Tx cmd for the upper layer use
+ * @tx: send an skb
+ * @sync_irq: the upper layer will typically disable interrupt and call this
+ *            handler. After this handler returns, it is guaranteed that all
+ *            the ISR / tasklet etc... have finished running and the transport
+ *            layer shall not pass any Rx.
+ * @free: release all the ressource for the transport layer itself such as
+ *        irq, tasklet etc...
  */
 struct iwl_trans_ops {
 	int (*rx_init)(struct iwl_priv *priv);
-	int (*rx_stop)(struct iwl_priv *priv);
 	void (*rx_free)(struct iwl_priv *priv);
 
 	int (*tx_init)(struct iwl_priv *priv);
-	int (*tx_stop)(struct iwl_priv *priv);
+	void (*tx_start)(struct iwl_priv *priv);
 	void (*tx_free)(struct iwl_priv *priv);
+
+	void (*stop_device)(struct iwl_priv *priv);
 
 	int (*send_cmd)(struct iwl_priv *priv, struct iwl_host_cmd *cmd);
 
 	int (*send_cmd_pdu)(struct iwl_priv *priv, u8 id, u32 flags, u16 len,
 		     const void *data);
+	struct iwl_tx_cmd * (*get_tx_cmd)(struct iwl_priv *priv, int txq_id);
+	int (*tx)(struct iwl_priv *priv, struct sk_buff *skb,
+		struct iwl_tx_cmd *tx_cmd, int txq_id, __le16 fc, bool ampdu,
+		struct iwl_rxon_context *ctx);
+
+	void (*sync_irq)(struct iwl_priv *priv);
+	void (*free)(struct iwl_priv *priv);
 };
 
 struct iwl_trans {

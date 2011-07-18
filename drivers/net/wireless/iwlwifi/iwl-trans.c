@@ -64,6 +64,7 @@
 #include "iwl-trans.h"
 #include "iwl-core.h"
 #include "iwl-helpers.h"
+#include "iwl-trans-int-pcie.h"
 /*TODO remove uneeded includes when the transport layer tx_free will be here */
 #include "iwl-agn.h"
 #include "iwl-core.h"
@@ -127,6 +128,55 @@ static void iwl_trans_rxq_free_rx_bufs(struct iwl_priv *priv)
 	}
 }
 
+static void iwl_trans_rx_hw_init(struct iwl_priv *priv,
+				 struct iwl_rx_queue *rxq)
+{
+	u32 rb_size;
+	const u32 rfdnlog = RX_QUEUE_SIZE_LOG; /* 256 RBDs */
+	u32 rb_timeout = 0; /* FIXME: RX_RB_TIMEOUT for all devices? */
+
+	rb_timeout = RX_RB_TIMEOUT;
+
+	if (iwlagn_mod_params.amsdu_size_8K)
+		rb_size = FH_RCSR_RX_CONFIG_REG_VAL_RB_SIZE_8K;
+	else
+		rb_size = FH_RCSR_RX_CONFIG_REG_VAL_RB_SIZE_4K;
+
+	/* Stop Rx DMA */
+	iwl_write_direct32(priv, FH_MEM_RCSR_CHNL0_CONFIG_REG, 0);
+
+	/* Reset driver's Rx queue write index */
+	iwl_write_direct32(priv, FH_RSCSR_CHNL0_RBDCB_WPTR_REG, 0);
+
+	/* Tell device where to find RBD circular buffer in DRAM */
+	iwl_write_direct32(priv, FH_RSCSR_CHNL0_RBDCB_BASE_REG,
+			   (u32)(rxq->bd_dma >> 8));
+
+	/* Tell device where in DRAM to update its Rx status */
+	iwl_write_direct32(priv, FH_RSCSR_CHNL0_STTS_WPTR_REG,
+			   rxq->rb_stts_dma >> 4);
+
+	/* Enable Rx DMA
+	 * FH_RCSR_CHNL0_RX_IGNORE_RXF_EMPTY is set because of HW bug in
+	 *      the credit mechanism in 5000 HW RX FIFO
+	 * Direct rx interrupts to hosts
+	 * Rx buffer size 4 or 8k
+	 * RB timeout 0x10
+	 * 256 RBDs
+	 */
+	iwl_write_direct32(priv, FH_MEM_RCSR_CHNL0_CONFIG_REG,
+			   FH_RCSR_RX_CONFIG_CHNL_EN_ENABLE_VAL |
+			   FH_RCSR_CHNL0_RX_IGNORE_RXF_EMPTY |
+			   FH_RCSR_CHNL0_RX_CONFIG_IRQ_DEST_INT_HOST_VAL |
+			   FH_RCSR_CHNL0_RX_CONFIG_SINGLE_FRAME_MSK |
+			   rb_size|
+			   (rb_timeout << FH_RCSR_RX_CONFIG_REG_IRQ_RBTH_POS)|
+			   (rfdnlog << FH_RCSR_RX_CONFIG_RBDCB_SIZE_POS));
+
+	/* Set interrupt coalescing timer to default (2048 usecs) */
+	iwl_write8(priv, CSR_INT_COALESCING, IWL_HOST_INT_TIMEOUT_DEF);
+}
+
 static int iwl_trans_rx_init(struct iwl_priv *priv)
 {
 	struct iwl_rx_queue *rxq = &priv->rxq;
@@ -154,6 +204,15 @@ static int iwl_trans_rx_init(struct iwl_priv *priv)
 	rxq->write_actual = 0;
 	rxq->free_count = 0;
 	spin_unlock_irqrestore(&rxq->lock, flags);
+
+	iwlagn_rx_replenish(priv);
+
+	iwl_trans_rx_hw_init(priv, rxq);
+
+	spin_lock_irqsave(&priv->lock, flags);
+	rxq->need_update = 1;
+	iwl_rx_queue_update_write_ptr(priv, rxq);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return 0;
 }
@@ -488,7 +547,7 @@ static int iwl_trans_tx_init(struct iwl_priv *priv)
 	spin_lock_irqsave(&priv->lock, flags);
 
 	/* Turn off all Tx DMA fifos */
-	iwl_write_prph(priv, IWLAGN_SCD_TXFACT, 0);
+	iwl_write_prph(priv, SCD_TXFACT, 0);
 
 	/* Tell NIC where to find the "keep warm" buffer */
 	iwl_write_direct32(priv, FH_KW_MEM_ADDR_REG, priv->kw.dma >> 4);
@@ -515,6 +574,154 @@ error:
 	return ret;
 }
 
+/*
+ * Activate/Deactivate Tx DMA/FIFO channels according tx fifos mask
+ * must be called under priv->lock and mac access
+ */
+static void iwl_trans_txq_set_sched(struct iwl_priv *priv, u32 mask)
+{
+	iwl_write_prph(priv, SCD_TXFACT, mask);
+}
+
+#define IWL_AC_UNSET -1
+
+struct queue_to_fifo_ac {
+	s8 fifo, ac;
+};
+
+static const struct queue_to_fifo_ac iwlagn_default_queue_to_tx_fifo[] = {
+	{ IWL_TX_FIFO_VO, IEEE80211_AC_VO, },
+	{ IWL_TX_FIFO_VI, IEEE80211_AC_VI, },
+	{ IWL_TX_FIFO_BE, IEEE80211_AC_BE, },
+	{ IWL_TX_FIFO_BK, IEEE80211_AC_BK, },
+	{ IWLAGN_CMD_FIFO_NUM, IWL_AC_UNSET, },
+	{ IWL_TX_FIFO_UNUSED, IWL_AC_UNSET, },
+	{ IWL_TX_FIFO_UNUSED, IWL_AC_UNSET, },
+	{ IWL_TX_FIFO_UNUSED, IWL_AC_UNSET, },
+	{ IWL_TX_FIFO_UNUSED, IWL_AC_UNSET, },
+	{ IWL_TX_FIFO_UNUSED, IWL_AC_UNSET, },
+};
+
+static const struct queue_to_fifo_ac iwlagn_ipan_queue_to_tx_fifo[] = {
+	{ IWL_TX_FIFO_VO, IEEE80211_AC_VO, },
+	{ IWL_TX_FIFO_VI, IEEE80211_AC_VI, },
+	{ IWL_TX_FIFO_BE, IEEE80211_AC_BE, },
+	{ IWL_TX_FIFO_BK, IEEE80211_AC_BK, },
+	{ IWL_TX_FIFO_BK_IPAN, IEEE80211_AC_BK, },
+	{ IWL_TX_FIFO_BE_IPAN, IEEE80211_AC_BE, },
+	{ IWL_TX_FIFO_VI_IPAN, IEEE80211_AC_VI, },
+	{ IWL_TX_FIFO_VO_IPAN, IEEE80211_AC_VO, },
+	{ IWL_TX_FIFO_BE_IPAN, 2, },
+	{ IWLAGN_CMD_FIFO_NUM, IWL_AC_UNSET, },
+};
+static void iwl_trans_tx_start(struct iwl_priv *priv)
+{
+	const struct queue_to_fifo_ac *queue_to_fifo;
+	struct iwl_rxon_context *ctx;
+	u32 a;
+	unsigned long flags;
+	int i, chan;
+	u32 reg_val;
+
+	spin_lock_irqsave(&priv->lock, flags);
+
+	priv->scd_base_addr = iwl_read_prph(priv, SCD_SRAM_BASE_ADDR);
+	a = priv->scd_base_addr + SCD_CONTEXT_MEM_LOWER_BOUND;
+	/* reset conext data memory */
+	for (; a < priv->scd_base_addr + SCD_CONTEXT_MEM_UPPER_BOUND;
+		a += 4)
+		iwl_write_targ_mem(priv, a, 0);
+	/* reset tx status memory */
+	for (; a < priv->scd_base_addr + SCD_TX_STTS_MEM_UPPER_BOUND;
+		a += 4)
+		iwl_write_targ_mem(priv, a, 0);
+	for (; a < priv->scd_base_addr +
+	       SCD_TRANS_TBL_OFFSET_QUEUE(priv->hw_params.max_txq_num); a += 4)
+		iwl_write_targ_mem(priv, a, 0);
+
+	iwl_write_prph(priv, SCD_DRAM_BASE_ADDR,
+		       priv->scd_bc_tbls.dma >> 10);
+
+	/* Enable DMA channel */
+	for (chan = 0; chan < FH_TCSR_CHNL_NUM ; chan++)
+		iwl_write_direct32(priv, FH_TCSR_CHNL_TX_CONFIG_REG(chan),
+				FH_TCSR_TX_CONFIG_REG_VAL_DMA_CHNL_ENABLE |
+				FH_TCSR_TX_CONFIG_REG_VAL_DMA_CREDIT_ENABLE);
+
+	/* Update FH chicken bits */
+	reg_val = iwl_read_direct32(priv, FH_TX_CHICKEN_BITS_REG);
+	iwl_write_direct32(priv, FH_TX_CHICKEN_BITS_REG,
+			   reg_val | FH_TX_CHICKEN_BITS_SCD_AUTO_RETRY_EN);
+
+	iwl_write_prph(priv, SCD_QUEUECHAIN_SEL,
+		SCD_QUEUECHAIN_SEL_ALL(priv));
+	iwl_write_prph(priv, SCD_AGGR_SEL, 0);
+
+	/* initiate the queues */
+	for (i = 0; i < priv->hw_params.max_txq_num; i++) {
+		iwl_write_prph(priv, SCD_QUEUE_RDPTR(i), 0);
+		iwl_write_direct32(priv, HBUS_TARG_WRPTR, 0 | (i << 8));
+		iwl_write_targ_mem(priv, priv->scd_base_addr +
+				SCD_CONTEXT_QUEUE_OFFSET(i), 0);
+		iwl_write_targ_mem(priv, priv->scd_base_addr +
+				SCD_CONTEXT_QUEUE_OFFSET(i) +
+				sizeof(u32),
+				((SCD_WIN_SIZE <<
+				SCD_QUEUE_CTX_REG2_WIN_SIZE_POS) &
+				SCD_QUEUE_CTX_REG2_WIN_SIZE_MSK) |
+				((SCD_FRAME_LIMIT <<
+				SCD_QUEUE_CTX_REG2_FRAME_LIMIT_POS) &
+				SCD_QUEUE_CTX_REG2_FRAME_LIMIT_MSK));
+	}
+
+	iwl_write_prph(priv, SCD_INTERRUPT_MASK,
+			IWL_MASK(0, priv->hw_params.max_txq_num));
+
+	/* Activate all Tx DMA/FIFO channels */
+	iwl_trans_txq_set_sched(priv, IWL_MASK(0, 7));
+
+	/* map queues to FIFOs */
+	if (priv->valid_contexts != BIT(IWL_RXON_CTX_BSS))
+		queue_to_fifo = iwlagn_ipan_queue_to_tx_fifo;
+	else
+		queue_to_fifo = iwlagn_default_queue_to_tx_fifo;
+
+	iwlagn_set_wr_ptrs(priv, priv->cmd_queue, 0);
+
+	/* make sure all queue are not stopped */
+	memset(&priv->queue_stopped[0], 0, sizeof(priv->queue_stopped));
+	for (i = 0; i < 4; i++)
+		atomic_set(&priv->queue_stop_count[i], 0);
+	for_each_context(priv, ctx)
+		ctx->last_tx_rejected = false;
+
+	/* reset to 0 to enable all the queue first */
+	priv->txq_ctx_active_msk = 0;
+
+	BUILD_BUG_ON(ARRAY_SIZE(iwlagn_default_queue_to_tx_fifo) != 10);
+	BUILD_BUG_ON(ARRAY_SIZE(iwlagn_ipan_queue_to_tx_fifo) != 10);
+
+	for (i = 0; i < 10; i++) {
+		int fifo = queue_to_fifo[i].fifo;
+		int ac = queue_to_fifo[i].ac;
+
+		iwl_txq_ctx_activate(priv, i);
+
+		if (fifo == IWL_TX_FIFO_UNUSED)
+			continue;
+
+		if (ac != IWL_AC_UNSET)
+			iwl_set_swq_id(&priv->txq[i], ac, i);
+		iwlagn_tx_queue_set_status(priv, &priv->txq[i], fifo, 0);
+	}
+
+	spin_unlock_irqrestore(&priv->lock, flags);
+
+	/* Enable L1-Active */
+	iwl_clear_bits_prph(priv, APMG_PCIDEV_STT_REG,
+			  APMG_PCIDEV_STT_VAL_L1_ACT_DIS);
+}
+
 /**
  * iwlagn_txq_ctx_stop - Stop all Tx DMA channels
  */
@@ -526,7 +733,7 @@ static int iwl_trans_tx_stop(struct iwl_priv *priv)
 	/* Turn off all Tx DMA fifos */
 	spin_lock_irqsave(&priv->lock, flags);
 
-	iwlagn_txq_set_sched(priv, 0);
+	iwl_trans_txq_set_sched(priv, 0);
 
 	/* Stop each Tx DMA channel, and wait for it to be idle */
 	for (ch = 0; ch < FH_TCSR_CHNL_NUM; ch++) {
@@ -552,20 +759,252 @@ static int iwl_trans_tx_stop(struct iwl_priv *priv)
 	return 0;
 }
 
+static void iwl_trans_stop_device(struct iwl_priv *priv)
+{
+	unsigned long flags;
+
+	/* stop and reset the on-board processor */
+	iwl_write32(priv, CSR_RESET, CSR_RESET_REG_FLAG_NEVO_RESET);
+
+	/* tell the device to stop sending interrupts */
+	spin_lock_irqsave(&priv->lock, flags);
+	iwl_disable_interrupts(priv);
+	spin_unlock_irqrestore(&priv->lock, flags);
+	trans_sync_irq(priv);
+
+	/* device going down, Stop using ICT table */
+	iwl_disable_ict(priv);
+
+	/*
+	 * If a HW restart happens during firmware loading,
+	 * then the firmware loading might call this function
+	 * and later it might be called again due to the
+	 * restart. So don't process again if the device is
+	 * already dead.
+	 */
+	if (test_bit(STATUS_DEVICE_ENABLED, &priv->status)) {
+		iwl_trans_tx_stop(priv);
+		iwl_trans_rx_stop(priv);
+
+		/* Power-down device's busmaster DMA clocks */
+		iwl_write_prph(priv, APMG_CLK_DIS_REG,
+			       APMG_CLK_VAL_DMA_CLK_RQT);
+		udelay(5);
+	}
+
+	/* Make sure (redundant) we've released our request to stay awake */
+	iwl_clear_bit(priv, CSR_GP_CNTRL, CSR_GP_CNTRL_REG_FLAG_MAC_ACCESS_REQ);
+
+	/* Stop the device, and put it in low power state */
+	iwl_apm_stop(priv);
+}
+
+static struct iwl_tx_cmd *iwl_trans_get_tx_cmd(struct iwl_priv *priv,
+						int txq_id)
+{
+	struct iwl_tx_queue *txq = &priv->txq[txq_id];
+	struct iwl_queue *q = &txq->q;
+	struct iwl_device_cmd *dev_cmd;
+
+	if (unlikely(iwl_queue_space(q) < q->high_mark))
+		return NULL;
+
+	/*
+	 * Set up the Tx-command (not MAC!) header.
+	 * Store the chosen Tx queue and TFD index within the sequence field;
+	 * after Tx, uCode's Tx response will return this value so driver can
+	 * locate the frame within the tx queue and do post-tx processing.
+	 */
+	dev_cmd = txq->cmd[q->write_ptr];
+	memset(dev_cmd, 0, sizeof(*dev_cmd));
+	dev_cmd->hdr.cmd = REPLY_TX;
+	dev_cmd->hdr.sequence = cpu_to_le16((u16)(QUEUE_TO_SEQ(txq_id) |
+				INDEX_TO_SEQ(q->write_ptr)));
+	return &dev_cmd->cmd.tx;
+}
+
+static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
+		struct iwl_tx_cmd *tx_cmd, int txq_id, __le16 fc, bool ampdu,
+		struct iwl_rxon_context *ctx)
+{
+	struct iwl_tx_queue *txq = &priv->txq[txq_id];
+	struct iwl_queue *q = &txq->q;
+	struct iwl_device_cmd *dev_cmd = txq->cmd[q->write_ptr];
+	struct iwl_cmd_meta *out_meta;
+
+	dma_addr_t phys_addr = 0;
+	dma_addr_t txcmd_phys;
+	dma_addr_t scratch_phys;
+	u16 len, firstlen, secondlen;
+	u8 wait_write_ptr = 0;
+	u8 hdr_len = ieee80211_hdrlen(fc);
+
+	/* Set up driver data for this TFD */
+	memset(&(txq->txb[q->write_ptr]), 0, sizeof(struct iwl_tx_info));
+	txq->txb[q->write_ptr].skb = skb;
+	txq->txb[q->write_ptr].ctx = ctx;
+
+	/* Set up first empty entry in queue's array of Tx/cmd buffers */
+	out_meta = &txq->meta[q->write_ptr];
+
+	/*
+	 * Use the first empty entry in this queue's command buffer array
+	 * to contain the Tx command and MAC header concatenated together
+	 * (payload data will be in another buffer).
+	 * Size of this varies, due to varying MAC header length.
+	 * If end is not dword aligned, we'll have 2 extra bytes at the end
+	 * of the MAC header (device reads on dword boundaries).
+	 * We'll tell device about this padding later.
+	 */
+	len = sizeof(struct iwl_tx_cmd) +
+		sizeof(struct iwl_cmd_header) + hdr_len;
+	firstlen = (len + 3) & ~3;
+
+	/* Tell NIC about any 2-byte padding after MAC header */
+	if (firstlen != len)
+		tx_cmd->tx_flags |= TX_CMD_FLG_MH_PAD_MSK;
+
+	/* Physical address of this Tx command's header (not MAC header!),
+	 * within command buffer array. */
+	txcmd_phys = dma_map_single(priv->bus.dev,
+				    &dev_cmd->hdr, firstlen,
+				    DMA_BIDIRECTIONAL);
+	if (unlikely(dma_mapping_error(priv->bus.dev, txcmd_phys)))
+		return -1;
+	dma_unmap_addr_set(out_meta, mapping, txcmd_phys);
+	dma_unmap_len_set(out_meta, len, firstlen);
+
+	if (!ieee80211_has_morefrags(fc)) {
+		txq->need_update = 1;
+	} else {
+		wait_write_ptr = 1;
+		txq->need_update = 0;
+	}
+
+	/* Set up TFD's 2nd entry to point directly to remainder of skb,
+	 * if any (802.11 null frames have no payload). */
+	secondlen = skb->len - hdr_len;
+	if (secondlen > 0) {
+		phys_addr = dma_map_single(priv->bus.dev, skb->data + hdr_len,
+					   secondlen, DMA_TO_DEVICE);
+		if (unlikely(dma_mapping_error(priv->bus.dev, phys_addr))) {
+			dma_unmap_single(priv->bus.dev,
+					 dma_unmap_addr(out_meta, mapping),
+					 dma_unmap_len(out_meta, len),
+					 DMA_BIDIRECTIONAL);
+			return -1;
+		}
+	}
+
+	/* Attach buffers to TFD */
+	iwlagn_txq_attach_buf_to_tfd(priv, txq, txcmd_phys, firstlen, 1);
+	if (secondlen > 0)
+		iwlagn_txq_attach_buf_to_tfd(priv, txq, phys_addr,
+					     secondlen, 0);
+
+	scratch_phys = txcmd_phys + sizeof(struct iwl_cmd_header) +
+				offsetof(struct iwl_tx_cmd, scratch);
+
+	/* take back ownership of DMA buffer to enable update */
+	dma_sync_single_for_cpu(priv->bus.dev, txcmd_phys, firstlen,
+			DMA_BIDIRECTIONAL);
+	tx_cmd->dram_lsb_ptr = cpu_to_le32(scratch_phys);
+	tx_cmd->dram_msb_ptr = iwl_get_dma_hi_addr(scratch_phys);
+
+	IWL_DEBUG_TX(priv, "sequence nr = 0X%x\n",
+		     le16_to_cpu(dev_cmd->hdr.sequence));
+	IWL_DEBUG_TX(priv, "tx_flags = 0X%x\n", le32_to_cpu(tx_cmd->tx_flags));
+	iwl_print_hex_dump(priv, IWL_DL_TX, (u8 *)tx_cmd, sizeof(*tx_cmd));
+	iwl_print_hex_dump(priv, IWL_DL_TX, (u8 *)tx_cmd->hdr, hdr_len);
+
+	/* Set up entry for this TFD in Tx byte-count array */
+	if (ampdu)
+		iwlagn_txq_update_byte_cnt_tbl(priv, txq,
+					       le16_to_cpu(tx_cmd->len));
+
+	dma_sync_single_for_device(priv->bus.dev, txcmd_phys, firstlen,
+			DMA_BIDIRECTIONAL);
+
+	trace_iwlwifi_dev_tx(priv,
+			     &((struct iwl_tfd *)txq->tfds)[txq->q.write_ptr],
+			     sizeof(struct iwl_tfd),
+			     &dev_cmd->hdr, firstlen,
+			     skb->data + hdr_len, secondlen);
+
+	/* Tell device the write index *just past* this latest filled TFD */
+	q->write_ptr = iwl_queue_inc_wrap(q->write_ptr, q->n_bd);
+	iwl_txq_update_write_ptr(priv, txq);
+
+	/*
+	 * At this point the frame is "transmitted" successfully
+	 * and we will get a TX status notification eventually,
+	 * regardless of the value of ret. "ret" only indicates
+	 * whether or not we should update the write pointer.
+	 */
+	if ((iwl_queue_space(q) < q->high_mark) && priv->mac80211_registered) {
+		if (wait_write_ptr) {
+			txq->need_update = 1;
+			iwl_txq_update_write_ptr(priv, txq);
+		} else {
+			iwl_stop_queue(priv, txq);
+		}
+	}
+	return 0;
+}
+
+static void iwl_trans_sync_irq(struct iwl_priv *priv)
+{
+	/* wait to make sure we flush pending tasklet*/
+	synchronize_irq(priv->bus.irq);
+	tasklet_kill(&priv->irq_tasklet);
+}
+
+static void iwl_trans_free(struct iwl_priv *priv)
+{
+	free_irq(priv->bus.irq, priv);
+	iwl_free_isr_ict(priv);
+}
+
 static const struct iwl_trans_ops trans_ops = {
 	.rx_init = iwl_trans_rx_init,
-	.rx_stop = iwl_trans_rx_stop,
 	.rx_free = iwl_trans_rx_free,
 
 	.tx_init = iwl_trans_tx_init,
-	.tx_stop = iwl_trans_tx_stop,
+	.tx_start = iwl_trans_tx_start,
 	.tx_free = iwl_trans_tx_free,
+
+	.stop_device = iwl_trans_stop_device,
 
 	.send_cmd = iwl_send_cmd,
 	.send_cmd_pdu = iwl_send_cmd_pdu,
+
+	.get_tx_cmd = iwl_trans_get_tx_cmd,
+	.tx = iwl_trans_tx,
+
+	.sync_irq = iwl_trans_sync_irq,
+	.free = iwl_trans_free,
 };
 
-void iwl_trans_register(struct iwl_trans *trans)
+int iwl_trans_register(struct iwl_priv *priv)
 {
-	trans->ops = &trans_ops;
+	int err;
+
+	priv->trans.ops = &trans_ops;
+
+	iwl_alloc_isr_ict(priv);
+
+	err = request_irq(priv->bus.irq, iwl_isr_ict, IRQF_SHARED,
+		DRV_NAME, priv);
+	if (err) {
+		IWL_ERR(priv, "Error allocating IRQ %d\n", priv->bus.irq);
+		iwl_free_isr_ict(priv);
+		return err;
+	}
+
+	tasklet_init(&priv->irq_tasklet, (void (*)(unsigned long))
+		iwl_irq_tasklet, (unsigned long)priv);
+
+	INIT_WORK(&priv->rx_replenish, iwl_bg_rx_replenish);
+
+	return 0;
 }

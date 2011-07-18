@@ -113,18 +113,6 @@ extern struct iwl_mod_params iwlagn_mod_params;
 extern struct ieee80211_ops iwlagn_hw_ops;
 
 int iwl_reset_ict(struct iwl_priv *priv);
-void iwl_disable_ict(struct iwl_priv *priv);
-int iwl_alloc_isr_ict(struct iwl_priv *priv);
-void iwl_free_isr_ict(struct iwl_priv *priv);
-irqreturn_t iwl_isr_ict(int irq, void *data);
-
-/* call this function to flush any scheduled tasklet */
-static inline void iwl_synchronize_irq(struct iwl_priv *priv)
-{
-	/* wait to make sure we flush pending tasklet*/
-	synchronize_irq(priv->bus.irq);
-	tasklet_kill(&priv->irq_tasklet);
-}
 
 static inline void iwl_set_calib_hdr(struct iwl_calib_hdr *hdr, u8 cmd)
 {
@@ -137,19 +125,22 @@ static inline void iwl_set_calib_hdr(struct iwl_calib_hdr *hdr, u8 cmd)
 int iwl_prepare_card_hw(struct iwl_priv *priv);
 
 int iwlagn_start_device(struct iwl_priv *priv);
-void iwlagn_stop_device(struct iwl_priv *priv);
 
 /* tx queue */
 void iwlagn_set_wr_ptrs(struct iwl_priv *priv,
 		     int txq_id, u32 index);
+void iwlagn_txq_update_byte_cnt_tbl(struct iwl_priv *priv,
+					   struct iwl_tx_queue *txq,
+					   u16 byte_cnt);
+
 void iwlagn_tx_queue_set_status(struct iwl_priv *priv,
 			     struct iwl_tx_queue *txq,
 			     int tx_fifo_id, int scd_retry);
-void iwlagn_txq_set_sched(struct iwl_priv *priv, u32 mask);
 void iwl_free_tfds_in_queue(struct iwl_priv *priv,
 			    int sta_id, int tid, int freed);
 
 /* RXON */
+int iwlagn_set_pan_params(struct iwl_priv *priv);
 int iwlagn_commit_rxon(struct iwl_priv *priv, struct iwl_rxon_context *ctx);
 void iwlagn_set_rxon_chain(struct iwl_priv *priv, struct iwl_rxon_context *ctx);
 int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed);
@@ -177,26 +168,21 @@ int iwlagn_hw_valid_rtc_data_addr(u32 addr);
 int iwlagn_send_tx_power(struct iwl_priv *priv);
 void iwlagn_temperature(struct iwl_priv *priv);
 u16 iwlagn_eeprom_calib_version(struct iwl_priv *priv);
-int iwlagn_rx_init(struct iwl_priv *priv, struct iwl_rx_queue *rxq);
 int iwlagn_hw_nic_init(struct iwl_priv *priv);
 int iwlagn_wait_tx_queue_empty(struct iwl_priv *priv);
 int iwlagn_txfifo_flush(struct iwl_priv *priv, u16 flush_control);
 void iwlagn_dev_txfifo_flush(struct iwl_priv *priv, u16 flush_control);
+int iwlagn_send_beacon_cmd(struct iwl_priv *priv);
 
 /* rx */
-void iwlagn_rx_queue_restock(struct iwl_priv *priv);
-void iwlagn_rx_allocate(struct iwl_priv *priv, gfp_t priority);
-void iwlagn_rx_replenish(struct iwl_priv *priv);
-void iwlagn_rx_replenish_now(struct iwl_priv *priv);
 int iwlagn_hwrate_to_mac80211_idx(u32 rate_n_flags, enum ieee80211_band band);
 void iwl_setup_rx_handlers(struct iwl_priv *priv);
+void iwl_rx_dispatch(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb);
+
 
 /* tx */
 void iwlagn_txq_free_tfd(struct iwl_priv *priv, struct iwl_tx_queue *txq,
 				int index);
-int iwlagn_txq_attach_buf_to_tfd(struct iwl_priv *priv,
-				 struct iwl_tx_queue *txq,
-				 dma_addr_t addr, u16 len, u8 reset);
 void iwlagn_hwrate_to_tx_control(struct iwl_priv *priv, u32 rate_n_flags,
 			      struct ieee80211_tx_info *info);
 int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb);
@@ -245,17 +231,6 @@ void iwlagn_post_scan(struct iwl_priv *priv);
 /* station mgmt */
 int iwlagn_manage_ibss_station(struct iwl_priv *priv,
 			       struct ieee80211_vif *vif, bool add);
-
-/* hcmd */
-int iwlagn_send_tx_ant_config(struct iwl_priv *priv, u8 valid_tx_ant);
-int iwlagn_send_beacon_cmd(struct iwl_priv *priv);
-int iwlagn_set_pan_params(struct iwl_priv *priv);
-void iwlagn_gain_computation(struct iwl_priv *priv,
-                u32 average_noise[NUM_RX_CHAINS],
-                u16 min_average_noise_antenna_i,
-                u32 min_average_noise,
-                u8 default_chain);
-
 
 /* bt coex */
 void iwlagn_send_advance_bt_config(struct iwl_priv *priv);

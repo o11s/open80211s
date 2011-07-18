@@ -60,14 +60,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *****************************************************************************/
+
+ /*This file includes the declaration that are exported from the transport
+ * layer */
+
 static inline int trans_rx_init(struct iwl_priv *priv)
 {
 	return priv->trans.ops->rx_init(priv);
-}
-
-static inline int trans_rx_stop(struct iwl_priv *priv)
-{
-	return priv->trans.ops->rx_stop(priv);
 }
 
 static inline void trans_rx_free(struct iwl_priv *priv)
@@ -80,14 +79,19 @@ static inline int trans_tx_init(struct iwl_priv *priv)
 	return priv->trans.ops->tx_init(priv);
 }
 
-static inline int trans_tx_stop(struct iwl_priv *priv)
+static inline void trans_tx_start(struct iwl_priv *priv)
 {
-	return priv->trans.ops->tx_stop(priv);
+	priv->trans.ops->tx_start(priv);
 }
 
 static inline void trans_tx_free(struct iwl_priv *priv)
 {
 	priv->trans.ops->tx_free(priv);
+}
+
+static inline void trans_stop_device(struct iwl_priv *priv)
+{
+	priv->trans.ops->stop_device(priv);
 }
 
 static inline int trans_send_cmd(struct iwl_priv *priv,
@@ -102,4 +106,27 @@ static inline int trans_send_cmd_pdu(struct iwl_priv *priv, u8 id, u32 flags,
 	return priv->trans.ops->send_cmd_pdu(priv, id, flags, len, data);
 }
 
-void iwl_trans_register(struct iwl_trans *trans);
+static inline struct iwl_tx_cmd *trans_get_tx_cmd(struct iwl_priv *priv,
+					int txq_id)
+{
+	return priv->trans.ops->get_tx_cmd(priv, txq_id);
+}
+
+static inline int trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
+		struct iwl_tx_cmd *tx_cmd, int txq_id, __le16 fc, bool ampdu,
+		struct iwl_rxon_context *ctx)
+{
+	return priv->trans.ops->tx(priv, skb, tx_cmd, txq_id, fc, ampdu, ctx);
+}
+
+static inline void trans_sync_irq(struct iwl_priv *priv)
+{
+	priv->trans.ops->sync_irq(priv);
+}
+
+static inline void trans_free(struct iwl_priv *priv)
+{
+	priv->trans.ops->free(priv);
+}
+
+int iwl_trans_register(struct iwl_priv *priv);
