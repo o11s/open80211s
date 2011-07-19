@@ -25,6 +25,11 @@ struct bcma_chipinfo {
 	u8 pkg;
 };
 
+enum bcma_clkmode {
+	BCMA_CLKMODE_FAST,
+	BCMA_CLKMODE_DYNAMIC,
+};
+
 struct bcma_host_ops {
 	u8 (*read8)(struct bcma_device *core, u16 offset);
 	u16 (*read16)(struct bcma_device *core, u16 offset);
@@ -243,8 +248,19 @@ void bcma_awrite32(struct bcma_device *core, u16 offset, u32 value)
 	core->bus->ops->awrite32(core, offset, value);
 }
 
+#define bcma_mask32(cc, offset, mask) \
+	bcma_write32(cc, offset, bcma_read32(cc, offset) & (mask))
+#define bcma_set32(cc, offset, set) \
+	bcma_write32(cc, offset, bcma_read32(cc, offset) | (set))
+#define bcma_maskset32(cc, offset, mask, set) \
+	bcma_write32(cc, offset, (bcma_read32(cc, offset) & (mask)) | (set))
+
 extern bool bcma_core_is_enabled(struct bcma_device *core);
 extern void bcma_core_disable(struct bcma_device *core, u32 flags);
 extern int bcma_core_enable(struct bcma_device *core, u32 flags);
+extern void bcma_core_set_clockmode(struct bcma_device *core,
+				    enum bcma_clkmode clkmode);
+extern void bcma_core_pll_ctl(struct bcma_device *core, u32 req, u32 status,
+			      bool on);
 
 #endif /* LINUX_BCMA_H_ */

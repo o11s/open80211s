@@ -1156,17 +1156,37 @@ void b43_power_saving_ctl_bits(struct b43_wldev *dev, unsigned int ps_flags)
 }
 
 #ifdef CONFIG_B43_BCMA
+static void b43_bcma_phy_reset(struct b43_wldev *dev)
+{
+	u32 flags;
+
+	/* Put PHY into reset */
+	flags = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
+	flags |= B43_BCMA_IOCTL_PHY_RESET;
+	flags |= B43_BCMA_IOCTL_PHY_BW_20MHZ; /* Make 20 MHz def */
+	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
+	udelay(2);
+
+	/* Take PHY out of reset */
+	flags = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
+	flags &= ~B43_BCMA_IOCTL_PHY_RESET;
+	flags |= BCMA_IOCTL_FGC;
+	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
+	udelay(1);
+
+	/* Do not force clock anymore */
+	flags = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
+	flags &= ~BCMA_IOCTL_FGC;
+	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
+	udelay(1);
+}
+
 static void b43_bcma_wireless_core_reset(struct b43_wldev *dev, bool gmode)
 {
-	u32 flags = 0;
-
-	if (gmode)
-		flags = B43_BCMA_IOCTL_GMODE;
-	flags |= B43_BCMA_IOCTL_PHY_CLKEN;
-	flags |= B43_BCMA_IOCTL_PHY_BW_20MHZ; /* Make 20 MHz def */
-	b43_device_enable(dev, flags);
-
-	/* TODO: reset PHY */
+	b43_device_enable(dev, B43_BCMA_IOCTL_PHY_CLKEN);
+	bcma_core_set_clockmode(dev->dev->bdev, BCMA_CLKMODE_FAST);
+	b43_bcma_phy_reset(dev);
+	bcma_core_pll_ctl(dev->dev->bdev, 0x300, 0x3000000, true);
 }
 #endif
 
@@ -2814,12 +2834,12 @@ void b43_mac_phy_clock_set(struct b43_wldev *dev, bool on)
 	switch (dev->dev->bus_type) {
 #ifdef CONFIG_B43_BCMA
 	case B43_BUS_BCMA:
-		tmp = bcma_read32(dev->dev->bdev, BCMA_IOCTL);
+		tmp = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
 		if (on)
 			tmp |= B43_BCMA_IOCTL_MACPHYCLKEN;
 		else
 			tmp &= ~B43_BCMA_IOCTL_MACPHYCLKEN;
-		bcma_write32(dev->dev->bdev, BCMA_IOCTL, tmp);
+		bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, tmp);
 		break;
 #endif
 #ifdef CONFIG_B43_SSB
@@ -4948,6 +4968,7 @@ static int b43_wireless_core_attach(struct b43_wldev *dev)
 	struct b43_wl *wl = dev->wl;
 	struct pci_dev *pdev = NULL;
 	int err;
+	u32 tmp;
 	bool have_2ghz_phy = 0, have_5ghz_phy = 0;
 
 	/* Do NOT do any device initialization here.
@@ -4973,17 +4994,17 @@ static int b43_wireless_core_attach(struct b43_wldev *dev)
 	switch (dev->dev->bus_type) {
 #ifdef CONFIG_B43_BCMA
 	case B43_BUS_BCMA:
-		/* FIXME */
-		have_2ghz_phy = 1;
-		have_5ghz_phy = 0;
+		tmp = bcma_aread32(dev->dev->bdev, BCMA_IOST);
+		have_2ghz_phy = !!(tmp & B43_BCMA_IOST_2G_PHY);
+		have_5ghz_phy = !!(tmp & B43_BCMA_IOST_5G_PHY);
 		break;
 #endif
 #ifdef CONFIG_B43_SSB
 	case B43_BUS_SSB:
 		if (dev->dev->core_rev >= 5) {
-			u32 tmshigh = ssb_read32(dev->dev->sdev, SSB_TMSHIGH);
-			have_2ghz_phy = !!(tmshigh & B43_TMSHIGH_HAVE_2GHZ_PHY);
-			have_5ghz_phy = !!(tmshigh & B43_TMSHIGH_HAVE_5GHZ_PHY);
+			tmp = ssb_read32(dev->dev->sdev, SSB_TMSHIGH);
+			have_2ghz_phy = !!(tmp & B43_TMSHIGH_HAVE_2GHZ_PHY);
+			have_5ghz_phy = !!(tmp & B43_TMSHIGH_HAVE_5GHZ_PHY);
 		} else
 			B43_WARN_ON(1);
 		break;
@@ -5164,6 +5185,7 @@ static struct b43_wl *b43_wireless_init(struct b43_bus_dev *dev)
 	struct ssb_sprom *sprom = dev->bus_sprom;
 	struct ieee80211_hw *hw;
 	struct b43_wl *wl;
+	char chip_name[6];
 
 	hw = ieee80211_alloc_hw(sizeof(*wl), &b43_hw_ops);
 	if (!hw) {
@@ -5202,8 +5224,10 @@ static struct b43_wl *b43_wireless_init(struct b43_bus_dev *dev)
 	INIT_WORK(&wl->tx_work, b43_tx_work);
 	skb_queue_head_init(&wl->tx_queue);
 
-	b43info(wl, "Broadcom %04X WLAN found (core revision %u)\n",
-		dev->chip_id, dev->core_rev);
+	snprintf(chip_name, ARRAY_SIZE(chip_name),
+		 (dev->chip_id > 0x9999) ? "%d" : "%04X", dev->chip_id);
+	b43info(wl, "Broadcom %s WLAN found (core revision %u)\n", chip_name,
+		dev->core_rev);
 	return wl;
 }
 
