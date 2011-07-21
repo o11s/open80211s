@@ -85,9 +85,6 @@ static void iwl2000_nic_config(struct iwl_priv *priv)
 	if (priv->cfg->iq_invert)
 		iwl_set_bit(priv, CSR_GP_DRIVER_REG,
 			    CSR_GP_DRIVER_REG_BIT_RADIO_IQ_INVER);
-
-	if (priv->cfg->disable_otp_refresh)
-		iwl_write_prph(priv, APMG_ANALOG_SVR_REG, 0x80000010);
 }
 
 static struct iwl_sensitivity_ranges iwl2000_sensitivity = {
@@ -167,8 +164,6 @@ static int iwl2000_hw_set_hw_params(struct iwl_priv *priv)
 
 static struct iwl_lib_ops iwl2000_lib = {
 	.set_hw_params = iwl2000_hw_set_hw_params,
-	.rx_handler_setup = iwlagn_rx_handler_setup,
-	.setup_deferred_work = iwlagn_setup_deferred_work,
 	.nic_config = iwl2000_nic_config,
 	.eeprom_ops = {
 		.regulatory_bands = {
@@ -187,8 +182,8 @@ static struct iwl_lib_ops iwl2000_lib = {
 
 static struct iwl_lib_ops iwl2030_lib = {
 	.set_hw_params = iwl2000_hw_set_hw_params,
-	.rx_handler_setup = iwlagn_bt_rx_handler_setup,
-	.setup_deferred_work = iwlagn_bt_setup_deferred_work,
+	.bt_rx_handler_setup = iwlagn_bt_rx_handler_setup,
+	.bt_setup_deferred_work = iwlagn_bt_setup_deferred_work,
 	.cancel_deferred_work = iwlagn_bt_cancel_deferred_work,
 	.nic_config = iwl2000_nic_config,
 	.eeprom_ops = {
@@ -269,8 +264,7 @@ static struct iwl_bt_params iwl2030_bt_params = {
 	.need_dc_calib = true,					\
 	.need_temp_offset_calib = true,				\
 	.led_mode = IWL_LED_RF_STATE,				\
-	.iq_invert = true,					\
-	.disable_otp_refresh = true				\
+	.iq_invert = true					\
 
 struct iwl_cfg iwl2000_2bgn_cfg = {
 	.name = "2000 Series 2x2 BGN",
@@ -321,7 +315,8 @@ struct iwl_cfg iwl2030_2bg_cfg = {
 	.need_temp_offset_calib = true,				\
 	.led_mode = IWL_LED_RF_STATE,				\
 	.adv_pm = true,						\
-	.rx_with_siso_diversity = true				\
+	.rx_with_siso_diversity = true,				\
+	.iq_invert = true					\
 
 struct iwl_cfg iwl105_bg_cfg = {
 	.name = "105 Series 1x1 BG",
@@ -347,7 +342,8 @@ struct iwl_cfg iwl105_bgn_cfg = {
 	.need_temp_offset_calib = true,				\
 	.led_mode = IWL_LED_RF_STATE,				\
 	.adv_pm = true,						\
-	.rx_with_siso_diversity = true				\
+	.rx_with_siso_diversity = true,				\
+	.iq_invert = true					\
 
 struct iwl_cfg iwl135_bg_cfg = {
 	.name = "135 Series 1x1 BG/BT",

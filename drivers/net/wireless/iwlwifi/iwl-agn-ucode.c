@@ -167,12 +167,12 @@ static int iwlagn_set_temperature_offset_calib(struct iwl_priv *priv)
 
 	memset(&cmd, 0, sizeof(cmd));
 	iwl_set_calib_hdr(&cmd.hdr, IWL_PHY_CALIBRATE_TEMP_OFFSET_CMD);
-	cmd.radio_sensor_offset = le16_to_cpu(offset_calib[1]);
+	memcpy(&cmd.radio_sensor_offset, offset_calib, sizeof(offset_calib));
 	if (!(cmd.radio_sensor_offset))
 		cmd.radio_sensor_offset = DEFAULT_RADIO_SENSOR_OFFSET;
 
 	IWL_DEBUG_CALIB(priv, "Radio sensor offset: %d\n",
-			cmd.radio_sensor_offset);
+			le16_to_cpu(cmd.radio_sensor_offset));
 	return iwl_calib_set(&priv->calib_results[IWL_CALIB_TEMP_OFFSET],
 			     (u8 *)&cmd, sizeof(cmd));
 }
@@ -190,9 +190,10 @@ static int iwlagn_send_calib_cfg(struct iwl_priv *priv)
 	calib_cfg_cmd.ucd_calib_cfg.once.is_enable = IWL_CALIB_INIT_CFG_ALL;
 	calib_cfg_cmd.ucd_calib_cfg.once.start = IWL_CALIB_INIT_CFG_ALL;
 	calib_cfg_cmd.ucd_calib_cfg.once.send_res = IWL_CALIB_INIT_CFG_ALL;
-	calib_cfg_cmd.ucd_calib_cfg.flags = IWL_CALIB_INIT_CFG_ALL;
+	calib_cfg_cmd.ucd_calib_cfg.flags =
+		IWL_CALIB_CFG_FLAG_SEND_COMPLETE_NTFY_MSK;
 
-	return trans_send_cmd(priv, &cmd);
+	return trans_send_cmd(&priv->trans, &cmd);
 }
 
 void iwlagn_rx_calib_result(struct iwl_priv *priv,
@@ -290,7 +291,7 @@ static int iwlagn_send_wimax_coex(struct iwl_priv *priv)
 		/* coexistence is disabled */
 		memset(&coex_cmd, 0, sizeof(coex_cmd));
 	}
-	return trans_send_cmd_pdu(priv,
+	return trans_send_cmd_pdu(&priv->trans,
 				COEX_PRIORITY_TABLE_CMD, CMD_SYNC,
 				sizeof(coex_cmd), &coex_cmd);
 }
@@ -323,7 +324,7 @@ void iwlagn_send_prio_tbl(struct iwl_priv *priv)
 
 	memcpy(prio_tbl_cmd.prio_tbl, iwlagn_bt_prio_tbl,
 		sizeof(iwlagn_bt_prio_tbl));
-	if (trans_send_cmd_pdu(priv,
+	if (trans_send_cmd_pdu(&priv->trans,
 				REPLY_BT_COEX_PRIO_TABLE, CMD_SYNC,
 				sizeof(prio_tbl_cmd), &prio_tbl_cmd))
 		IWL_ERR(priv, "failed to send BT prio tbl command\n");
@@ -336,7 +337,7 @@ int iwlagn_send_bt_env(struct iwl_priv *priv, u8 action, u8 type)
 
 	env_cmd.action = action;
 	env_cmd.type = type;
-	ret = trans_send_cmd_pdu(priv,
+	ret = trans_send_cmd_pdu(&priv->trans,
 			       REPLY_BT_COEX_PROT_ENV, CMD_SYNC,
 			       sizeof(env_cmd), &env_cmd);
 	if (ret)
@@ -349,7 +350,7 @@ static int iwlagn_alive_notify(struct iwl_priv *priv)
 {
 	int ret;
 
-	trans_tx_start(priv);
+	trans_tx_start(&priv->trans);
 
 	ret = iwlagn_send_wimax_coex(priv);
 	if (ret)
@@ -477,7 +478,7 @@ int iwlagn_load_ucode_wait_alive(struct iwl_priv *priv,
 	int ret;
 	enum iwlagn_ucode_type old_type;
 
-	ret = iwlagn_start_device(priv);
+	ret = trans_start_device(&priv->trans);
 	if (ret)
 		return ret;
 
@@ -494,8 +495,7 @@ int iwlagn_load_ucode_wait_alive(struct iwl_priv *priv,
 		return ret;
 	}
 
-	/* Remove all resets to allow NIC to operate */
-	iwl_write32(priv, CSR_RESET, 0);
+	trans_kick_nic(&priv->trans);
 
 	/*
 	 * Some things may run in the background now, but we
@@ -513,14 +513,21 @@ int iwlagn_load_ucode_wait_alive(struct iwl_priv *priv,
 		return -EIO;
 	}
 
-	ret = iwl_verify_ucode(priv, image);
-	if (ret) {
-		priv->ucode_type = old_type;
-		return ret;
-	}
+	/*
+	 * This step takes a long time (60-80ms!!) and
+	 * WoWLAN image should be loaded quickly, so
+	 * skip it for WoWLAN.
+	 */
+	if (ucode_type != IWL_UCODE_WOWLAN) {
+		ret = iwl_verify_ucode(priv, image);
+		if (ret) {
+			priv->ucode_type = old_type;
+			return ret;
+		}
 
-	/* delay a bit to give rfkill time to run */
-	msleep(5);
+		/* delay a bit to give rfkill time to run */
+		msleep(5);
+	}
 
 	ret = iwlagn_alive_notify(priv);
 	if (ret) {
@@ -573,6 +580,6 @@ int iwlagn_run_init_ucode(struct iwl_priv *priv)
 	iwlagn_remove_notification(priv, &calib_wait);
  out:
 	/* Whatever happened, stop the device */
-	trans_stop_device(priv);
+	trans_stop_device(&priv->trans);
 	return ret;
 }

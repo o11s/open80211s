@@ -122,20 +122,7 @@ static inline void iwl_set_calib_hdr(struct iwl_calib_hdr *hdr, u8 cmd)
 	hdr->data_valid = 1;
 }
 
-int iwl_prepare_card_hw(struct iwl_priv *priv);
-
-int iwlagn_start_device(struct iwl_priv *priv);
-
 /* tx queue */
-void iwlagn_set_wr_ptrs(struct iwl_priv *priv,
-		     int txq_id, u32 index);
-void iwlagn_txq_update_byte_cnt_tbl(struct iwl_priv *priv,
-					   struct iwl_tx_queue *txq,
-					   u16 byte_cnt);
-
-void iwlagn_tx_queue_set_status(struct iwl_priv *priv,
-			     struct iwl_tx_queue *txq,
-			     int tx_fifo_id, int scd_retry);
 void iwl_free_tfds_in_queue(struct iwl_priv *priv,
 			    int sta_id, int tid, int freed);
 
@@ -162,13 +149,10 @@ int iwlagn_load_ucode_wait_alive(struct iwl_priv *priv,
 /* lib */
 void iwl_check_abort_status(struct iwl_priv *priv,
 			    u8 frame_count, u32 status);
-void iwlagn_rx_handler_setup(struct iwl_priv *priv);
-void iwlagn_setup_deferred_work(struct iwl_priv *priv);
 int iwlagn_hw_valid_rtc_data_addr(u32 addr);
 int iwlagn_send_tx_power(struct iwl_priv *priv);
 void iwlagn_temperature(struct iwl_priv *priv);
 u16 iwlagn_eeprom_calib_version(struct iwl_priv *priv);
-int iwlagn_hw_nic_init(struct iwl_priv *priv);
 int iwlagn_wait_tx_queue_empty(struct iwl_priv *priv);
 int iwlagn_txfifo_flush(struct iwl_priv *priv, u16 flush_control);
 void iwlagn_dev_txfifo_flush(struct iwl_priv *priv, u16 flush_control);
@@ -190,13 +174,11 @@ int iwlagn_tx_agg_start(struct iwl_priv *priv, struct ieee80211_vif *vif,
 			struct ieee80211_sta *sta, u16 tid, u16 *ssn);
 int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 		       struct ieee80211_sta *sta, u16 tid);
-void iwlagn_txq_agg_queue_setup(struct iwl_priv *priv,
-				struct ieee80211_sta *sta,
-				int tid, int frame_limit);
 int iwlagn_txq_check_empty(struct iwl_priv *priv,
 			   int sta_id, u8 tid, int txq_id);
 void iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 				struct iwl_rx_mem_buffer *rxb);
+void iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb);
 int iwlagn_tx_queue_reclaim(struct iwl_priv *priv, int txq_id, int index);
 
 static inline u32 iwl_tx_status_to_mac80211(u32 status)
@@ -264,11 +246,13 @@ int iwl_set_default_wep_key(struct iwl_priv *priv,
 int iwl_restore_default_wep_keys(struct iwl_priv *priv,
 				 struct iwl_rxon_context *ctx);
 int iwl_set_dynamic_key(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
-			struct ieee80211_key_conf *key, u8 sta_id);
+			struct ieee80211_key_conf *key,
+			struct ieee80211_sta *sta);
 int iwl_remove_dynamic_key(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
-			   struct ieee80211_key_conf *key, u8 sta_id);
+			   struct ieee80211_key_conf *key,
+			   struct ieee80211_sta *sta);
 void iwl_update_tkip_key(struct iwl_priv *priv,
-			 struct iwl_rxon_context *ctx,
+			 struct ieee80211_vif *vif,
 			 struct ieee80211_key_conf *keyconf,
 			 struct ieee80211_sta *sta, u32 iv32, u16 *phase1key);
 int iwl_sta_tx_modify_enable_tid(struct iwl_priv *priv, int sta_id, int tid);
@@ -353,9 +337,5 @@ void iwl_testmode_cleanup(struct iwl_priv *priv)
 {
 }
 #endif
-
-int iwl_probe(void *bus_specific, struct iwl_bus_ops *bus_ops,
-		struct iwl_cfg *cfg);
-void __devexit iwl_remove(struct iwl_priv * priv);
 
 #endif /* __iwl_agn_h__ */

@@ -72,7 +72,7 @@
 static int iwl_trans_rx_alloc(struct iwl_priv *priv)
 {
 	struct iwl_rx_queue *rxq = &priv->rxq;
-	struct device *dev = priv->bus.dev;
+	struct device *dev = priv->bus->dev;
 
 	memset(&priv->rxq, 0, sizeof(priv->rxq));
 
@@ -118,7 +118,7 @@ static void iwl_trans_rxq_free_rx_bufs(struct iwl_priv *priv)
 		/* In the reset function, these buffers may have been allocated
 		 * to an SKB, so we need to unmap and free potential storage */
 		if (rxq->pool[i].page != NULL) {
-			dma_unmap_page(priv->bus.dev, rxq->pool[i].page_dma,
+			dma_unmap_page(priv->bus->dev, rxq->pool[i].page_dma,
 				PAGE_SIZE << priv->hw_params.rx_page_order,
 				DMA_FROM_DEVICE);
 			__iwl_free_pages(priv, rxq->pool[i].page);
@@ -177,7 +177,7 @@ static void iwl_trans_rx_hw_init(struct iwl_priv *priv,
 	iwl_write8(priv, CSR_INT_COALESCING, IWL_HOST_INT_TIMEOUT_DEF);
 }
 
-static int iwl_trans_rx_init(struct iwl_priv *priv)
+static int iwl_rx_init(struct iwl_priv *priv)
 {
 	struct iwl_rx_queue *rxq = &priv->rxq;
 	int i, err;
@@ -233,13 +233,13 @@ static void iwl_trans_rx_free(struct iwl_priv *priv)
 	iwl_trans_rxq_free_rx_bufs(priv);
 	spin_unlock_irqrestore(&rxq->lock, flags);
 
-	dma_free_coherent(priv->bus.dev, sizeof(__le32) * RX_QUEUE_SIZE,
+	dma_free_coherent(priv->bus->dev, sizeof(__le32) * RX_QUEUE_SIZE,
 			  rxq->bd, rxq->bd_dma);
 	memset(&rxq->bd_dma, 0, sizeof(rxq->bd_dma));
 	rxq->bd = NULL;
 
 	if (rxq->rb_stts)
-		dma_free_coherent(priv->bus.dev,
+		dma_free_coherent(priv->bus->dev,
 				  sizeof(struct iwl_rb_status),
 				  rxq->rb_stts, rxq->rb_stts_dma);
 	else
@@ -263,7 +263,7 @@ static inline int iwlagn_alloc_dma_ptr(struct iwl_priv *priv,
 	if (WARN_ON(ptr->addr))
 		return -EINVAL;
 
-	ptr->addr = dma_alloc_coherent(priv->bus.dev, size,
+	ptr->addr = dma_alloc_coherent(priv->bus->dev, size,
 				       &ptr->dma, GFP_KERNEL);
 	if (!ptr->addr)
 		return -ENOMEM;
@@ -277,7 +277,7 @@ static inline void iwlagn_free_dma_ptr(struct iwl_priv *priv,
 	if (unlikely(!ptr->addr))
 		return;
 
-	dma_free_coherent(priv->bus.dev, ptr->size, ptr->addr, ptr->dma);
+	dma_free_coherent(priv->bus->dev, ptr->size, ptr->addr, ptr->dma);
 	memset(ptr, 0, sizeof(*ptr));
 }
 
@@ -324,7 +324,7 @@ static int iwl_trans_txq_alloc(struct iwl_priv *priv, struct iwl_tx_queue *txq,
 
 	/* Circular buffer of transmit frame descriptors (TFDs),
 	 * shared with device */
-	txq->tfds = dma_alloc_coherent(priv->bus.dev, tfd_sz, &txq->q.dma_addr,
+	txq->tfds = dma_alloc_coherent(priv->bus->dev, tfd_sz, &txq->q.dma_addr,
 				       GFP_KERNEL);
 	if (!txq->tfds) {
 		IWL_ERR(priv, "dma_alloc_coherent(%zd) failed\n", tfd_sz);
@@ -415,7 +415,7 @@ static void iwl_tx_queue_unmap(struct iwl_priv *priv, int txq_id)
 static void iwl_tx_queue_free(struct iwl_priv *priv, int txq_id)
 {
 	struct iwl_tx_queue *txq = &priv->txq[txq_id];
-	struct device *dev = priv->bus.dev;
+	struct device *dev = priv->bus->dev;
 	int i;
 	if (WARN_ON(!txq))
 		return;
@@ -526,11 +526,11 @@ static int iwl_trans_tx_alloc(struct iwl_priv *priv)
 	return 0;
 
 error:
-	trans_tx_free(priv);
+	trans_tx_free(&priv->trans);
 
 	return ret;
 }
-static int iwl_trans_tx_init(struct iwl_priv *priv)
+static int iwl_tx_init(struct iwl_priv *priv)
 {
 	int ret;
 	int txq_id, slots_num;
@@ -570,8 +570,158 @@ static int iwl_trans_tx_init(struct iwl_priv *priv)
 error:
 	/*Upon error, free only if we allocated something */
 	if (alloc)
-		trans_tx_free(priv);
+		trans_tx_free(&priv->trans);
 	return ret;
+}
+
+static void iwl_set_pwr_vmain(struct iwl_priv *priv)
+{
+/*
+ * (for documentation purposes)
+ * to set power to V_AUX, do:
+
+		if (pci_pme_capable(priv->pci_dev, PCI_D3cold))
+			iwl_set_bits_mask_prph(priv, APMG_PS_CTRL_REG,
+					       APMG_PS_CTRL_VAL_PWR_SRC_VAUX,
+					       ~APMG_PS_CTRL_MSK_PWR_SRC);
+ */
+
+	iwl_set_bits_mask_prph(priv, APMG_PS_CTRL_REG,
+			       APMG_PS_CTRL_VAL_PWR_SRC_VMAIN,
+			       ~APMG_PS_CTRL_MSK_PWR_SRC);
+}
+
+static int iwl_nic_init(struct iwl_priv *priv)
+{
+	unsigned long flags;
+
+	/* nic_init */
+	spin_lock_irqsave(&priv->lock, flags);
+	iwl_apm_init(priv);
+
+	/* Set interrupt coalescing calibration timer to default (512 usecs) */
+	iwl_write8(priv, CSR_INT_COALESCING, IWL_HOST_INT_CALIB_TIMEOUT_DEF);
+
+	spin_unlock_irqrestore(&priv->lock, flags);
+
+	iwl_set_pwr_vmain(priv);
+
+	priv->cfg->lib->nic_config(priv);
+
+	/* Allocate the RX queue, or reset if it is already allocated */
+	iwl_rx_init(priv);
+
+	/* Allocate or reset and init all Tx and Command queues */
+	if (iwl_tx_init(priv))
+		return -ENOMEM;
+
+	if (priv->cfg->base_params->shadow_reg_enable) {
+		/* enable shadow regs in HW */
+		iwl_set_bit(priv, CSR_MAC_SHADOW_REG_CTRL,
+			0x800FFFFF);
+	}
+
+	set_bit(STATUS_INIT, &priv->status);
+
+	return 0;
+}
+
+#define HW_READY_TIMEOUT (50)
+
+/* Note: returns poll_bit return value, which is >= 0 if success */
+static int iwl_set_hw_ready(struct iwl_priv *priv)
+{
+	int ret;
+
+	iwl_set_bit(priv, CSR_HW_IF_CONFIG_REG,
+		CSR_HW_IF_CONFIG_REG_BIT_NIC_READY);
+
+	/* See if we got it */
+	ret = iwl_poll_bit(priv, CSR_HW_IF_CONFIG_REG,
+				CSR_HW_IF_CONFIG_REG_BIT_NIC_READY,
+				CSR_HW_IF_CONFIG_REG_BIT_NIC_READY,
+				HW_READY_TIMEOUT);
+
+	IWL_DEBUG_INFO(priv, "hardware%s ready\n", ret < 0 ? " not" : "");
+	return ret;
+}
+
+/* Note: returns standard 0/-ERROR code */
+static int iwl_trans_prepare_card_hw(struct iwl_priv *priv)
+{
+	int ret;
+
+	IWL_DEBUG_INFO(priv, "iwl_trans_prepare_card_hw enter\n");
+
+	ret = iwl_set_hw_ready(priv);
+	if (ret >= 0)
+		return 0;
+
+	/* If HW is not ready, prepare the conditions to check again */
+	iwl_set_bit(priv, CSR_HW_IF_CONFIG_REG,
+			CSR_HW_IF_CONFIG_REG_PREPARE);
+
+	ret = iwl_poll_bit(priv, CSR_HW_IF_CONFIG_REG,
+			~CSR_HW_IF_CONFIG_REG_BIT_NIC_PREPARE_DONE,
+			CSR_HW_IF_CONFIG_REG_BIT_NIC_PREPARE_DONE, 150000);
+
+	if (ret < 0)
+		return ret;
+
+	/* HW should be ready by now, check again. */
+	ret = iwl_set_hw_ready(priv);
+	if (ret >= 0)
+		return 0;
+	return ret;
+}
+
+static int iwl_trans_start_device(struct iwl_priv *priv)
+{
+	int ret;
+
+	priv->ucode_owner = IWL_OWNERSHIP_DRIVER;
+
+	if ((priv->cfg->sku & EEPROM_SKU_CAP_AMT_ENABLE) &&
+	     iwl_trans_prepare_card_hw(priv)) {
+		IWL_WARN(priv, "Exit HW not ready\n");
+		return -EIO;
+	}
+
+	/* If platform's RF_KILL switch is NOT set to KILL */
+	if (iwl_read32(priv, CSR_GP_CNTRL) &
+			CSR_GP_CNTRL_REG_FLAG_HW_RF_KILL_SW)
+		clear_bit(STATUS_RF_KILL_HW, &priv->status);
+	else
+		set_bit(STATUS_RF_KILL_HW, &priv->status);
+
+	if (iwl_is_rfkill(priv)) {
+		wiphy_rfkill_set_hw_state(priv->hw->wiphy, true);
+		iwl_enable_interrupts(priv);
+		return -ERFKILL;
+	}
+
+	iwl_write32(priv, CSR_INT, 0xFFFFFFFF);
+
+	ret = iwl_nic_init(priv);
+	if (ret) {
+		IWL_ERR(priv, "Unable to init nic\n");
+		return ret;
+	}
+
+	/* make sure rfkill handshake bits are cleared */
+	iwl_write32(priv, CSR_UCODE_DRV_GP1_CLR, CSR_UCODE_SW_BIT_RFKILL);
+	iwl_write32(priv, CSR_UCODE_DRV_GP1_CLR,
+		    CSR_UCODE_DRV_GP1_BIT_CMD_BLOCKED);
+
+	/* clear (again), then enable host interrupts */
+	iwl_write32(priv, CSR_INT, 0xFFFFFFFF);
+	iwl_enable_interrupts(priv);
+
+	/* really make sure rfkill handshake bits are cleared */
+	iwl_write32(priv, CSR_UCODE_DRV_GP1_CLR, CSR_UCODE_SW_BIT_RFKILL);
+	iwl_write32(priv, CSR_UCODE_DRV_GP1_CLR, CSR_UCODE_SW_BIT_RFKILL);
+
+	return 0;
 }
 
 /*
@@ -686,7 +836,7 @@ static void iwl_trans_tx_start(struct iwl_priv *priv)
 	else
 		queue_to_fifo = iwlagn_default_queue_to_tx_fifo;
 
-	iwlagn_set_wr_ptrs(priv, priv->cmd_queue, 0);
+	iwl_trans_set_wr_ptrs(priv, priv->cmd_queue, 0);
 
 	/* make sure all queue are not stopped */
 	memset(&priv->queue_stopped[0], 0, sizeof(priv->queue_stopped));
@@ -712,7 +862,7 @@ static void iwl_trans_tx_start(struct iwl_priv *priv)
 
 		if (ac != IWL_AC_UNSET)
 			iwl_set_swq_id(&priv->txq[i], ac, i);
-		iwlagn_tx_queue_set_status(priv, &priv->txq[i], fifo, 0);
+		iwl_trans_tx_queue_set_status(priv, &priv->txq[i], fifo, 0);
 	}
 
 	spin_unlock_irqrestore(&priv->lock, flags);
@@ -770,7 +920,7 @@ static void iwl_trans_stop_device(struct iwl_priv *priv)
 	spin_lock_irqsave(&priv->lock, flags);
 	iwl_disable_interrupts(priv);
 	spin_unlock_irqrestore(&priv->lock, flags);
-	trans_sync_irq(priv);
+	trans_sync_irq(&priv->trans);
 
 	/* device going down, Stop using ICT table */
 	iwl_disable_ict(priv);
@@ -866,10 +1016,10 @@ static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
 
 	/* Physical address of this Tx command's header (not MAC header!),
 	 * within command buffer array. */
-	txcmd_phys = dma_map_single(priv->bus.dev,
+	txcmd_phys = dma_map_single(priv->bus->dev,
 				    &dev_cmd->hdr, firstlen,
 				    DMA_BIDIRECTIONAL);
-	if (unlikely(dma_mapping_error(priv->bus.dev, txcmd_phys)))
+	if (unlikely(dma_mapping_error(priv->bus->dev, txcmd_phys)))
 		return -1;
 	dma_unmap_addr_set(out_meta, mapping, txcmd_phys);
 	dma_unmap_len_set(out_meta, len, firstlen);
@@ -885,10 +1035,10 @@ static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
 	 * if any (802.11 null frames have no payload). */
 	secondlen = skb->len - hdr_len;
 	if (secondlen > 0) {
-		phys_addr = dma_map_single(priv->bus.dev, skb->data + hdr_len,
+		phys_addr = dma_map_single(priv->bus->dev, skb->data + hdr_len,
 					   secondlen, DMA_TO_DEVICE);
-		if (unlikely(dma_mapping_error(priv->bus.dev, phys_addr))) {
-			dma_unmap_single(priv->bus.dev,
+		if (unlikely(dma_mapping_error(priv->bus->dev, phys_addr))) {
+			dma_unmap_single(priv->bus->dev,
 					 dma_unmap_addr(out_meta, mapping),
 					 dma_unmap_len(out_meta, len),
 					 DMA_BIDIRECTIONAL);
@@ -906,7 +1056,7 @@ static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
 				offsetof(struct iwl_tx_cmd, scratch);
 
 	/* take back ownership of DMA buffer to enable update */
-	dma_sync_single_for_cpu(priv->bus.dev, txcmd_phys, firstlen,
+	dma_sync_single_for_cpu(priv->bus->dev, txcmd_phys, firstlen,
 			DMA_BIDIRECTIONAL);
 	tx_cmd->dram_lsb_ptr = cpu_to_le32(scratch_phys);
 	tx_cmd->dram_msb_ptr = iwl_get_dma_hi_addr(scratch_phys);
@@ -919,10 +1069,10 @@ static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
 
 	/* Set up entry for this TFD in Tx byte-count array */
 	if (ampdu)
-		iwlagn_txq_update_byte_cnt_tbl(priv, txq,
+		iwl_trans_txq_update_byte_cnt_tbl(priv, txq,
 					       le16_to_cpu(tx_cmd->len));
 
-	dma_sync_single_for_device(priv->bus.dev, txcmd_phys, firstlen,
+	dma_sync_single_for_device(priv->bus->dev, txcmd_phys, firstlen,
 			DMA_BIDIRECTIONAL);
 
 	trace_iwlwifi_dev_tx(priv,
@@ -952,28 +1102,34 @@ static int iwl_trans_tx(struct iwl_priv *priv, struct sk_buff *skb,
 	return 0;
 }
 
+static void iwl_trans_kick_nic(struct iwl_priv *priv)
+{
+	/* Remove all resets to allow NIC to operate */
+	iwl_write32(priv, CSR_RESET, 0);
+}
+
 static void iwl_trans_sync_irq(struct iwl_priv *priv)
 {
 	/* wait to make sure we flush pending tasklet*/
-	synchronize_irq(priv->bus.irq);
+	synchronize_irq(priv->bus->irq);
 	tasklet_kill(&priv->irq_tasklet);
 }
 
 static void iwl_trans_free(struct iwl_priv *priv)
 {
-	free_irq(priv->bus.irq, priv);
+	free_irq(priv->bus->irq, priv);
 	iwl_free_isr_ict(priv);
 }
 
 static const struct iwl_trans_ops trans_ops = {
-	.rx_init = iwl_trans_rx_init,
-	.rx_free = iwl_trans_rx_free,
-
-	.tx_init = iwl_trans_tx_init,
-	.tx_start = iwl_trans_tx_start,
-	.tx_free = iwl_trans_tx_free,
-
+	.start_device = iwl_trans_start_device,
+	.prepare_card_hw = iwl_trans_prepare_card_hw,
 	.stop_device = iwl_trans_stop_device,
+
+	.tx_start = iwl_trans_tx_start,
+
+	.rx_free = iwl_trans_rx_free,
+	.tx_free = iwl_trans_tx_free,
 
 	.send_cmd = iwl_send_cmd,
 	.send_cmd_pdu = iwl_send_cmd_pdu,
@@ -981,28 +1137,34 @@ static const struct iwl_trans_ops trans_ops = {
 	.get_tx_cmd = iwl_trans_get_tx_cmd,
 	.tx = iwl_trans_tx,
 
+	.txq_agg_disable = iwl_trans_txq_agg_disable,
+	.txq_agg_setup = iwl_trans_txq_agg_setup,
+
+	.kick_nic = iwl_trans_kick_nic,
+
 	.sync_irq = iwl_trans_sync_irq,
 	.free = iwl_trans_free,
 };
 
-int iwl_trans_register(struct iwl_priv *priv)
+int iwl_trans_register(struct iwl_trans *trans, struct iwl_priv *priv)
 {
 	int err;
 
 	priv->trans.ops = &trans_ops;
-
-	iwl_alloc_isr_ict(priv);
-
-	err = request_irq(priv->bus.irq, iwl_isr_ict, IRQF_SHARED,
-		DRV_NAME, priv);
-	if (err) {
-		IWL_ERR(priv, "Error allocating IRQ %d\n", priv->bus.irq);
-		iwl_free_isr_ict(priv);
-		return err;
-	}
+	priv->trans.priv = priv;
 
 	tasklet_init(&priv->irq_tasklet, (void (*)(unsigned long))
 		iwl_irq_tasklet, (unsigned long)priv);
+
+	iwl_alloc_isr_ict(priv);
+
+	err = request_irq(priv->bus->irq, iwl_isr_ict, IRQF_SHARED,
+		DRV_NAME, priv);
+	if (err) {
+		IWL_ERR(priv, "Error allocating IRQ %d\n", priv->bus->irq);
+		iwl_free_isr_ict(priv);
+		return err;
+	}
 
 	INIT_WORK(&priv->rx_replenish, iwl_bg_rx_replenish);
 

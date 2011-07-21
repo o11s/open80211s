@@ -83,10 +83,10 @@ struct iwl_cmd;
 struct iwl_lib_ops {
 	/* set hw dependent parameters */
 	int (*set_hw_params)(struct iwl_priv *priv);
-	/* setup Rx handler */
-	void (*rx_handler_setup)(struct iwl_priv *priv);
-	/* setup deferred work */
-	void (*setup_deferred_work)(struct iwl_priv *priv);
+	/* setup BT Rx handler */
+	void (*bt_rx_handler_setup)(struct iwl_priv *priv);
+	/* setup BT related deferred work */
+	void (*bt_setup_deferred_work)(struct iwl_priv *priv);
 	/* cancel deferred work */
 	void (*cancel_deferred_work)(struct iwl_priv *priv);
 	int (*set_channel_switch)(struct iwl_priv *priv,
@@ -212,7 +212,6 @@ struct iwl_ht_params {
  * @rx_with_siso_diversity: 1x1 device with rx antenna diversity
  * @internal_wimax_coex: internal wifi/wimax combo device
  * @iq_invert: I/Q inversion
- * @disable_otp_refresh: disable OTP refresh current limit
  *
  * We enable the driver to be backward compatible wrt API version. The
  * driver specifies which APIs it supports (with @ucode_api_max being the
@@ -258,7 +257,6 @@ struct iwl_cfg {
 	const bool rx_with_siso_diversity;
 	const bool internal_wimax_coex;
 	const bool iq_invert;
-	const bool disable_otp_refresh;
 };
 
 /***************************
@@ -397,6 +395,9 @@ __le32 iwl_add_beacon_time(struct iwl_priv *priv, u32 base,
 int iwl_suspend(struct iwl_priv *priv);
 int iwl_resume(struct iwl_priv *priv);
 #endif /* !CONFIG_PM */
+
+int iwl_probe(struct iwl_bus *bus, struct iwl_cfg *cfg);
+void __devexit iwl_remove(struct iwl_priv * priv);
 
 /*****************************************************
 *  Error Handling Debugging
