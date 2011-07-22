@@ -122,7 +122,7 @@ static int lbs_mesh_config(struct lbs_private *priv, uint16_t action,
 		return -1;
 	}
 	lbs_deb_cmd("mesh config action %d type %x channel %d SSID %s\n",
-		    action, priv->mesh_tlv, priv->mesh_channel,
+		    action, priv->mesh_tlv, chan,
 		    print_ssid(ssid, priv->mesh_ssid, priv->mesh_ssid_len));
 
 	return __lbs_mesh_config_send(priv, &cmd, action, priv->mesh_tlv);
@@ -802,62 +802,6 @@ static void lbs_persist_config_remove(struct net_device *dev)
 
 
 /***************************************************************************
- * WEXT handlers
- */
-
-static int mesh_get_name(struct net_device *dev,
-    struct iw_request_info *info, char *name, char *extra)
-{
-	strcpy(name, "IEEE 802.11b/g");
-	return 0;
-}
-
-static int mesh_get_freq(struct net_device *dev,
-    struct iw_request_info *info, struct iw_freq *freq, char *extra)
-{
-	struct lbs_private *priv = dev->ml_priv;
-	freq->e = 0;
-	freq->m = priv->mesh_channel;
-	return 0;
-}
-
-static int mesh_set_freq(struct net_device *dev,
-    struct iw_request_info *info, struct iw_freq *freq, char *extra)
-{
-	struct lbs_private *priv = dev->ml_priv;
-	short channel = 0;
-
-	if (freq->e == 0)
-		channel = freq->m;
-	else {
-		channel = ieee80211_freq_to_dsss_chan(freq->m);
-		if (channel < 0)
-			channel = 1;
-	}
-
-	priv->mesh_channel = channel;
-
-	if (netif_running(dev))
-		lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START,
-				priv->mesh_channel);
-
-	return 0;
-}
-
-static const iw_handler mesh_iw_handler[] =
-{
-	IW_HANDLER(SIOCGIWNAME, (iw_handler) mesh_get_name),
-	IW_HANDLER(SIOCGIWFREQ, (iw_handler) mesh_get_freq),
-	IW_HANDLER(SIOCSIWFREQ, (iw_handler) mesh_set_freq),
-};
-
-static const struct iw_handler_def mesh_iw_handler_def = {
-	.num_standard	= ARRAY_SIZE(mesh_iw_handler),
-	.standard 	= mesh_iw_handler,
-};
-
-
-/***************************************************************************
  * Initializing and starting, stopping mesh
  */
 
@@ -892,9 +836,11 @@ int lbs_init_mesh(struct lbs_private *priv)
 		   useful */
 
 		priv->mesh_tlv = TLV_TYPE_OLD_MESH_ID;
-		if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START, 1)) {
+		if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START,
+				    priv->channel)) {
 			priv->mesh_tlv = TLV_TYPE_MESH_ID;
-			if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START, 1))
+			if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START,
+					    priv->channel))
 				priv->mesh_tlv = 0;
 		}
 	} else
@@ -904,12 +850,13 @@ int lbs_init_mesh(struct lbs_private *priv)
 		 * 0x100+37; Do not invoke command with old TLV.
 		 */
 		priv->mesh_tlv = TLV_TYPE_MESH_ID;
-		if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START, 1))
+		if (lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START,
+				    priv->channel))
 			priv->mesh_tlv = 0;
 	}
 
 	/* Stop meshing until interface is brought up */
-	lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_STOP, 1);
+	lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_STOP, priv->channel);
 
 	if (priv->mesh_tlv) {
 		sprintf(priv->mesh_ssid, "mesh");
@@ -956,7 +903,7 @@ static int lbs_mesh_stop(struct net_device *dev)
 	struct lbs_private *priv = dev->ml_priv;
 
 	lbs_deb_enter(LBS_DEB_MESH);
-	lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_STOP, priv->mesh_channel);
+	lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_STOP, priv->channel);
 
 	spin_lock_irq(&priv->driver_lock);
 
@@ -999,8 +946,7 @@ static int lbs_mesh_dev_open(struct net_device *dev)
 
 	spin_unlock_irq(&priv->driver_lock);
 
-	ret = lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START,
-			      priv->mesh_channel);
+	ret = lbs_mesh_config(priv, CMD_ACT_MESH_CONFIG_START, priv->channel);
 
 out:
 	lbs_deb_leave_args(LBS_DEB_NET, "ret %d", ret);
@@ -1037,10 +983,8 @@ static int lbs_add_mesh(struct lbs_private *priv)
 	}
 	mesh_dev->ml_priv = priv;
 	priv->mesh_dev = mesh_dev;
-	priv->mesh_channel = 1;
 
 	mesh_dev->netdev_ops = &mesh_netdev_ops;
-	mesh_dev->wireless_handlers = &mesh_iw_handler_def;
 	mesh_dev->ethtool_ops = &lbs_ethtool_ops;
 	memcpy(mesh_dev->dev_addr, priv->dev->dev_addr, ETH_ALEN);
 
