@@ -671,8 +671,10 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 			break;
 		}
 		break;
-	case WLAN_CATEGORY_MESH_PATH_SEL:
-		mesh_rx_path_sel_frame(sdata, mgmt, len);
+	case WLAN_CATEGORY_MESH_ACTION:
+		if (mgmt->u.action.u.mesh_action.action_code ==
+		    WLAN_MESH_ACTION_HWMP_PATH_SELECTION)
+			mesh_rx_path_sel_frame(sdata, mgmt, len);
 		break;
 	}
 }
