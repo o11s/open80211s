@@ -93,6 +93,12 @@
 			(_ah)->reg_ops.write_flush((_ah));	\
 	} while (0)
 
+#define PR_EEP(_s, _val)						\
+	do {								\
+		len += snprintf(buf + len, size - len, "%20s : %10d\n",	\
+				_s, (_val));				\
+	} while (0)
+
 #define SM(_v, _f)  (((_v) << _f##_S) & _f)
 #define MS(_v, _f)  (((_v) & _f) >> _f##_S)
 #define REG_RMW_FIELD(_a, _r, _f, _v) \
@@ -703,6 +709,7 @@ struct ath_hw {
 	u32 txdesc_interrupt_mask;
 	u32 txeol_interrupt_mask;
 	u32 txurn_interrupt_mask;
+	atomic_t intr_ref_cnt;
 	bool chip_fullsleep;
 	u32 atim_window;
 
