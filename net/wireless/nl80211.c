@@ -2236,7 +2236,7 @@ static int nl80211_send_station(struct sk_buff *msg, u32 pid, u32 seq,
 	}
 	nla_nest_end(msg, sinfoattr);
 
-	if (sinfo->assoc_req_ies)
+	if (sinfo->filled & STATION_INFO_ASSOC_REQ_IES)
 		NLA_PUT(msg, NL80211_ATTR_IE, sinfo->assoc_req_ies_len,
 			sinfo->assoc_req_ies);
 
@@ -2267,6 +2267,7 @@ static int nl80211_dump_station(struct sk_buff *skb,
 	}
 
 	while (1) {
+		memset(&sinfo, 0, sizeof(sinfo));
 		err = dev->ops->dump_station(&dev->wiphy, netdev, sta_idx,
 					     mac_addr, &sinfo);
 		if (err == -ENOENT)
