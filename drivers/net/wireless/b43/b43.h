@@ -694,6 +694,12 @@ struct b43_firmware_file {
 	enum b43_firmware_file_type type;
 };
 
+enum b43_firmware_hdr_format {
+	B43_FW_HDR_598,
+	B43_FW_HDR_410,
+	B43_FW_HDR_351,
+};
+
 /* Pointers to the firmware data and meta information about it. */
 struct b43_firmware {
 	/* Microcode */
@@ -709,6 +715,9 @@ struct b43_firmware {
 	u16 rev;
 	/* Firmware patchlevel */
 	u16 patch;
+
+	/* Format of header used by firmware */
+	enum b43_firmware_hdr_format hdr_format;
 
 	/* Set to true, if we are using an opensource firmware.
 	 * Use this to check for proprietary vs opensource. */
@@ -875,7 +884,7 @@ struct b43_wl {
 	struct b43_leds leds;
 
 	/* Kmalloc'ed scratch space for PIO TX/RX. Protected by wl->mutex. */
-	u8 pio_scratchspace[110] __attribute__((__aligned__(8)));
+	u8 pio_scratchspace[118] __attribute__((__aligned__(8)));
 	u8 pio_tailspace[4] __attribute__((__aligned__(8)));
 };
 
