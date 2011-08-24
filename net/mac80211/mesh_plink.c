@@ -143,14 +143,23 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
 		enum ieee80211_self_protected_actioncode action,
 		u8 *da, __le16 llid, __le16 plid, __le16 reason) {
 	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb = dev_alloc_skb(local->hw.extra_tx_headroom + 400 +
-			sdata->u.mesh.ie_len);
+	struct sk_buff *skb = NULL;
 	struct ieee80211_mgmt *mgmt;
 	bool include_plid = false;
 	int ie_len = 4;
 	u16 peering_proto = 0;
 	u8 *pos;
 
+	skb = dev_alloc_skb(local->hw.extra_tx_headroom +
+			    25 + sizeof(mgmt->u.action.u.self_prot) +
+			    2 + /* capability info */
+			    2 + /* AID */
+			    2 + 8 + /* supported rates */
+			    2 + (IEEE80211_MAX_SUPP_RATES - 8) +
+			    2 + sdata->u.mesh.mesh_id_len +
+			    2 + sizeof(struct ieee80211_meshconf_ie) +
+			    2 + 8 + /* peering IE */
+			    sdata->u.mesh.ie_len);
 	if (!skb)
 		return -1;
 	skb_reserve(skb, local->hw.extra_tx_headroom);

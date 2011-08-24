@@ -112,11 +112,14 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 		struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb = dev_alloc_skb(local->hw.extra_tx_headroom + 400);
+	struct sk_buff *skb = NULL;
 	struct ieee80211_mgmt *mgmt;
 	u8 *pos;
 	int ie_len;
 
+	skb = dev_alloc_skb(local->hw.extra_tx_headroom +
+			    25 + sizeof(mgmt->u.action.u.mesh_action) +
+			    2 + 37); /* HWMP IEs */
 	if (!skb)
 		return -1;
 	skb_reserve(skb, local->hw.extra_tx_headroom);
@@ -215,11 +218,14 @@ int mesh_path_error_tx(u8 ttl, u8 *target, __le32 target_sn,
 		       struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb = dev_alloc_skb(local->hw.extra_tx_headroom + 400);
+	struct sk_buff *skb = NULL;
 	struct ieee80211_mgmt *mgmt;
 	u8 *pos;
 	int ie_len;
 
+	skb = dev_alloc_skb(local->hw.extra_tx_headroom +
+			    25 + sizeof(mgmt->u.action.u.mesh_action) +
+			    2 + 15 /* PERR IE */);
 	if (!skb)
 		return -1;
 	skb_reserve(skb, local->hw.extra_tx_headroom);
