@@ -17,11 +17,6 @@
 #include "phy_common.h"
 
 
-/* The unique identifier of the firmware that's officially supported by
- * this driver version. */
-#define B43_SUPPORTED_FIRMWARE_ID	"FW13"
-
-
 #ifdef CONFIG_B43_DEBUG
 # define B43_DEBUG	1
 #else
@@ -594,6 +589,7 @@ struct b43_dma {
 	struct b43_dmaring *rx_ring;
 
 	u32 translation; /* Routing bits */
+	bool translation_in_low; /* Should translation bit go into low addr? */
 	bool parity; /* Check for parity */
 };
 
