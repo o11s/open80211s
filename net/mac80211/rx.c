@@ -1902,9 +1902,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 			memset(info, 0, sizeof(*info));
 			info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 			info->control.vif = &rx->sdata->vif;
-			skb_set_queue_mapping(skb,
-				ieee80211_select_queue(rx->sdata, fwd_skb));
-			ieee80211_set_qos_hdr(local, skb);
 			if (is_multicast_ether_addr(fwd_hdr->addr1))
 				IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
 								fwded_mcast);
@@ -1928,6 +1925,9 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 			}
 			IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
 						     fwded_frames);
+			skb_set_queue_mapping(fwd_skb,
+				ieee80211_select_queue(rx->sdata, fwd_skb));
+			ieee80211_set_qos_hdr(local, fwd_skb);
 			ieee80211_add_pending_skb(local, fwd_skb);
 		}
 	}
