@@ -191,6 +191,34 @@ static void b43_phy_ht_afe_unk1(struct b43_wldev *dev)
 	}
 }
 
+static void b43_phy_ht_force_rf_sequence(struct b43_wldev *dev, u16 rf_seq)
+{
+	u8 i;
+
+	u16 save_seq_mode = b43_phy_read(dev, B43_PHY_HT_RF_SEQ_MODE);
+	b43_phy_set(dev, B43_PHY_HT_RF_SEQ_MODE, 0x3);
+
+	b43_phy_set(dev, B43_PHY_HT_RF_SEQ_TRIG, rf_seq);
+	for (i = 0; i < 200; i++) {
+		if (!(b43_phy_read(dev, B43_PHY_HT_RF_SEQ_STATUS) & rf_seq)) {
+			i = 0;
+			break;
+		}
+		msleep(1);
+	}
+	if (i)
+		b43err(dev->wl, "Forcing RF sequence timeout\n");
+
+	b43_phy_write(dev, B43_PHY_HT_RF_SEQ_MODE, save_seq_mode);
+}
+
+static void b43_phy_ht_read_clip_detection(struct b43_wldev *dev, u16 *clip_st)
+{
+	clip_st[0] = b43_phy_read(dev, B43_PHY_HT_C1_CLIP1THRES);
+	clip_st[1] = b43_phy_read(dev, B43_PHY_HT_C2_CLIP1THRES);
+	clip_st[2] = b43_phy_read(dev, B43_PHY_HT_C3_CLIP1THRES);
+}
+
 static void b43_phy_ht_bphy_init(struct b43_wldev *dev)
 {
 	unsigned int i;
@@ -313,8 +341,8 @@ static void b43_phy_ht_op_prepare_structs(struct b43_wldev *dev)
 
 static int b43_phy_ht_op_init(struct b43_wldev *dev)
 {
-	u8 i;
 	u16 tmp;
+	u16 clip_state[3];
 
 	b43_phy_ht_tables_init(dev);
 
@@ -418,18 +446,13 @@ static int b43_phy_ht_op_init(struct b43_wldev *dev)
 
 	b43_mac_phy_clock_set(dev, true);
 
-	for (i = 0; i < 2; i++) {
-		tmp = b43_phy_read(dev, B43_PHY_EXTG(0));
-		b43_phy_set(dev, B43_PHY_EXTG(0), 0x3);
-		b43_phy_set(dev, B43_PHY_EXTG(3), i ? 0x20 : 0x1);
-		/* FIXME: wait for some bit to be cleared (find out which) */
-		b43_phy_read(dev, B43_PHY_EXTG(4));
-		b43_phy_write(dev, B43_PHY_EXTG(0), tmp);
-	}
+	b43_phy_ht_force_rf_sequence(dev, B43_PHY_HT_RF_SEQ_TRIG_RX2TX);
+	b43_phy_ht_force_rf_sequence(dev, B43_PHY_HT_RF_SEQ_TRIG_RST2RX);
 
 	/* TODO: PHY op on reg 0xb0 */
 
-	/* TODO: PHY ops on regs 0x40e, 0x44e, 0x48e */
+	/* TODO: Should we restore it? Or store it in global PHY info? */
+	b43_phy_ht_read_clip_detection(dev, clip_state);
 
 	if (b43_current_band(dev->wl) == IEEE80211_BAND_2GHZ)
 		b43_phy_ht_bphy_init(dev);

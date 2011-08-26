@@ -32,6 +32,7 @@ static DEFINE_PCI_DEVICE_TABLE(ath_pci_id_table) = {
 	{ PCI_VDEVICE(ATHEROS, 0x002E) }, /* PCI-E */
 	{ PCI_VDEVICE(ATHEROS, 0x0030) }, /* PCI-E  AR9300 */
 	{ PCI_VDEVICE(ATHEROS, 0x0032) }, /* PCI-E  AR9485 */
+	{ PCI_VDEVICE(ATHEROS, 0x0033) }, /* PCI-E  AR9580 */
 	{ 0 }
 };
 
@@ -115,6 +116,8 @@ static void ath_pci_aspm_init(struct ath_common *common)
 		return;
 
 	parent = pdev->bus->self;
+	if (!parent)
+		return;
 
 	if (ah->btcoex_hw.scheme != ATH_BTCOEX_CFG_NONE) {
 		/* Bluetooth coexistance requires disabling ASPM. */
@@ -126,9 +129,6 @@ static void ath_pci_aspm_init(struct ath_common *common)
 		 * Both upstream and downstream PCIe components should
 		 * have the same ASPM settings.
 		 */
-		if (!parent)
-			return;
-
 		pos = pci_pcie_cap(parent);
 		pci_read_config_byte(parent, pos + PCI_EXP_LNKCTL, &aspm);
 		aspm &= ~(PCIE_LINK_STATE_L0S | PCIE_LINK_STATE_L1);
@@ -136,9 +136,6 @@ static void ath_pci_aspm_init(struct ath_common *common)
 
 		return;
 	}
-
-	if (!parent)
-		return;
 
 	pos = pci_pcie_cap(parent);
 	pci_read_config_byte(parent, pos +  PCI_EXP_LNKCTL, &aspm);
