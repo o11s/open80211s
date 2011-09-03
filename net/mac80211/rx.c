@@ -1927,7 +1927,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 						     fwded_frames);
 			skb_set_queue_mapping(fwd_skb,
 				ieee80211_select_queue(rx->sdata, fwd_skb));
-			ieee80211_set_qos_hdr(local, fwd_skb);
+			ieee80211_set_qos_hdr(rx->sdata, fwd_skb);
 			ieee80211_add_pending_skb(local, fwd_skb);
 		}
 	}

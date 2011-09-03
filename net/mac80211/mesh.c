@@ -457,21 +457,22 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 				  const u8 *meshda, const u8 *meshsa)
 {
 	if (is_multicast_ether_addr(meshda)) {
-		*fc |= cpu_to_le16(IEEE80211_FCTL_FROMDS);
+		*fc |= cpu_to_le16(IEEE80211_FCTL_FROMDS |
+				   IEEE80211_STYPE_QOS_DATA);
 		/* DA TA SA */
 		memcpy(hdr->addr1, meshda, ETH_ALEN);
 		memcpy(hdr->addr2, meshsa, ETH_ALEN);
 		memcpy(hdr->addr3, meshsa, ETH_ALEN);
-		return 24;
+		return 26;
 	} else {
 		*fc |= cpu_to_le16(IEEE80211_FCTL_FROMDS |
-				IEEE80211_FCTL_TODS);
+				IEEE80211_FCTL_TODS | IEEE80211_STYPE_QOS_DATA);
 		/* RA TA DA SA */
 		memset(hdr->addr1, 0, ETH_ALEN);   /* RA is resolved later */
 		memcpy(hdr->addr2, meshsa, ETH_ALEN);
 		memcpy(hdr->addr3, meshda, ETH_ALEN);
 		memcpy(hdr->addr4, meshsa, ETH_ALEN);
-		return 30;
+		return 32;
 	}
 }
 
