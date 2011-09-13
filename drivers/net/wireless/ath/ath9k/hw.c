@@ -960,7 +960,7 @@ void ath9k_hw_init_global_settings(struct ath_hw *ah)
 	struct ath_common *common = ath9k_hw_common(ah);
 	struct ieee80211_conf *conf = &common->hw->conf;
 	const struct ath9k_channel *chan = ah->curchan;
-	int acktimeout;
+	int acktimeout, ctstimeout;
 	int slottime;
 	int sifstime;
 	int rx_lat = 0, tx_lat = 0, eifs = 0;
@@ -975,7 +975,10 @@ void ath9k_hw_init_global_settings(struct ath_hw *ah)
 	if (ah->misc_mode != 0)
 		REG_SET_BIT(ah, AR_PCU_MISC, ah->misc_mode);
 
-	rx_lat = 37;
+	if (IS_CHAN_A_FAST_CLOCK(ah, chan))
+		rx_lat = 41;
+	else
+		rx_lat = 37;
 	tx_lat = 54;
 
 	if (IS_CHAN_HALF_RATE(chan)) {
@@ -989,7 +992,7 @@ void ath9k_hw_init_global_settings(struct ath_hw *ah)
 		sifstime = 32;
 	} else if (IS_CHAN_QUARTER_RATE(chan)) {
 		eifs = 340;
-		rx_lat *= 4;
+		rx_lat = (rx_lat * 4) - 1;
 		tx_lat *= 4;
 		if (IS_CHAN_A_FAST_CLOCK(ah, chan))
 		    tx_lat += 22;
@@ -1017,6 +1020,7 @@ void ath9k_hw_init_global_settings(struct ath_hw *ah)
 
 	/* As defined by IEEE 802.11-2007 17.3.8.6 */
 	acktimeout = slottime + sifstime + 3 * ah->coverage_class;
+	ctstimeout = acktimeout;
 
 	/*
 	 * Workaround for early ACK timeouts, add an offset to match the
@@ -1031,7 +1035,7 @@ void ath9k_hw_init_global_settings(struct ath_hw *ah)
 	ath9k_hw_set_sifs_time(ah, sifstime);
 	ath9k_hw_setslottime(ah, slottime);
 	ath9k_hw_set_ack_timeout(ah, acktimeout);
-	ath9k_hw_set_cts_timeout(ah, acktimeout);
+	ath9k_hw_set_cts_timeout(ah, ctstimeout);
 	if (ah->globaltxtimeout != (u32) -1)
 		ath9k_hw_set_global_txtimeout(ah, ah->globaltxtimeout);
 
@@ -2447,13 +2451,13 @@ void ath9k_hw_set_txpowerlimit(struct ath_hw *ah, u32 limit, bool test)
 	struct ath_regulatory *regulatory = ath9k_hw_regulatory(ah);
 	struct ath9k_channel *chan = ah->curchan;
 	struct ieee80211_channel *channel = chan->chan;
-	int reg_pwr = min_t(int, MAX_RATE_POWER, regulatory->power_limit);
+	int reg_pwr = min_t(int, MAX_RATE_POWER, limit);
 	int chan_pwr = channel->max_power * 2;
 
 	if (test)
 		reg_pwr = chan_pwr = MAX_RATE_POWER;
 
-	regulatory->power_limit = min(limit, (u32) MAX_RATE_POWER);
+	regulatory->power_limit = reg_pwr;
 
 	ah->eep_ops->set_txpower(ah, chan,
 				 ath9k_regd_get_ctl(regulatory, chan),

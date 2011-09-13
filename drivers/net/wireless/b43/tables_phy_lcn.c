@@ -295,6 +295,20 @@ static const u32 b43_lcntab_0x18[] = {
 	0x00080000, 0x00080000, 0x00080000, 0x00080000,
 };
 
+const u16 b43_lcntab_sw_ctl_4313_epa_rev0[] = {
+	0x0002, 0x0008, 0x0004, 0x0001, 0x0002, 0x0008,
+	0x0004, 0x0001, 0x0002, 0x0008, 0x0004, 0x0001,
+	0x0002, 0x0008, 0x0004, 0x0001, 0x0002, 0x0008,
+	0x0004, 0x0001, 0x0002, 0x0008, 0x0004, 0x0001,
+	0x0002, 0x0008, 0x0004, 0x0001, 0x0002, 0x0008,
+	0x0004, 0x0001, 0x0002, 0x0008, 0x0004, 0x0001,
+	0x0002, 0x0008, 0x0004, 0x0001, 0x0002, 0x0008,
+	0x0004, 0x0001, 0x0002, 0x0008, 0x0004, 0x0001,
+	0x0002, 0x0008, 0x0004, 0x0001, 0x0002, 0x0008,
+	0x0004, 0x0001, 0x0002, 0x0008, 0x0004, 0x0001,
+	0x0002, 0x0008, 0x0004, 0x0001,
+};
+
 /**************************************************
  * R/W ops.
  **************************************************/
@@ -318,9 +332,8 @@ u32 b43_lcntab_read(struct b43_wldev *dev, u32 offset)
 		break;
 	case B43_LCNTAB_32BIT:
 		b43_phy_write(dev, B43_PHY_LCN_TABLE_ADDR, offset);
-		value = b43_phy_read(dev, B43_PHY_LCN_TABLE_DATAHI);
-		value <<= 16;
-		value |= b43_phy_read(dev, B43_PHY_LCN_TABLE_DATALO);
+		value = b43_phy_read(dev, B43_PHY_LCN_TABLE_DATALO);
+		value |= (b43_phy_read(dev, B43_PHY_LCN_TABLE_DATAHI) << 16);
 		break;
 	default:
 		B43_WARN_ON(1);
@@ -357,10 +370,9 @@ void b43_lcntab_read_bulk(struct b43_wldev *dev, u32 offset,
 			break;
 		case B43_LCNTAB_32BIT:
 			*((u32 *)data) = b43_phy_read(dev,
-						      B43_PHY_LCN_TABLE_DATAHI);
-			*((u32 *)data) <<= 16;
-			*((u32 *)data) |= b43_phy_read(dev,
 						B43_PHY_LCN_TABLE_DATALO);
+			*((u32 *)data) |= (b43_phy_read(dev,
+					   B43_PHY_LCN_TABLE_DATAHI) << 16);
 			data += 4;
 			break;
 		default:
@@ -447,7 +459,7 @@ void b43_lcntab_write_bulk(struct b43_wldev *dev, u32 offset,
 #define lcntab_upload(dev, offset, data) do { \
 		b43_lcntab_write_bulk(dev, offset, ARRAY_SIZE(data), data); \
 	} while (0)
-void b43_phy_lcn_tables_init(struct b43_wldev *dev)
+static void b43_phy_lcn_upload_static_tables(struct b43_wldev *dev)
 {
 	lcntab_upload(dev, B43_LCNTAB16(0x02, 0), b43_lcntab_0x02);
 	lcntab_upload(dev, B43_LCNTAB16(0x01, 0), b43_lcntab_0x01);
@@ -463,4 +475,42 @@ void b43_phy_lcn_tables_init(struct b43_wldev *dev)
 	lcntab_upload(dev, B43_LCNTAB16(0x17, 0), b43_lcntab_0x17);
 	lcntab_upload(dev, B43_LCNTAB16(0x00, 0), b43_lcntab_0x00);
 	lcntab_upload(dev, B43_LCNTAB32(0x18, 0), b43_lcntab_0x18);
+}
+
+/* Not implemented in brcmsmac, noticed in wl in MMIO dump */
+static void b43_phy_lcn_rewrite_tables(struct b43_wldev *dev)
+{
+	int i;
+	u32 tmp;
+	for (i = 0; i < 128; i++) {
+		tmp = b43_lcntab_read(dev, B43_LCNTAB32(0x7, 0x240 + i));
+		b43_lcntab_write(dev, B43_LCNTAB32(0x7, 0x240 + i), tmp);
+	}
+}
+
+/* wlc_lcnphy_clear_papd_comptable */
+static void b43_phy_lcn_clean_papd_comp_table(struct b43_wldev *dev)
+{
+	u8 i;
+
+	for (i = 0; i < 0x80; i++)
+		b43_lcntab_write(dev, B43_LCNTAB32(0x18, i), 0x80000);
+}
+
+void b43_phy_lcn_tables_init(struct b43_wldev *dev)
+{
+	b43_phy_lcn_upload_static_tables(dev);
+	/* TODO: various tables ops here */
+
+	if (dev->dev->bus_sprom->boardflags_lo & B43_BFL_FEM &&
+	    !(dev->dev->bus_sprom->boardflags_hi & B43_BFH_FEM_BT))
+		b43_lcntab_write_bulk(dev, B43_LCNTAB16(0xf, 0),
+			ARRAY_SIZE(b43_lcntab_sw_ctl_4313_epa_rev0),
+			b43_lcntab_sw_ctl_4313_epa_rev0);
+	else
+		b43err(dev->wl, "SW ctl table is unknown for this card\n");
+
+	/* TODO: various tables ops here */
+	b43_phy_lcn_rewrite_tables(dev);
+	b43_phy_lcn_clean_papd_comp_table(dev);
 }
