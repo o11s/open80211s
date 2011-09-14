@@ -1596,7 +1596,7 @@ static void ieee80211_xmit(struct ieee80211_sub_if_data *sdata,
 				return;
 			}
 
-	ieee80211_set_qos_hdr(local, skb);
+	ieee80211_set_qos_hdr(sdata, skb);
 	ieee80211_tx(sdata, skb, false);
 	rcu_read_unlock();
 }
@@ -1878,6 +1878,10 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			sta_flags = get_sta_flags(sta);
 		rcu_read_unlock();
 	}
+
+	/* For mesh, the use of the QoS header is mandatory */
+	if (ieee80211_vif_is_mesh(&sdata->vif))
+		sta_flags |= WLAN_STA_WME;
 
 	/* receiver and we are QoS enabled, use a QoS type frame */
 	if ((sta_flags & WLAN_STA_WME) && local->hw.queues >= 4) {

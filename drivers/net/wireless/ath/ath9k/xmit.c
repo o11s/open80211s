@@ -582,7 +582,7 @@ static void ath_tx_complete_aggr(struct ath_softc *sc, struct ath_txq *txq,
 	rcu_read_unlock();
 
 	if (needreset)
-		ath_reset(sc, false);
+		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 }
 
 static bool ath_lookup_legacy(struct ath_buf *bf)
@@ -1333,7 +1333,7 @@ void ath_txq_schedule(struct ath_softc *sc, struct ath_txq *txq)
 	struct ath_atx_ac *ac, *ac_tmp, *last_ac;
 	struct ath_atx_tid *tid, *last_tid;
 
-	if (list_empty(&txq->axq_acq) ||
+	if (work_pending(&sc->hw_reset_work) || list_empty(&txq->axq_acq) ||
 	    txq->axq_ampdu_depth >= ATH_AGGR_MIN_QDEPTH)
 		return;
 
@@ -1634,7 +1634,7 @@ u8 ath_txchainmask_reduction(struct ath_softc *sc, u8 chainmask, u32 rate)
 
 static void ath_buf_set_rate(struct ath_softc *sc, struct ath_buf *bf, int len)
 {
-	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
+	struct ath_hw *ah = sc->sc_ah;
 	struct ath9k_11n_rate_series series[4];
 	struct sk_buff *skb;
 	struct ieee80211_tx_info *tx_info;
@@ -1694,7 +1694,7 @@ static void ath_buf_set_rate(struct ath_softc *sc, struct ath_buf *bf, int len)
 			/* MCS rates */
 			series[i].Rate = rix | 0x80;
 			series[i].ChSel = ath_txchainmask_reduction(sc,
-					common->tx_chainmask, series[i].Rate);
+					ah->txchainmask, series[i].Rate);
 			series[i].PktDuration = ath_pkt_duration(sc, rix, len,
 				 is_40, is_sgi, is_sp);
 			if (rix < 8 && (tx_info->flags & IEEE80211_TX_CTL_STBC))
@@ -1719,10 +1719,10 @@ static void ath_buf_set_rate(struct ath_softc *sc, struct ath_buf *bf, int len)
 		}
 
 		if (bf->bf_state.bfs_paprd)
-			series[i].ChSel = common->tx_chainmask;
+			series[i].ChSel = ah->txchainmask;
 		else
 			series[i].ChSel = ath_txchainmask_reduction(sc,
-					common->tx_chainmask, series[i].Rate);
+					ah->txchainmask, series[i].Rate);
 
 		series[i].PktDuration = ath9k_hw_computetxtime(sc->sc_ah,
 			phy, rate->bitrate * 100, len, rix, is_sp);
@@ -2148,6 +2148,9 @@ static void ath_tx_processq(struct ath_softc *sc, struct ath_txq *txq)
 
 	spin_lock_bh(&txq->axq_lock);
 	for (;;) {
+		if (work_pending(&sc->hw_reset_work))
+			break;
+
 		if (list_empty(&txq->axq_q)) {
 			txq->axq_link = NULL;
 			if (sc->sc_flags & SC_OP_TXAGGR)
@@ -2235,9 +2238,7 @@ static void ath_tx_complete_poll_work(struct work_struct *work)
 	if (needreset) {
 		ath_dbg(ath9k_hw_common(sc->sc_ah), ATH_DBG_RESET,
 			"tx hung, resetting the chip\n");
-		spin_lock_bh(&sc->sc_pcu_lock);
-		ath_reset(sc, true);
-		spin_unlock_bh(&sc->sc_pcu_lock);
+		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 	}
 
 	ieee80211_queue_delayed_work(sc->hw, &sc->tx_complete_work,
@@ -2270,6 +2271,9 @@ void ath_tx_edma_tasklet(struct ath_softc *sc)
 	int status;
 
 	for (;;) {
+		if (work_pending(&sc->hw_reset_work))
+			break;
+
 		status = ath9k_hw_txprocdesc(ah, NULL, (void *)&ts);
 		if (status == -EINPROGRESS)
 			break;

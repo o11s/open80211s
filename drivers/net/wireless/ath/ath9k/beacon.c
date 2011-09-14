@@ -107,7 +107,7 @@ static void ath_beacon_setup(struct ath_softc *sc, struct ath_vif *avp,
 	series[0].Tries = 1;
 	series[0].Rate = rate;
 	series[0].ChSel = ath_txchainmask_reduction(sc,
-			common->tx_chainmask, series[0].Rate);
+			ah->txchainmask, series[0].Rate);
 	series[0].RateFlags = (ctsrate) ? ATH9K_RATESERIES_RTS_CTS : 0;
 	ath9k_hw_set11n_ratescenario(ah, ds, ds, 0, ctsrate, ctsduration,
 				     series, 4, 0);
@@ -386,9 +386,7 @@ void ath_beacon_tasklet(unsigned long data)
 			ath_dbg(common, ATH_DBG_BSTUCK,
 				"beacon is officially stuck\n");
 			sc->sc_flags |= SC_OP_TSF_RESET;
-			spin_lock(&sc->sc_pcu_lock);
-			ath_reset(sc, true);
-			spin_unlock(&sc->sc_pcu_lock);
+			ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
 		}
 
 		return;

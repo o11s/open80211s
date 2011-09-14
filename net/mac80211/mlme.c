@@ -390,6 +390,9 @@ static void ieee80211_chswitch_work(struct work_struct *work)
 		/* call "hw_config" only if doing sw channel switch */
 		ieee80211_hw_config(sdata->local,
 			IEEE80211_CONF_CHANGE_CHANNEL);
+	} else {
+		/* update the device channel directly */
+		sdata->local->hw.conf.channel = sdata->local->oper_channel;
 	}
 
 	/* XXX: shouldn't really modify cfg80211-owned data! */
@@ -1918,8 +1921,24 @@ static void ieee80211_rx_mgmt_beacon(struct ieee80211_sub_if_data *sdata,
 
 		rcu_read_unlock();
 
+		/*
+		 * Whenever the AP announces the HT mode change that can be
+		 * 40MHz intolerant or etc., it would be safer to stop tx
+		 * queues before doing hw config to avoid buffer overflow.
+		 */
+		ieee80211_stop_queues_by_reason(&sdata->local->hw,
+				IEEE80211_QUEUE_STOP_REASON_CHTYPE_CHANGE);
+
+		/* flush out all packets */
+		synchronize_net();
+
+		drv_flush(local, false);
+
 		changed |= ieee80211_enable_ht(sdata, elems.ht_info_elem,
 					       bssid, ap_ht_cap_flags);
+
+		ieee80211_wake_queues_by_reason(&sdata->local->hw,
+				IEEE80211_QUEUE_STOP_REASON_CHTYPE_CHANGE);
 	}
 
 	/* Note: country IE parsing is done for us by cfg80211 */

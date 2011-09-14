@@ -911,14 +911,6 @@ static bool ignore_reg_update(struct wiphy *wiphy,
 	return false;
 }
 
-static void update_all_wiphy_regulatory(enum nl80211_reg_initiator initiator)
-{
-	struct cfg80211_registered_device *rdev;
-
-	list_for_each_entry(rdev, &cfg80211_rdev_list, list)
-		wiphy_update_regulatory(&rdev->wiphy, initiator);
-}
-
 static void handle_reg_beacon(struct wiphy *wiphy,
 			      unsigned int chan_idx,
 			      struct reg_beacon *reg_beacon)
@@ -1118,10 +1110,12 @@ static void reg_process_ht_flags(struct wiphy *wiphy)
 
 }
 
-void wiphy_update_regulatory(struct wiphy *wiphy,
-			     enum nl80211_reg_initiator initiator)
+static void wiphy_update_regulatory(struct wiphy *wiphy,
+				    enum nl80211_reg_initiator initiator)
 {
 	enum ieee80211_band band;
+
+	assert_reg_lock();
 
 	if (ignore_reg_update(wiphy, initiator))
 		return;
@@ -1135,6 +1129,22 @@ void wiphy_update_regulatory(struct wiphy *wiphy,
 	reg_process_ht_flags(wiphy);
 	if (wiphy->reg_notifier)
 		wiphy->reg_notifier(wiphy, last_request);
+}
+
+void regulatory_update(struct wiphy *wiphy,
+		       enum nl80211_reg_initiator setby)
+{
+	mutex_lock(&reg_mutex);
+	wiphy_update_regulatory(wiphy, setby);
+	mutex_unlock(&reg_mutex);
+}
+
+static void update_all_wiphy_regulatory(enum nl80211_reg_initiator initiator)
+{
+	struct cfg80211_registered_device *rdev;
+
+	list_for_each_entry(rdev, &cfg80211_rdev_list, list)
+		wiphy_update_regulatory(&rdev->wiphy, initiator);
 }
 
 static void handle_channel_custom(struct wiphy *wiphy,
