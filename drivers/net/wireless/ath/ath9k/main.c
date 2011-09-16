@@ -111,24 +111,29 @@ void ath9k_ps_wakeup(struct ath_softc *sc)
 void ath9k_ps_restore(struct ath_softc *sc)
 {
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
+	enum ath9k_power_mode mode;
 	unsigned long flags;
 
 	spin_lock_irqsave(&sc->sc_pm_lock, flags);
 	if (--sc->ps_usecount != 0)
 		goto unlock;
 
-	spin_lock(&common->cc_lock);
-	ath_hw_cycle_counters_update(common);
-	spin_unlock(&common->cc_lock);
-
 	if (sc->ps_idle)
-		ath9k_hw_setpower(sc->sc_ah, ATH9K_PM_FULL_SLEEP);
+		mode = ATH9K_PM_FULL_SLEEP;
 	else if (sc->ps_enabled &&
 		 !(sc->ps_flags & (PS_WAIT_FOR_BEACON |
 			      PS_WAIT_FOR_CAB |
 			      PS_WAIT_FOR_PSPOLL_DATA |
 			      PS_WAIT_FOR_TX_ACK)))
-		ath9k_hw_setpower(sc->sc_ah, ATH9K_PM_NETWORK_SLEEP);
+		mode = ATH9K_PM_NETWORK_SLEEP;
+	else
+		goto unlock;
+
+	spin_lock(&common->cc_lock);
+	ath_hw_cycle_counters_update(common);
+	spin_unlock(&common->cc_lock);
+
+	ath9k_hw_setpower(sc->sc_ah, ATH9K_PM_NETWORK_SLEEP);
 
  unlock:
 	spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
@@ -247,8 +252,8 @@ static bool ath_prepare_reset(struct ath_softc *sc, bool retry_tx, bool flush)
 
 	if (!flush) {
 		if (ah->caps.hw_caps & ATH9K_HW_CAP_EDMA)
-			ath_rx_tasklet(sc, 0, true);
-		ath_rx_tasklet(sc, 0, false);
+			ath_rx_tasklet(sc, 1, true);
+		ath_rx_tasklet(sc, 1, false);
 	} else {
 		ath_flushrecv(sc);
 	}
@@ -669,14 +674,14 @@ void ath9k_tasklet(unsigned long data)
 	u32 status = sc->intrstatus;
 	u32 rxmask;
 
+	ath9k_ps_wakeup(sc);
+	spin_lock(&sc->sc_pcu_lock);
+
 	if ((status & ATH9K_INT_FATAL) ||
 	    (status & ATH9K_INT_BB_WATCHDOG)) {
 		ieee80211_queue_work(sc->hw, &sc->hw_reset_work);
-		return;
+		goto out;
 	}
-
-	ath9k_ps_wakeup(sc);
-	spin_lock(&sc->sc_pcu_lock);
 
 	/*
 	 * Only run the baseband hang check if beacons stop working in AP or
@@ -725,6 +730,7 @@ void ath9k_tasklet(unsigned long data)
 		if (status & ATH9K_INT_GENTIMER)
 			ath_gen_timer_isr(sc->sc_ah);
 
+out:
 	/* re-enable hardware interrupt */
 	ath9k_hw_enable_interrupts(ah);
 
