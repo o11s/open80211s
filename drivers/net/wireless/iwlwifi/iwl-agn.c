@@ -2513,7 +2513,7 @@ static int iwlagn_mac_sta_add(struct ieee80211_hw *hw,
 	mutex_lock(&priv->shrd->mutex);
 	IWL_DEBUG_INFO(priv, "proceeding to add station %pM\n",
 			sta->addr);
-	sta_priv->common.sta_id = IWL_INVALID_STATION;
+	sta_priv->sta_id = IWL_INVALID_STATION;
 
 	atomic_set(&sta_priv->pending_frames, 0);
 	if (vif->type == NL80211_IFTYPE_AP)
@@ -2529,7 +2529,7 @@ static int iwlagn_mac_sta_add(struct ieee80211_hw *hw,
 		return ret;
 	}
 
-	sta_priv->common.sta_id = sta_id;
+	sta_priv->sta_id = sta_id;
 
 	/* Initialize rate scaling */
 	IWL_DEBUG_INFO(priv, "Initializing rate scaling for station %pM\n",
@@ -2770,15 +2770,6 @@ static int iwl_mac_remain_on_channel(struct ieee80211_hw *hw,
 
 	mutex_lock(&priv->shrd->mutex);
 
-	/*
-	 * TODO: Remove this hack! Firmware needs to be updated
-	 * to allow longer off-channel periods in scanning for
-	 * this use case, based on a flag (and we'll need an API
-	 * flag in the firmware when it has that).
-	 */
-	if (iwl_is_associated(priv, IWL_RXON_CTX_BSS) && duration > 80)
-		duration = 80;
-
 	if (test_bit(STATUS_SCAN_HW, &priv->shrd->status)) {
 		err = -EBUSY;
 		goto out;
@@ -2787,6 +2778,7 @@ static int iwl_mac_remain_on_channel(struct ieee80211_hw *hw,
 	priv->hw_roc_channel = channel;
 	priv->hw_roc_chantype = channel_type;
 	priv->hw_roc_duration = duration;
+	priv->hw_roc_start_notified = false;
 	cancel_delayed_work(&priv->hw_roc_disable_work);
 
 	if (!ctx->is_active) {

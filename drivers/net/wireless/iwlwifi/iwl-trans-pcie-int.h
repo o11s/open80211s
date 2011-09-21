@@ -118,16 +118,6 @@ struct iwl_dma_ptr {
 struct iwl_cmd_meta {
 	/* only for SYNC commands, iff the reply skb is wanted */
 	struct iwl_host_cmd *source;
-	/*
-	 * only for ASYNC commands
-	 * (which is somewhat stupid -- look at iwl-sta.c for instance
-	 * which duplicates a bunch of code because the callback isn't
-	 * invoked for SYNC commands, if it were and its result passed
-	 * through it would be simpler...)
-	 */
-	void (*callback)(struct iwl_shared *shrd,
-			 struct iwl_device_cmd *cmd,
-			 struct iwl_rx_packet *pkt);
 
 	u32 flags;
 
@@ -285,10 +275,8 @@ int iwlagn_txq_attach_buf_to_tfd(struct iwl_trans *trans,
 				 dma_addr_t addr, u16 len, u8 reset);
 int iwl_queue_init(struct iwl_queue *q, int count, int slots_num, u32 id);
 int iwl_trans_pcie_send_cmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
-int __must_check iwl_trans_pcie_send_cmd_pdu(struct iwl_trans *trans, u8 id,
-			u32 flags, u16 len, const void *data);
 void iwl_tx_cmd_complete(struct iwl_trans *trans,
-			 struct iwl_rx_mem_buffer *rxb);
+			 struct iwl_rx_mem_buffer *rxb, int handler_status);
 void iwl_trans_txq_update_byte_cnt_tbl(struct iwl_trans *trans,
 					   struct iwl_tx_queue *txq,
 					   u16 byte_cnt);

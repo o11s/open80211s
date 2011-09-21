@@ -97,15 +97,7 @@ enum {
  */
 struct iwl_device_cmd {
 	struct iwl_cmd_header hdr;	/* uCode API */
-	union {
-		u32 flags;
-		u8 val8;
-		u16 val16;
-		u32 val32;
-		struct iwl_tx_cmd tx;
-		struct iwl6000_channel_switch_cmd chswitch;
-		u8 payload[DEF_CMD_PAYLOAD_SIZE];
-	} __packed cmd;
+	u8 payload[DEF_CMD_PAYLOAD_SIZE];
 } __packed;
 
 #define TFD_MAX_PAYLOAD_SIZE (sizeof(struct iwl_device_cmd))
@@ -120,6 +112,8 @@ enum iwl_hcmd_dataflag {
  * struct iwl_host_cmd - Host command to the uCode
  * @data: array of chunks that composes the data of the host command
  * @reply_page: pointer to the page that holds the response to the host command
+ * @handler_status: return value of the handler of the command
+ *	(put in setup_rx_handlers) - valid for SYNC mode only
  * @callback:
  * @flags: can be CMD_* note CMD_WANT_SKB is incompatible withe CMD_ASYNC
  * @len: array of the lenths of the chunks in data
@@ -129,9 +123,8 @@ enum iwl_hcmd_dataflag {
 struct iwl_host_cmd {
 	const void *data[IWL_MAX_CMD_TFDS];
 	unsigned long reply_page;
-	void (*callback)(struct iwl_shared *shrd,
-			 struct iwl_device_cmd *cmd,
-			 struct iwl_rx_packet *pkt);
+	int handler_status;
+
 	u32 flags;
 	u16 len[IWL_MAX_CMD_TFDS];
 	u8 dataflags[IWL_MAX_CMD_TFDS];
