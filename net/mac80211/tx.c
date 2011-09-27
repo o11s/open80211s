@@ -901,6 +901,22 @@ ieee80211_tx_h_fragment(struct ieee80211_tx_data *tx)
 	if (info->flags & IEEE80211_TX_CTL_DONTFRAG)
 		return TX_CONTINUE;
 
+	/* XXX: check for full pending queue, wrong place, but it should prove
+	 * the point */
+	unsigned long flags;
+	int q = skb_get_queue_mapping(skb);
+	/* in __ieee80211_tx(), we need these locks, but they cause a deadlock when on here */
+		//spin_lock_irqsave(&tx->local->queue_stop_reason_lock, flags);
+#define MAX_PENDING 10
+	if (tx->local->queue_stop_reasons[q] &&
+	    (skb_queue_len(&tx->local->pending[q]) > MAX_PENDING)) {
+		/*
+		spin_unlock_irqrestore(&tx->local->queue_stop_reason_lock,
+				flags);
+				*/
+		return TX_DROP;
+	}
+
 	if (tx->local->ops->set_frag_threshold)
 		return TX_CONTINUE;
 
@@ -917,6 +933,7 @@ ieee80211_tx_h_fragment(struct ieee80211_tx_data *tx)
 	/* internal error, why isn't DONTFRAG set? */
 	if (WARN_ON(skb->len + FCS_LEN <= frag_threshold))
 		return TX_DROP;
+
 
 	/*
 	 * Now fragment the frame. This will allocate all the fragments and

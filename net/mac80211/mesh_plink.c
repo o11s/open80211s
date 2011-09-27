@@ -163,6 +163,7 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
 
 	if (!skb)
 		return -1;
+
 	skb_reserve(skb, local->hw.extra_tx_headroom);
 	/* 25 is the size of the common mgmt part (24) plus the size of the
 	 * common action part (1)
