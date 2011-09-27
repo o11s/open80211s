@@ -327,9 +327,6 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	memset(dev_cmd, 0, sizeof(*dev_cmd));
 	tx_cmd = (struct iwl_tx_cmd *) dev_cmd->payload;
 
-	/* Copy MAC header from skb into command buffer */
-	memcpy(tx_cmd->hdr, hdr, hdr_len);
-
 	/* Total # bytes to be transmitted */
 	len = (u16)skb->len;
 	tx_cmd->len = cpu_to_le16(len);
@@ -344,6 +341,8 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	iwlagn_tx_cmd_build_rate(priv, tx_cmd, info, fc);
 
 	iwl_update_stats(priv, true, fc, len);
+
+	memset(&info->status, 0, sizeof(info->status));
 
 	info->driver_data[0] = ctx;
 	info->driver_data[1] = dev_cmd;
@@ -582,6 +581,9 @@ static void iwl_rx_reply_tx_agg(struct iwl_priv *priv,
 	    priv->cfg->bt_params->advanced_bt_coexist) {
 		IWL_DEBUG_COEX(priv, "receive reply tx w/ bt_kill\n");
 	}
+
+	if (tx_resp->frame_count == 1)
+		return;
 
 	/* Construct bit-map of pending frames within Tx window */
 	for (i = 0; i < tx_resp->frame_count; i++) {
@@ -941,7 +943,10 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 		else
 			WARN_ON_ONCE(1);
 
-		if (freed == 0) {
+		info = IEEE80211_SKB_CB(skb);
+		kmem_cache_free(priv->tx_cmd_pool, (info->driver_data[1]));
+
+		if (freed == 1) {
 			/* this is the first skb we deliver in this batch */
 			/* put the rate scaling data there */
 			info = IEEE80211_SKB_CB(skb);
@@ -953,9 +958,6 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 			iwlagn_hwrate_to_tx_control(priv, agg->rate_n_flags,
 						    info);
 		}
-
-		info = IEEE80211_SKB_CB(skb);
-		kmem_cache_free(priv->tx_cmd_pool, (info->driver_data[1]));
 
 		ieee80211_tx_status_irqsafe(priv->hw, skb);
 	}

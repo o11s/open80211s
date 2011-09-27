@@ -936,8 +936,8 @@ static void ieee80211_sta_wmm_params(struct ieee80211_local *local,
 			    params.aifs, params.cw_min, params.cw_max,
 			    params.txop, params.uapsd);
 #endif
-		local->tx_conf[queue] = params;
-		if (drv_conf_tx(local, queue, &params))
+		sdata->tx_conf[queue] = params;
+		if (drv_conf_tx(local, sdata, queue, &params))
 			wiphy_debug(local->hw.wiphy,
 				    "failed to set TX queue parameters for queue %d\n",
 				    queue);
@@ -1239,7 +1239,7 @@ static void ieee80211_mgd_probe_ap_send(struct ieee80211_sub_if_data *sdata)
 	} else {
 		ssid = ieee80211_bss_get_ie(ifmgd->associated, WLAN_EID_SSID);
 		ieee80211_send_probe_req(sdata, dst, ssid + 2, ssid[1], NULL, 0,
-					 (u32) -1, true);
+					 (u32) -1, true, false);
 	}
 
 	ifmgd->probe_send_count++;

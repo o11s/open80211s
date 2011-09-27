@@ -148,7 +148,7 @@ int mwifiex_request_set_multicast_list(struct mwifiex_private *priv,
 int mwifiex_fill_new_bss_desc(struct mwifiex_private *priv,
 			      u8 *bssid, s32 rssi, u8 *ie_buf,
 			      size_t ie_len, u16 beacon_period,
-			      u16 cap_info_bitmap,
+			      u16 cap_info_bitmap, u8 band,
 			      struct mwifiex_bssdescriptor *bss_desc)
 {
 	int ret;
@@ -159,6 +159,7 @@ int mwifiex_fill_new_bss_desc(struct mwifiex_private *priv,
 	bss_desc->beacon_buf_size = ie_len;
 	bss_desc->beacon_period = beacon_period;
 	bss_desc->cap_info_bitmap = cap_info_bitmap;
+	bss_desc->bss_band = band;
 	if (bss_desc->cap_info_bitmap & WLAN_CAPABILITY_PRIVACY) {
 		dev_dbg(priv->adapter->dev, "info: InterpretIE: AP WEP enabled\n");
 		bss_desc->privacy = MWIFIEX_802_11_PRIV_FILTER_8021X_WEP;
@@ -211,7 +212,8 @@ int mwifiex_bss_start(struct mwifiex_private *priv, struct cfg80211_bss *bss,
 		ret = mwifiex_fill_new_bss_desc(priv, bss->bssid, bss->signal,
 						beacon_ie, bss->len_beacon_ies,
 						bss->beacon_interval,
-						bss->capability, bss_desc);
+						bss->capability,
+						*(u8 *)bss->priv, bss_desc);
 		if (ret)
 			goto done;
 	}
@@ -653,6 +655,7 @@ mwifiex_drv_change_adhoc_chan(struct mwifiex_private *priv, int channel)
 	u16 curr_chan = 0;
 	struct cfg80211_bss *bss = NULL;
 	struct ieee80211_channel *chan;
+	enum ieee80211_band band;
 
 	memset(&bss_info, 0, sizeof(bss_info));
 
@@ -689,9 +692,9 @@ mwifiex_drv_change_adhoc_chan(struct mwifiex_private *priv, int channel)
 		goto done;
 	}
 
+	band = mwifiex_band_to_radio_type(priv->curr_bss_params.band);
 	chan = __ieee80211_get_channel(priv->wdev->wiphy,
-			ieee80211_channel_to_frequency(channel,
-						priv->curr_bss_params.band));
+			ieee80211_channel_to_frequency(channel, band));
 
 	/* Find the BSS we want using available scan results */
 	bss = cfg80211_get_bss(priv->wdev->wiphy, chan, bss_info.bssid,

@@ -114,6 +114,65 @@ static void iwl_complete_scan(struct iwl_priv *priv, bool aborted)
 	priv->scan_request = NULL;
 }
 
+static void iwl_process_scan_complete(struct iwl_priv *priv)
+{
+	bool aborted;
+
+	lockdep_assert_held(&priv->shrd->mutex);
+
+	if (!test_and_clear_bit(STATUS_SCAN_COMPLETE, &priv->shrd->status))
+		return;
+
+	IWL_DEBUG_SCAN(priv, "Completed scan.\n");
+
+	cancel_delayed_work(&priv->scan_check);
+
+	aborted = test_and_clear_bit(STATUS_SCAN_ABORTING, &priv->shrd->status);
+	if (aborted)
+		IWL_DEBUG_SCAN(priv, "Aborted scan completed.\n");
+
+	if (!test_and_clear_bit(STATUS_SCANNING, &priv->shrd->status)) {
+		IWL_DEBUG_SCAN(priv, "Scan already completed.\n");
+		goto out_settings;
+	}
+
+	if (priv->scan_type == IWL_SCAN_ROC) {
+		ieee80211_remain_on_channel_expired(priv->hw);
+		priv->hw_roc_channel = NULL;
+		schedule_delayed_work(&priv->hw_roc_disable_work, 10 * HZ);
+	}
+
+	if (priv->scan_type != IWL_SCAN_NORMAL && !aborted) {
+		int err;
+
+		/* Check if mac80211 requested scan during our internal scan */
+		if (priv->scan_request == NULL)
+			goto out_complete;
+
+		/* If so request a new scan */
+		err = iwl_scan_initiate(priv, priv->scan_vif, IWL_SCAN_NORMAL,
+					priv->scan_request->channels[0]->band);
+		if (err) {
+			IWL_DEBUG_SCAN(priv,
+				"failed to initiate pending scan: %d\n", err);
+			aborted = true;
+			goto out_complete;
+		}
+
+		return;
+	}
+
+out_complete:
+	iwl_complete_scan(priv, aborted);
+
+out_settings:
+	/* Can we still talk to firmware ? */
+	if (!iwl_is_ready_rf(priv->shrd))
+		return;
+
+	iwlagn_post_scan(priv);
+}
+
 void iwl_force_scan_end(struct iwl_priv *priv)
 {
 	lockdep_assert_held(&priv->shrd->mutex);
@@ -127,6 +186,7 @@ void iwl_force_scan_end(struct iwl_priv *priv)
 	clear_bit(STATUS_SCANNING, &priv->shrd->status);
 	clear_bit(STATUS_SCAN_HW, &priv->shrd->status);
 	clear_bit(STATUS_SCAN_ABORTING, &priv->shrd->status);
+	clear_bit(STATUS_SCAN_COMPLETE, &priv->shrd->status);
 	iwl_complete_scan(priv, true);
 }
 
@@ -169,7 +229,7 @@ int iwl_scan_cancel(struct iwl_priv *priv)
  * @ms: amount of time to wait (in milliseconds) for scan to abort
  *
  */
-int iwl_scan_cancel_timeout(struct iwl_priv *priv, unsigned long ms)
+void iwl_scan_cancel_timeout(struct iwl_priv *priv, unsigned long ms)
 {
 	unsigned long timeout = jiffies + msecs_to_jiffies(ms);
 
@@ -181,11 +241,24 @@ int iwl_scan_cancel_timeout(struct iwl_priv *priv, unsigned long ms)
 
 	while (time_before_eq(jiffies, timeout)) {
 		if (!test_bit(STATUS_SCAN_HW, &priv->shrd->status))
-			break;
+			goto finished;
 		msleep(20);
 	}
 
-	return test_bit(STATUS_SCAN_HW, &priv->shrd->status);
+	return;
+
+ finished:
+	/*
+	 * Now STATUS_SCAN_HW is clear. This means that the
+	 * device finished, but the background work is going
+	 * to execute at best as soon as we release the mutex.
+	 * Since we need to be able to issue a new scan right
+	 * after this function returns, run the complete here.
+	 * The STATUS_SCAN_COMPLETE bit will then be cleared
+	 * and prevent the background work from "completing"
+	 * a possible new scan.
+	 */
+	iwl_process_scan_complete(priv);
 }
 
 /* Service response to REPLY_SCAN_CMD (0x80) */
@@ -242,10 +315,12 @@ static int iwl_rx_scan_results_notif(struct iwl_priv *priv,
 
 	IWL_DEBUG_SCAN(priv, "Scan ch.res: "
 		       "%d [802.11%s] "
+		       "probe status: %u:%u "
 		       "(TSF: 0x%08X:%08X) - %d "
 		       "elapsed=%lu usec\n",
 		       notif->channel,
 		       notif->band ? "bg" : "a",
+		       notif->probe_status, notif->num_probe_not_sent,
 		       le32_to_cpu(notif->tsf_high),
 		       le32_to_cpu(notif->tsf_low),
 		       le32_to_cpu(notif->statistics[0]),
@@ -267,13 +342,20 @@ static int iwl_rx_scan_complete_notif(struct iwl_priv *priv,
 		       scan_notif->tsf_low,
 		       scan_notif->tsf_high, scan_notif->status);
 
-	/* The HW is no longer scanning */
-	clear_bit(STATUS_SCAN_HW, &priv->shrd->status);
-
 	IWL_DEBUG_SCAN(priv, "Scan on %sGHz took %dms\n",
 		       (priv->scan_band == IEEE80211_BAND_2GHZ) ? "2.4" : "5.2",
 		       jiffies_to_msecs(jiffies - priv->scan_start));
 
+	/*
+	 * When aborting, we run the scan completed background work inline
+	 * and the background work must then do nothing. The SCAN_COMPLETE
+	 * bit helps implement that logic and thus needs to be set before
+	 * queueing the work. Also, since the scan abort waits for SCAN_HW
+	 * to clear, we need to set SCAN_COMPLETE before clearing SCAN_HW
+	 * to avoid a race there.
+	 */
+	set_bit(STATUS_SCAN_COMPLETE, &priv->shrd->status);
+	clear_bit(STATUS_SCAN_HW, &priv->shrd->status);
 	queue_work(priv->shrd->workqueue, &priv->scan_completed);
 
 	if (priv->iw_mode != NL80211_IFTYPE_ADHOC &&
@@ -1016,61 +1098,10 @@ static void iwl_bg_abort_scan(struct work_struct *work)
 static void iwl_bg_scan_completed(struct work_struct *work)
 {
 	struct iwl_priv *priv =
-	    container_of(work, struct iwl_priv, scan_completed);
-	bool aborted;
-
-	IWL_DEBUG_SCAN(priv, "Completed scan.\n");
-
-	cancel_delayed_work(&priv->scan_check);
+		container_of(work, struct iwl_priv, scan_completed);
 
 	mutex_lock(&priv->shrd->mutex);
-
-	aborted = test_and_clear_bit(STATUS_SCAN_ABORTING, &priv->shrd->status);
-	if (aborted)
-		IWL_DEBUG_SCAN(priv, "Aborted scan completed.\n");
-
-	if (!test_and_clear_bit(STATUS_SCANNING, &priv->shrd->status)) {
-		IWL_DEBUG_SCAN(priv, "Scan already completed.\n");
-		goto out_settings;
-	}
-
-	if (priv->scan_type == IWL_SCAN_ROC) {
-		ieee80211_remain_on_channel_expired(priv->hw);
-		priv->hw_roc_channel = NULL;
-		schedule_delayed_work(&priv->hw_roc_disable_work, 10 * HZ);
-	}
-
-	if (priv->scan_type != IWL_SCAN_NORMAL && !aborted) {
-		int err;
-
-		/* Check if mac80211 requested scan during our internal scan */
-		if (priv->scan_request == NULL)
-			goto out_complete;
-
-		/* If so request a new scan */
-		err = iwl_scan_initiate(priv, priv->scan_vif, IWL_SCAN_NORMAL,
-					priv->scan_request->channels[0]->band);
-		if (err) {
-			IWL_DEBUG_SCAN(priv,
-				"failed to initiate pending scan: %d\n", err);
-			aborted = true;
-			goto out_complete;
-		}
-
-		goto out;
-	}
-
-out_complete:
-	iwl_complete_scan(priv, aborted);
-
-out_settings:
-	/* Can we still talk to firmware ? */
-	if (!iwl_is_ready_rf(priv->shrd))
-		goto out;
-
-	iwlagn_post_scan(priv);
-
-out:
+	iwl_process_scan_complete(priv);
 	mutex_unlock(&priv->shrd->mutex);
 }
 

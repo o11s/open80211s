@@ -191,6 +191,7 @@ static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 					 .len = IEEE80211_MAX_DATA_LEN },
 	[NL80211_ATTR_ROAM_SUPPORT] = { .type = NLA_FLAG },
 	[NL80211_ATTR_SCHED_SCAN_MATCH] = { .type = NLA_NESTED },
+	[NL80211_ATTR_TX_NO_CCK_RATE] = { .type = NLA_FLAG },
 };
 
 /* policy for the key attributes */
@@ -1235,6 +1236,11 @@ static int nl80211_set_wiphy(struct sk_buff *skb, struct genl_info *info)
 			goto bad_res;
 		}
 
+		if (!netdev) {
+			result = -EINVAL;
+			goto bad_res;
+		}
+
 		nla_for_each_nested(nl_txq_params,
 				    info->attrs[NL80211_ATTR_WIPHY_TXQ_PARAMS],
 				    rem_txq_params) {
@@ -1247,6 +1253,7 @@ static int nl80211_set_wiphy(struct sk_buff *skb, struct genl_info *info)
 				goto bad_res;
 
 			result = rdev->ops->set_txq_params(&rdev->wiphy,
+							   netdev,
 							   &txq_params);
 			if (result)
 				goto bad_res;
@@ -2613,7 +2620,7 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
 
 	/* parse WME attributes if sta is WME capable */
 	if ((rdev->wiphy.flags & WIPHY_FLAG_AP_UAPSD) &&
-	    (params.sta_flags_set & NL80211_STA_FLAG_WME) &&
+	    (params.sta_flags_set & BIT(NL80211_STA_FLAG_WME)) &&
 	    info->attrs[NL80211_ATTR_STA_WME]) {
 		struct nlattr *tb[NL80211_STA_WME_MAX + 1];
 		struct nlattr *nla;
@@ -3620,6 +3627,9 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 		}
 	}
 
+	request->no_cck =
+		nla_get_flag(info->attrs[NL80211_ATTR_TX_NO_CCK_RATE]);
+
 	request->dev = dev;
 	request->wiphy = &rdev->wiphy;
 
@@ -4126,22 +4136,6 @@ static bool nl80211_valid_wpa_versions(u32 wpa_versions)
 				  NL80211_WPA_VERSION_2));
 }
 
-static bool nl80211_valid_akm_suite(u32 akm)
-{
-	return akm == WLAN_AKM_SUITE_8021X ||
-		akm == WLAN_AKM_SUITE_PSK;
-}
-
-static bool nl80211_valid_cipher_suite(u32 cipher)
-{
-	return cipher == WLAN_CIPHER_SUITE_WEP40 ||
-		cipher == WLAN_CIPHER_SUITE_WEP104 ||
-		cipher == WLAN_CIPHER_SUITE_TKIP ||
-		cipher == WLAN_CIPHER_SUITE_CCMP ||
-		cipher == WLAN_CIPHER_SUITE_AES_CMAC;
-}
-
-
 static int nl80211_authenticate(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
@@ -4274,7 +4268,8 @@ static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 		memcpy(settings->ciphers_pairwise, data, len);
 
 		for (i = 0; i < settings->n_ciphers_pairwise; i++)
-			if (!nl80211_valid_cipher_suite(
+			if (!cfg80211_supported_cipher_suite(
+					&rdev->wiphy,
 					settings->ciphers_pairwise[i]))
 				return -EINVAL;
 	}
@@ -4282,7 +4277,8 @@ static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 	if (info->attrs[NL80211_ATTR_CIPHER_SUITE_GROUP]) {
 		settings->cipher_group =
 			nla_get_u32(info->attrs[NL80211_ATTR_CIPHER_SUITE_GROUP]);
-		if (!nl80211_valid_cipher_suite(settings->cipher_group))
+		if (!cfg80211_supported_cipher_suite(&rdev->wiphy,
+						     settings->cipher_group))
 			return -EINVAL;
 	}
 
@@ -4295,7 +4291,7 @@ static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 
 	if (info->attrs[NL80211_ATTR_AKM_SUITES]) {
 		void *data;
-		int len, i;
+		int len;
 
 		data = nla_data(info->attrs[NL80211_ATTR_AKM_SUITES]);
 		len = nla_len(info->attrs[NL80211_ATTR_AKM_SUITES]);
@@ -4308,10 +4304,6 @@ static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 			return -EINVAL;
 
 		memcpy(settings->akm_suites, data, len);
-
-		for (i = 0; i < settings->n_akm_suites; i++)
-			if (!nl80211_valid_akm_suite(settings->akm_suites[i]))
-				return -EINVAL;
 	}
 
 	return 0;
@@ -5192,6 +5184,7 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 	struct sk_buff *msg;
 	unsigned int wait = 0;
 	bool offchan;
+	bool no_cck;
 
 	if (!info->attrs[NL80211_ATTR_FRAME] ||
 	    !info->attrs[NL80211_ATTR_WIPHY_FREQ])
@@ -5228,6 +5221,8 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 
 	offchan = info->attrs[NL80211_ATTR_OFFCHANNEL_TX_OK];
 
+	no_cck = nla_get_flag(info->attrs[NL80211_ATTR_TX_NO_CCK_RATE]);
+
 	freq = nla_get_u32(info->attrs[NL80211_ATTR_WIPHY_FREQ]);
 	chan = rdev_freq_to_chan(rdev, freq, channel_type);
 	if (chan == NULL)
@@ -5248,7 +5243,7 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 				    channel_type_valid, wait,
 				    nla_data(info->attrs[NL80211_ATTR_FRAME]),
 				    nla_len(info->attrs[NL80211_ATTR_FRAME]),
-				    &cookie);
+				    no_cck, &cookie);
 	if (err)
 		goto free_msg;
 
