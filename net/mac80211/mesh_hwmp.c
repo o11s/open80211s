@@ -120,6 +120,21 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 
 	if (!skb)
 		return -1;
+	/* if queues stopped && pending > XXX 
+	 *    return ?
+	 * 
+	 * maybe the same for plink
+	 * and remove the inhibit on recepteion
+	 *
+	 * and now go to lunch
+	 **/
+	if (ieee80211_queue_stopped(&local->hw, IEEE80211_AC_VO)) {
+		printk(KERN_ERR "VO queue stopped, dropping path selection frame\n");
+		IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
+						dropped_frames_congestion);
+		return -1;
+	}
+
 	skb_reserve(skb, local->hw.extra_tx_headroom);
 	/* 25 is the size of the common mgmt part (24) plus the size of the
 	 * common action part (1)

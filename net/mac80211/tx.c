@@ -918,6 +918,7 @@ ieee80211_tx_h_fragment(struct ieee80211_tx_data *tx)
 	if (WARN_ON(skb->len + FCS_LEN <= frag_threshold))
 		return TX_DROP;
 
+
 	/*
 	 * Now fragment the frame. This will allocate all the fragments and
 	 * chain them (using skb as the first fragment) to skb->next.
@@ -967,6 +968,22 @@ static ieee80211_tx_result debug_noinline
 ieee80211_tx_h_stats(struct ieee80211_tx_data *tx)
 {
 	struct sk_buff *skb = tx->skb;
+
+	/* at this point, we're transmitting an skb off the pending queue, so I
+	 * don't see how this will help... actually, if the hw queues are
+	 * stopped, this frame will end up back on the pending queue. Here is
+	 * the danger: pending queue might fill up faster than the hw queues
+	 * can drain, in which case we have a memory leak. Frames are put on
+	 * the pending queue from:
+	 *	1. mpath frame queue.
+	 *	2. forwarded skbs.
+	 *	3. management frames. */
+	int q = skb_get_queue_mapping(skb);
+#define MAX_PENDING 10
+	if (tx->local->queue_stop_reasons[q] &&
+	    (skb_queue_len(&tx->local->pending[q]) > MAX_PENDING)) {
+		return TX_DROP;
+	}
 
 	if (!tx->sta)
 		return TX_CONTINUE;

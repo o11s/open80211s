@@ -29,7 +29,7 @@
 #include <net/genetlink.h>
 #include "mac80211_hwsim.h"
 
-#define WARN_QUEUE 100
+#define WARN_QUEUE 2
 #define MAX_QUEUE 200
 
 MODULE_AUTHOR("Jouni Malinen");
