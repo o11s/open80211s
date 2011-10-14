@@ -19,6 +19,8 @@
 
 #include <linux/timer.h>
 #include <linux/interrupt.h>
+#include <linux/workqueue.h>
+
 #include "ucode_loader.h"
 /*
  * Starting index for 5G rates in the
@@ -30,14 +32,14 @@
 #define BRCMS_SET_SHORTSLOT_OVERRIDE		146
 
 struct brcms_timer {
-	struct timer_list timer;
+	struct delayed_work dly_wrk;
 	struct brcms_info *wl;
-	void (*fn) (void *);
-	void *arg;		/* argument to fn */
+	void (*fn) (void *);	/* function called upon expiration */
+	void *arg;		/* fixed argument provided to called function */
 	uint ms;
 	bool periodic;
-	bool set;
-	struct brcms_timer *next;
+	bool set;		/* indicates if timer is active */
+	struct brcms_timer *next;	/* for freeing on unload */
 #ifdef BCMDBG
 	char *name;		/* Description of the timer */
 #endif
@@ -96,10 +98,9 @@ extern bool brcms_rfkill_set_hw_state(struct brcms_info *wl);
 extern struct brcms_timer *brcms_init_timer(struct brcms_info *wl,
 				      void (*fn) (void *arg), void *arg,
 				      const char *name);
-extern void brcms_free_timer(struct brcms_info *wl, struct brcms_timer *timer);
-extern void brcms_add_timer(struct brcms_info *wl, struct brcms_timer *timer,
-			    uint ms, int periodic);
-extern bool brcms_del_timer(struct brcms_info *wl, struct brcms_timer *timer);
+extern void brcms_free_timer(struct brcms_timer *timer);
+extern void brcms_add_timer(struct brcms_timer *timer, uint ms, int periodic);
+extern bool brcms_del_timer(struct brcms_timer *timer);
 extern void brcms_msleep(struct brcms_info *wl, uint ms);
 extern void brcms_dpc(unsigned long data);
 extern void brcms_timer(struct brcms_timer *t);

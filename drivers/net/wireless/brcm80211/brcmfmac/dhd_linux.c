@@ -31,6 +31,7 @@
 #include <linux/hardirq.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
+#include <linux/module.h>
 #include <net/cfg80211.h>
 #include <net/rtnetlink.h>
 #include <defs.h>
@@ -136,9 +137,9 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 {
 	struct net_device *ndev;
 	struct netdev_hw_addr *ha;
-	u32 allmulti, cnt;
+	u32 dcmd_value, cnt;
 	__le32 cnt_le;
-	__le32 allmulti_le;
+	__le32 dcmd_le_value;
 
 	struct brcmf_dcmd dcmd;
 	char *buf, *bufp;
@@ -152,7 +153,7 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 	cnt = netdev_mc_count(ndev);
 
 	/* Determine initial value of allmulti flag */
-	allmulti = (ndev->flags & IFF_ALLMULTI) ? true : false;
+	dcmd_value = (ndev->flags & IFF_ALLMULTI) ? true : false;
 
 	/* Send down the multicast list first. */
 
@@ -186,7 +187,7 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 	if (ret < 0) {
 		brcmf_dbg(ERROR, "%s: set mcast_list failed, cnt %d\n",
 			  brcmf_ifname(&drvr_priv->pub, 0), cnt);
-		allmulti = cnt ? true : allmulti;
+		dcmd_value = cnt ? true : dcmd_value;
 	}
 
 	kfree(buf);
@@ -196,19 +197,19 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 	 * were trying to set some addresses and dongle rejected it...
 	 */
 
-	buflen = sizeof("allmulti") + sizeof(allmulti);
+	buflen = sizeof("allmulti") + sizeof(dcmd_value);
 	buf = kmalloc(buflen, GFP_ATOMIC);
 	if (!buf)
 		return;
 
-	allmulti_le = cpu_to_le32(allmulti);
+	dcmd_le_value = cpu_to_le32(dcmd_value);
 
-	if (!brcmu_mkiovar
-	    ("allmulti", (void *)&allmulti_le,
-	    sizeof(allmulti_le), buf, buflen)) {
+	if (!brcmf_c_mkiovar
+	    ("allmulti", (void *)&dcmd_le_value,
+	    sizeof(dcmd_le_value), buf, buflen)) {
 		brcmf_dbg(ERROR, "%s: mkiovar failed for allmulti, datalen %d buflen %u\n",
 			  brcmf_ifname(&drvr_priv->pub, 0),
-			  (int)sizeof(allmulti), buflen);
+			  (int)sizeof(dcmd_value), buflen);
 		kfree(buf);
 		return;
 	}
@@ -223,7 +224,7 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 	if (ret < 0) {
 		brcmf_dbg(ERROR, "%s: set allmulti %d failed\n",
 			  brcmf_ifname(&drvr_priv->pub, 0),
-			  le32_to_cpu(allmulti_le));
+			  le32_to_cpu(dcmd_le_value));
 	}
 
 	kfree(buf);
@@ -231,20 +232,20 @@ static void _brcmf_set_multicast_list(struct work_struct *work)
 	/* Finally, pick up the PROMISC flag as well, like the NIC
 		 driver does */
 
-	allmulti = (ndev->flags & IFF_PROMISC) ? true : false;
-	allmulti_le = cpu_to_le32(allmulti);
+	dcmd_value = (ndev->flags & IFF_PROMISC) ? true : false;
+	dcmd_le_value = cpu_to_le32(dcmd_value);
 
 	memset(&dcmd, 0, sizeof(dcmd));
 	dcmd.cmd = BRCMF_C_SET_PROMISC;
-	dcmd.buf = &allmulti_le;
-	dcmd.len = sizeof(allmulti_le);
+	dcmd.buf = &dcmd_le_value;
+	dcmd.len = sizeof(dcmd_le_value);
 	dcmd.set = true;
 
 	ret = brcmf_proto_dcmd(&drvr_priv->pub, 0, &dcmd, dcmd.len);
 	if (ret < 0) {
 		brcmf_dbg(ERROR, "%s: set promisc %d failed\n",
 			  brcmf_ifname(&drvr_priv->pub, 0),
-			  le32_to_cpu(allmulti_le));
+			  le32_to_cpu(dcmd_le_value));
 	}
 }
 
@@ -259,7 +260,7 @@ _brcmf_set_mac_address(struct work_struct *work)
 						    setmacaddr_work);
 
 	brcmf_dbg(TRACE, "enter\n");
-	if (!brcmu_mkiovar("cur_etheraddr", (char *)drvr_priv->macvalue,
+	if (!brcmf_c_mkiovar("cur_etheraddr", (char *)drvr_priv->macvalue,
 			   ETH_ALEN, buf, 32)) {
 		brcmf_dbg(ERROR, "%s: mkiovar failed for cur_etheraddr\n",
 			  brcmf_ifname(&drvr_priv->pub, 0));
@@ -559,6 +560,7 @@ static struct net_device_stats *brcmf_netdev_get_stats(struct net_device *ndev)
 static int brcmf_toe_get(struct brcmf_info *drvr_priv, int ifidx, u32 *toe_ol)
 {
 	struct brcmf_dcmd dcmd;
+	__le32 toe_le;
 	char buf[32];
 	int ret;
 
@@ -584,7 +586,8 @@ static int brcmf_toe_get(struct brcmf_info *drvr_priv, int ifidx, u32 *toe_ol)
 		return ret;
 	}
 
-	memcpy(toe_ol, buf, sizeof(u32));
+	memcpy(&toe_le, buf, sizeof(u32));
+	*toe_ol = le32_to_cpu(toe_le);
 	return 0;
 }
 
@@ -594,7 +597,8 @@ static int brcmf_toe_set(struct brcmf_info *drvr_priv, int ifidx, u32 toe_ol)
 {
 	struct brcmf_dcmd dcmd;
 	char buf[32];
-	int toe, ret;
+	int ret;
+	__le32 toe_le = cpu_to_le32(toe_ol);
 
 	memset(&dcmd, 0, sizeof(dcmd));
 
@@ -604,9 +608,8 @@ static int brcmf_toe_set(struct brcmf_info *drvr_priv, int ifidx, u32 toe_ol)
 	dcmd.set = true;
 
 	/* Set toe_ol as requested */
-
 	strcpy(buf, "toe_ol");
-	memcpy(&buf[sizeof("toe_ol")], &toe_ol, sizeof(u32));
+	memcpy(&buf[sizeof("toe_ol")], &toe_le, sizeof(u32));
 
 	ret = brcmf_proto_dcmd(&drvr_priv->pub, ifidx, &dcmd, dcmd.len);
 	if (ret < 0) {
@@ -616,11 +619,10 @@ static int brcmf_toe_set(struct brcmf_info *drvr_priv, int ifidx, u32 toe_ol)
 	}
 
 	/* Enable toe globally only if any components are enabled. */
-
-	toe = (toe_ol != 0);
+	toe_le = cpu_to_le32(toe_ol != 0);
 
 	strcpy(buf, "toe");
-	memcpy(&buf[sizeof("toe")], &toe, sizeof(u32));
+	memcpy(&buf[sizeof("toe")], &toe_le, sizeof(u32));
 
 	ret = brcmf_proto_dcmd(&drvr_priv->pub, ifidx, &dcmd, dcmd.len);
 	if (ret < 0) {
@@ -1082,7 +1084,7 @@ int brcmf_bus_start(struct brcmf_pub *drvr)
 		return -ENODEV;
 	}
 
-	brcmu_mkiovar("event_msgs", drvr->eventmask, BRCMF_EVENTING_MASK_LEN,
+	brcmf_c_mkiovar("event_msgs", drvr->eventmask, BRCMF_EVENTING_MASK_LEN,
 		      iovbuf, sizeof(iovbuf));
 	brcmf_proto_cdc_query_dcmd(drvr, 0, BRCMF_C_GET_VAR, iovbuf,
 				    sizeof(iovbuf));
@@ -1318,7 +1320,7 @@ int brcmf_netdev_wait_pend8021x(struct net_device *ndev)
 }
 
 #ifdef BCMDBG
-int brcmf_write_to_file(struct brcmf_pub *drvr, u8 *buf, int size)
+int brcmf_write_to_file(struct brcmf_pub *drvr, const u8 *buf, int size)
 {
 	int ret = 0;
 	struct file *fp;
@@ -1338,7 +1340,7 @@ int brcmf_write_to_file(struct brcmf_pub *drvr, u8 *buf, int size)
 	}
 
 	/* Write buf to file */
-	fp->f_op->write(fp, buf, size, &pos);
+	fp->f_op->write(fp, (char __user *)buf, size, &pos);
 
 exit:
 	/* free buf before return */

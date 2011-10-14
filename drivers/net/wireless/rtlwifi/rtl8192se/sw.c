@@ -307,6 +307,7 @@ static struct rtl_hal_cfg rtl92se_hal_cfg = {
 	.maps[EFUSE_HWSET_MAX_SIZE] = HWSET_MAX_SIZE_92S,
 	.maps[EFUSE_MAX_SECTION_MAP] = EFUSE_MAX_SECTION,
 	.maps[EFUSE_REAL_CONTENT_SIZE] = EFUSE_REAL_CONTENT_LEN,
+	.maps[EFUSE_OOB_PROTECT_BYTES_LEN] = EFUSE_OOB_PROTECT_BYTES,
 
 	.maps[RWCAM] = REG_RWCAM,
 	.maps[WCAMI] = REG_WCAMI,
@@ -401,17 +402,21 @@ MODULE_PARM_DESC(swlps, "Set to 1 to use SW control power save (default 0)\n");
 MODULE_PARM_DESC(fwlps, "Set to 1 to use FW control power save (default 1)\n");
 MODULE_PARM_DESC(debug, "Set debug level (0-5) (default 0)");
 
+static const struct dev_pm_ops rtlwifi_pm_ops = {
+	.suspend = rtl_pci_suspend,
+	.resume = rtl_pci_resume,
+	.freeze = rtl_pci_suspend,
+	.thaw = rtl_pci_resume,
+	.poweroff = rtl_pci_suspend,
+	.restore = rtl_pci_resume,
+};
+
 static struct pci_driver rtl92se_driver = {
 	.name = KBUILD_MODNAME,
 	.id_table = rtl92se_pci_ids,
 	.probe = rtl_pci_probe,
 	.remove = rtl_pci_disconnect,
-
-#ifdef CONFIG_PM
-	.suspend = rtl_pci_suspend,
-	.resume = rtl_pci_resume,
-#endif
-
+	.driver.pm = &rtlwifi_pm_ops,
 };
 
 static int __init rtl92se_module_init(void)

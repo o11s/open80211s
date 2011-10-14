@@ -247,6 +247,97 @@ static const u32 __wl_cipher_suites[] = {
 	WLAN_CIPHER_SUITE_AES_CMAC,
 };
 
+/* tag_ID/length/value_buffer tuple */
+struct brcmf_tlv {
+	u8 id;
+	u8 len;
+	u8 data[1];
+};
+
+/* Quarter dBm units to mW
+ * Table starts at QDBM_OFFSET, so the first entry is mW for qdBm=153
+ * Table is offset so the last entry is largest mW value that fits in
+ * a u16.
+ */
+
+#define QDBM_OFFSET 153		/* Offset for first entry */
+#define QDBM_TABLE_LEN 40	/* Table size */
+
+/* Smallest mW value that will round up to the first table entry, QDBM_OFFSET.
+ * Value is ( mW(QDBM_OFFSET - 1) + mW(QDBM_OFFSET) ) / 2
+ */
+#define QDBM_TABLE_LOW_BOUND 6493	/* Low bound */
+
+/* Largest mW value that will round down to the last table entry,
+ * QDBM_OFFSET + QDBM_TABLE_LEN-1.
+ * Value is ( mW(QDBM_OFFSET + QDBM_TABLE_LEN - 1) +
+ * mW(QDBM_OFFSET + QDBM_TABLE_LEN) ) / 2.
+ */
+#define QDBM_TABLE_HIGH_BOUND 64938	/* High bound */
+
+static const u16 nqdBm_to_mW_map[QDBM_TABLE_LEN] = {
+/* qdBm:	+0	+1	+2	+3	+4	+5	+6	+7 */
+/* 153: */ 6683, 7079, 7499, 7943, 8414, 8913, 9441, 10000,
+/* 161: */ 10593, 11220, 11885, 12589, 13335, 14125, 14962, 15849,
+/* 169: */ 16788, 17783, 18836, 19953, 21135, 22387, 23714, 25119,
+/* 177: */ 26607, 28184, 29854, 31623, 33497, 35481, 37584, 39811,
+/* 185: */ 42170, 44668, 47315, 50119, 53088, 56234, 59566, 63096
+};
+
+static u16 brcmf_qdbm_to_mw(u8 qdbm)
+{
+	uint factor = 1;
+	int idx = qdbm - QDBM_OFFSET;
+
+	if (idx >= QDBM_TABLE_LEN)
+		/* clamp to max u16 mW value */
+		return 0xFFFF;
+
+	/* scale the qdBm index up to the range of the table 0-40
+	 * where an offset of 40 qdBm equals a factor of 10 mW.
+	 */
+	while (idx < 0) {
+		idx += 40;
+		factor *= 10;
+	}
+
+	/* return the mW value scaled down to the correct factor of 10,
+	 * adding in factor/2 to get proper rounding.
+	 */
+	return (nqdBm_to_mW_map[idx] + factor / 2) / factor;
+}
+
+static u8 brcmf_mw_to_qdbm(u16 mw)
+{
+	u8 qdbm;
+	int offset;
+	uint mw_uint = mw;
+	uint boundary;
+
+	/* handle boundary case */
+	if (mw_uint <= 1)
+		return 0;
+
+	offset = QDBM_OFFSET;
+
+	/* move mw into the range of the table */
+	while (mw_uint < QDBM_TABLE_LOW_BOUND) {
+		mw_uint *= 10;
+		offset -= 40;
+	}
+
+	for (qdbm = 0; qdbm < QDBM_TABLE_LEN - 1; qdbm++) {
+		boundary = nqdBm_to_mW_map[qdbm] + (nqdBm_to_mW_map[qdbm + 1] -
+						    nqdBm_to_mW_map[qdbm]) / 2;
+		if (mw_uint < boundary)
+			break;
+	}
+
+	qdbm += (u8) offset;
+
+	return qdbm;
+}
+
 /* function for reading/writing a single u32 from/to the dongle */
 static int
 brcmf_exec_dcmd_u32(struct net_device *ndev, u32 cmd, u32 *par)
@@ -346,7 +437,7 @@ static s32 brcmf_dev_intvar_set(struct net_device *ndev, s8 *name, s32 val)
 	__le32 val_le;
 
 	val_le = cpu_to_le32(val);
-	len = brcmu_mkiovar(name, (char *)(&val_le), sizeof(val_le), buf,
+	len = brcmf_c_mkiovar(name, (char *)(&val_le), sizeof(val_le), buf,
 			    sizeof(buf));
 	BUG_ON(!len);
 
@@ -369,7 +460,7 @@ brcmf_dev_intvar_get(struct net_device *ndev, s8 *name, s32 *retval)
 	s32 err = 0;
 
 	len =
-	    brcmu_mkiovar(name, (char *)(&data_null), 0, (char *)(&var),
+	    brcmf_c_mkiovar(name, (char *)(&data_null), 0, (char *)(&var),
 			sizeof(var.buf));
 	BUG_ON(!len);
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_GET_VAR, &var, len);
@@ -417,7 +508,7 @@ brcmf_dev_iovar_setbuf(struct net_device *ndev, s8 * iovar, void *param,
 {
 	s32 iolen;
 
-	iolen = brcmu_mkiovar(iovar, param, paramlen, bufptr, buflen);
+	iolen = brcmf_c_mkiovar(iovar, param, paramlen, bufptr, buflen);
 	BUG_ON(!iolen);
 
 	return brcmf_exec_dcmd(ndev, BRCMF_C_SET_VAR, bufptr, iolen);
@@ -429,7 +520,7 @@ brcmf_dev_iovar_getbuf(struct net_device *ndev, s8 * iovar, void *param,
 {
 	s32 iolen;
 
-	iolen = brcmu_mkiovar(iovar, param, paramlen, bufptr, buflen);
+	iolen = brcmf_c_mkiovar(iovar, param, paramlen, bufptr, buflen);
 	BUG_ON(!iolen);
 
 	return brcmf_exec_dcmd(ndev, BRCMF_C_GET_VAR, bufptr, buflen);
@@ -475,7 +566,7 @@ static s32 brcmf_do_iscan(struct brcmf_cfg80211_priv *cfg_priv)
 	struct brcmf_cfg80211_iscan_ctrl *iscan = cfg_to_iscan(cfg_priv);
 	struct net_device *ndev = cfg_to_ndev(cfg_priv);
 	struct brcmf_ssid ssid;
-	s32 passive_scan;
+	__le32 passive_scan;
 	s32 err = 0;
 
 	/* Broadcast scan by default */
@@ -483,7 +574,7 @@ static s32 brcmf_do_iscan(struct brcmf_cfg80211_priv *cfg_priv)
 
 	iscan->state = WL_ISCAN_STATE_SCANING;
 
-	passive_scan = cfg_priv->active_scan ? 0 : 1;
+	passive_scan = cfg_priv->active_scan ? 0 : cpu_to_le32(1);
 	err = brcmf_exec_dcmd(cfg_to_ndev(cfg_priv), BRCMF_C_SET_PASSIVE_SCAN,
 			&passive_scan, sizeof(passive_scan));
 	if (err) {
@@ -511,7 +602,7 @@ __brcmf_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 	struct brcmf_cfg80211_priv *cfg_priv = ndev_to_cfg(ndev);
 	struct cfg80211_ssid *ssids;
 	struct brcmf_cfg80211_scan_req *sr = cfg_priv->scan_req_int;
-	s32 passive_scan;
+	__le32 passive_scan;
 	bool iscan_req;
 	bool spec_scan;
 	s32 err = 0;
@@ -567,7 +658,7 @@ __brcmf_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 			WL_SCAN("Broadcast scan\n");
 		}
 
-		passive_scan = cfg_priv->active_scan ? 0 : 1;
+		passive_scan = cfg_priv->active_scan ? 0 : cpu_to_le32(1);
 		err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_PASSIVE_SCAN,
 				&passive_scan, sizeof(passive_scan));
 		if (err) {
@@ -1152,7 +1243,7 @@ brcmf_set_key_mgmt(struct net_device *ndev, struct cfg80211_connect_params *sme)
 }
 
 static s32
-brcmf_set_set_sharedkey(struct net_device *ndev,
+brcmf_set_wep_sharedkey(struct net_device *ndev,
 		     struct cfg80211_connect_params *sme)
 {
 	struct brcmf_cfg80211_priv *cfg_priv = ndev_to_cfg(ndev);
@@ -1162,52 +1253,55 @@ brcmf_set_set_sharedkey(struct net_device *ndev,
 	s32 err = 0;
 
 	WL_CONN("key len (%d)\n", sme->key_len);
-	if (sme->key_len) {
-		sec = brcmf_read_prof(cfg_priv, WL_PROF_SEC);
-		WL_CONN("wpa_versions 0x%x cipher_pairwise 0x%x\n",
-		       sec->wpa_versions, sec->cipher_pairwise);
-		if (!
-		    (sec->wpa_versions & (NL80211_WPA_VERSION_1 |
-					  NL80211_WPA_VERSION_2))
-&& (sec->cipher_pairwise & (WLAN_CIPHER_SUITE_WEP40 |
-			    WLAN_CIPHER_SUITE_WEP104))) {
-			memset(&key, 0, sizeof(key));
-			key.len = (u32) sme->key_len;
-			key.index = (u32) sme->key_idx;
-			if (key.len > sizeof(key.data)) {
-				WL_ERR("Too long key length (%u)\n", key.len);
-				return -EINVAL;
-			}
-			memcpy(key.data, sme->key, key.len);
-			key.flags = BRCMF_PRIMARY_KEY;
-			switch (sec->cipher_pairwise) {
-			case WLAN_CIPHER_SUITE_WEP40:
-				key.algo = CRYPTO_ALGO_WEP1;
-				break;
-			case WLAN_CIPHER_SUITE_WEP104:
-				key.algo = CRYPTO_ALGO_WEP128;
-				break;
-			default:
-				WL_ERR("Invalid algorithm (%d)\n",
-				       sme->crypto.ciphers_pairwise[0]);
-				return -EINVAL;
-			}
-			/* Set the new key/index */
-			WL_CONN("key length (%d) key index (%d) algo (%d)\n",
-			       key.len, key.index, key.algo);
-			WL_CONN("key \"%s\"\n", key.data);
-			err = send_key_to_dongle(ndev, &key);
-			if (err)
-				return err;
 
-			if (sec->auth_type == NL80211_AUTHTYPE_OPEN_SYSTEM) {
-				WL_CONN("set auth_type to shared key\n");
-				val = 1;	/* shared key */
-				err = brcmf_dev_intvar_set(ndev, "auth", val);
-				if (err) {
-					WL_ERR("set auth failed (%d)\n", err);
-					return err;
-				}
+	if (sme->key_len == 0)
+		return 0;
+
+	sec = brcmf_read_prof(cfg_priv, WL_PROF_SEC);
+	WL_CONN("wpa_versions 0x%x cipher_pairwise 0x%x\n",
+		sec->wpa_versions, sec->cipher_pairwise);
+
+	if (sec->wpa_versions & (NL80211_WPA_VERSION_1 | NL80211_WPA_VERSION_2))
+		return 0;
+
+	if (sec->cipher_pairwise &
+	    (WLAN_CIPHER_SUITE_WEP40 | WLAN_CIPHER_SUITE_WEP104)) {
+		memset(&key, 0, sizeof(key));
+		key.len = (u32) sme->key_len;
+		key.index = (u32) sme->key_idx;
+		if (key.len > sizeof(key.data)) {
+			WL_ERR("Too long key length (%u)\n", key.len);
+			return -EINVAL;
+		}
+		memcpy(key.data, sme->key, key.len);
+		key.flags = BRCMF_PRIMARY_KEY;
+		switch (sec->cipher_pairwise) {
+		case WLAN_CIPHER_SUITE_WEP40:
+			key.algo = CRYPTO_ALGO_WEP1;
+			break;
+		case WLAN_CIPHER_SUITE_WEP104:
+			key.algo = CRYPTO_ALGO_WEP128;
+			break;
+		default:
+			WL_ERR("Invalid algorithm (%d)\n",
+			       sme->crypto.ciphers_pairwise[0]);
+			return -EINVAL;
+		}
+		/* Set the new key/index */
+		WL_CONN("key length (%d) key index (%d) algo (%d)\n",
+			key.len, key.index, key.algo);
+		WL_CONN("key \"%s\"\n", key.data);
+		err = send_key_to_dongle(ndev, &key);
+		if (err)
+			return err;
+
+		if (sec->auth_type == NL80211_AUTHTYPE_OPEN_SYSTEM) {
+			WL_CONN("set auth_type to shared key\n");
+			val = 1;	/* shared key */
+			err = brcmf_dev_intvar_set(ndev, "auth", val);
+			if (err) {
+				WL_ERR("set auth failed (%d)\n", err);
+				return err;
 			}
 		}
 	}
@@ -1271,9 +1365,9 @@ brcmf_cfg80211_connect(struct wiphy *wiphy, struct net_device *ndev,
 		goto done;
 	}
 
-	err = brcmf_set_set_sharedkey(ndev, sme);
+	err = brcmf_set_wep_sharedkey(ndev, sme);
 	if (err) {
-		WL_ERR("wl_set_set_sharedkey failed (%d)\n", err);
+		WL_ERR("brcmf_set_wep_sharedkey failed (%d)\n", err);
 		goto done;
 	}
 
@@ -1377,7 +1471,7 @@ brcmf_cfg80211_set_tx_power(struct wiphy *wiphy,
 	else
 		txpwrmw = (u16) dbm;
 	err = brcmf_dev_intvar_set(ndev, "qtxpower",
-			(s32) (brcmu_mw_to_qdbm(txpwrmw)));
+			(s32) (brcmf_mw_to_qdbm(txpwrmw)));
 	if (err)
 		WL_ERR("qtxpower error (%d)\n", err);
 	cfg_priv->conf->tx_power = dbm;
@@ -1406,7 +1500,7 @@ static s32 brcmf_cfg80211_get_tx_power(struct wiphy *wiphy, s32 *dbm)
 	}
 
 	result = (u8) (txpwrdbm & ~WL_TXPWR_OVERRIDE);
-	*dbm = (s32) brcmu_qdbm_to_mw(result);
+	*dbm = (s32) brcmf_qdbm_to_mw(result);
 
 done:
 	WL_TRACE("Exit\n");
@@ -2064,11 +2158,39 @@ static bool brcmf_is_ibssmode(struct brcmf_cfg80211_priv *cfg_priv)
 	return cfg_priv->conf->mode == WL_MODE_IBSS;
 }
 
+/*
+ * Traverse a string of 1-byte tag/1-byte length/variable-length value
+ * triples, returning a pointer to the substring whose first element
+ * matches tag
+ */
+static struct brcmf_tlv *brcmf_parse_tlvs(void *buf, int buflen, uint key)
+{
+	struct brcmf_tlv *elt;
+	int totlen;
+
+	elt = (struct brcmf_tlv *) buf;
+	totlen = buflen;
+
+	/* find tagged parameter */
+	while (totlen >= 2) {
+		int len = elt->len;
+
+		/* validate remaining totlen */
+		if ((elt->id == key) && (totlen >= (len + 2)))
+			return elt;
+
+		elt = (struct brcmf_tlv *) ((u8 *) elt + (len + 2));
+		totlen -= (len + 2);
+	}
+
+	return NULL;
+}
+
 static s32 brcmf_update_bss_info(struct brcmf_cfg80211_priv *cfg_priv)
 {
 	struct brcmf_bss_info *bi;
 	struct brcmf_ssid *ssid;
-	struct brcmu_tlv *tim;
+	struct brcmf_tlv *tim;
 	u16 beacon_interval;
 	u8 dtim_period;
 	size_t ie_len;
@@ -2098,7 +2220,7 @@ static s32 brcmf_update_bss_info(struct brcmf_cfg80211_priv *cfg_priv)
 	ie_len = le32_to_cpu(bi->ie_length);
 	beacon_interval = le16_to_cpu(bi->beacon_period);
 
-	tim = brcmu_parse_tlvs(ie, ie_len, WLAN_EID_TIM);
+	tim = brcmf_parse_tlvs(ie, ie_len, WLAN_EID_TIM);
 	if (tim)
 		dtim_period = tim->data[1];
 	else {
@@ -2432,7 +2554,7 @@ brcmf_dev_bufvar_set(struct net_device *ndev, s8 *name, s8 *buf, s32 len)
 	struct brcmf_cfg80211_priv *cfg_priv = ndev_to_cfg(ndev);
 	u32 buflen;
 
-	buflen = brcmu_mkiovar(name, buf, len, cfg_priv->dcmd_buf,
+	buflen = brcmf_c_mkiovar(name, buf, len, cfg_priv->dcmd_buf,
 			       WL_DCMD_LEN_MAX);
 	BUG_ON(!buflen);
 
@@ -2448,7 +2570,7 @@ brcmf_dev_bufvar_get(struct net_device *ndev, s8 *name, s8 *buf,
 	u32 len;
 	s32 err = 0;
 
-	len = brcmu_mkiovar(name, NULL, 0, cfg_priv->dcmd_buf,
+	len = brcmf_c_mkiovar(name, NULL, 0, cfg_priv->dcmd_buf,
 			    WL_DCMD_LEN_MAX);
 	BUG_ON(!len);
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_GET_VAR, cfg_priv->dcmd_buf,
@@ -2467,9 +2589,12 @@ brcmf_update_pmklist(struct net_device *ndev,
 		     struct brcmf_cfg80211_pmk_list *pmk_list, s32 err)
 {
 	int i, j;
+	int pmkid_len;
 
-	WL_CONN("No of elements %d\n", pmk_list->pmkids.npmkid);
-	for (i = 0; i < pmk_list->pmkids.npmkid; i++) {
+	pmkid_len = le32_to_cpu(pmk_list->pmkids.npmkid);
+
+	WL_CONN("No of elements %d\n", pmkid_len);
+	for (i = 0; i < pmkid_len; i++) {
 		WL_CONN("PMKID[%d]: %pM =\n", i,
 			&pmk_list->pmkids.pmkid[i].BSSID);
 		for (j = 0; j < WLAN_PMKID_LEN; j++)
@@ -2491,26 +2616,30 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
 	struct pmkid_list *pmkids = &cfg_priv->pmk_list->pmkids;
 	s32 err = 0;
 	int i;
+	int pmkid_len;
 
 	WL_TRACE("Enter\n");
 	if (!check_sys_up(wiphy))
 		return -EIO;
 
-	for (i = 0; i < pmkids->npmkid; i++)
+	pmkid_len = le32_to_cpu(pmkids->npmkid);
+	for (i = 0; i < pmkid_len; i++)
 		if (!memcmp(pmksa->bssid, pmkids->pmkid[i].BSSID, ETH_ALEN))
 			break;
 	if (i < WL_NUM_PMKIDS_MAX) {
 		memcpy(pmkids->pmkid[i].BSSID, pmksa->bssid, ETH_ALEN);
 		memcpy(pmkids->pmkid[i].PMKID, pmksa->pmkid, WLAN_PMKID_LEN);
-		if (i == pmkids->npmkid)
-			pmkids->npmkid++;
+		if (i == pmkid_len) {
+			pmkid_len++;
+			pmkids->npmkid = cpu_to_le32(pmkid_len);
+		}
 	} else
 		err = -EINVAL;
 
 	WL_CONN("set_pmksa,IW_PMKSA_ADD - PMKID: %pM =\n",
-		pmkids->pmkid[pmkids->npmkid].BSSID);
+		pmkids->pmkid[pmkid_len].BSSID);
 	for (i = 0; i < WLAN_PMKID_LEN; i++)
-		WL_CONN("%02x\n", pmkids->pmkid[pmkids->npmkid].PMKID[i]);
+		WL_CONN("%02x\n", pmkids->pmkid[pmkid_len].PMKID[i]);
 
 	err = brcmf_update_pmklist(ndev, cfg_priv->pmk_list, err);
 
@@ -2525,7 +2654,7 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
 	struct brcmf_cfg80211_priv *cfg_priv = wiphy_to_cfg(wiphy);
 	struct pmkid_list pmkid;
 	s32 err = 0;
-	int i;
+	int i, pmkid_len;
 
 	WL_TRACE("Enter\n");
 	if (!check_sys_up(wiphy))
@@ -2539,17 +2668,18 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
 	for (i = 0; i < WLAN_PMKID_LEN; i++)
 		WL_CONN("%02x\n", pmkid.pmkid[0].PMKID[i]);
 
-	for (i = 0; i < cfg_priv->pmk_list->pmkids.npmkid; i++)
+	pmkid_len = le32_to_cpu(cfg_priv->pmk_list->pmkids.npmkid);
+	for (i = 0; i < pmkid_len; i++)
 		if (!memcmp
 		    (pmksa->bssid, &cfg_priv->pmk_list->pmkids.pmkid[i].BSSID,
 		     ETH_ALEN))
 			break;
 
-	if ((cfg_priv->pmk_list->pmkids.npmkid > 0)
-	    && (i < cfg_priv->pmk_list->pmkids.npmkid)) {
+	if ((pmkid_len > 0)
+	    && (i < pmkid_len)) {
 		memset(&cfg_priv->pmk_list->pmkids.pmkid[i], 0,
 		       sizeof(struct pmkid));
-		for (; i < (cfg_priv->pmk_list->pmkids.npmkid - 1); i++) {
+		for (; i < (pmkid_len - 1); i++) {
 			memcpy(&cfg_priv->pmk_list->pmkids.pmkid[i].BSSID,
 			       &cfg_priv->pmk_list->pmkids.pmkid[i + 1].BSSID,
 			       ETH_ALEN);
@@ -2557,7 +2687,7 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
 			       &cfg_priv->pmk_list->pmkids.pmkid[i + 1].PMKID,
 			       WLAN_PMKID_LEN);
 		}
-		cfg_priv->pmk_list->pmkids.npmkid--;
+		cfg_priv->pmk_list->pmkids.npmkid = cpu_to_le32(pmkid_len - 1);
 	} else
 		err = -EINVAL;
 
@@ -2759,7 +2889,7 @@ static void brcmf_clear_assoc_ies(struct brcmf_cfg80211_priv *cfg_priv)
 static s32 brcmf_get_assoc_ies(struct brcmf_cfg80211_priv *cfg_priv)
 {
 	struct net_device *ndev = cfg_to_ndev(cfg_priv);
-	struct brcmf_cfg80211_assoc_ielen *assoc_info;
+	struct brcmf_cfg80211_assoc_ielen_le *assoc_info;
 	struct brcmf_cfg80211_connect_info *conn_info = cfg_to_conn(cfg_priv);
 	u32 req_len;
 	u32 resp_len;
@@ -2773,9 +2903,10 @@ static s32 brcmf_get_assoc_ies(struct brcmf_cfg80211_priv *cfg_priv)
 		WL_ERR("could not get assoc info (%d)\n", err);
 		return err;
 	}
-	assoc_info = (struct brcmf_cfg80211_assoc_ielen *)cfg_priv->extra_buf;
-	req_len = assoc_info->req_len;
-	resp_len = assoc_info->resp_len;
+	assoc_info =
+		(struct brcmf_cfg80211_assoc_ielen_le *)cfg_priv->extra_buf;
+	req_len = le32_to_cpu(assoc_info->req_len);
+	resp_len = le32_to_cpu(assoc_info->resp_len);
 	if (req_len) {
 		err = brcmf_dev_bufvar_get(ndev, "assoc_req_ies",
 					   cfg_priv->extra_buf,
@@ -3382,8 +3513,8 @@ static s32 brcmf_dongle_eventmsg(struct net_device *ndev)
 	WL_TRACE("Enter\n");
 
 	/* Setup event_msgs */
-	brcmu_mkiovar("event_msgs", eventmask, BRCMF_EVENTING_MASK_LEN, iovbuf,
-		    sizeof(iovbuf));
+	brcmf_c_mkiovar("event_msgs", eventmask, BRCMF_EVENTING_MASK_LEN,
+			iovbuf, sizeof(iovbuf));
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_GET_VAR, iovbuf, sizeof(iovbuf));
 	if (err) {
 		WL_ERR("Get event_msgs error (%d)\n", err);
@@ -3411,8 +3542,8 @@ static s32 brcmf_dongle_eventmsg(struct net_device *ndev)
 	setbit(eventmask, BRCMF_E_JOIN_START);
 	setbit(eventmask, BRCMF_E_SCAN_COMPLETE);
 
-	brcmu_mkiovar("event_msgs", eventmask, BRCMF_EVENTING_MASK_LEN, iovbuf,
-		    sizeof(iovbuf));
+	brcmf_c_mkiovar("event_msgs", eventmask, BRCMF_EVENTING_MASK_LEN,
+			iovbuf, sizeof(iovbuf));
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_VAR, iovbuf, sizeof(iovbuf));
 	if (err) {
 		WL_ERR("Set event_msgs error (%d)\n", err);
@@ -3428,17 +3559,20 @@ static s32
 brcmf_dongle_roam(struct net_device *ndev, u32 roamvar, u32 bcn_timeout)
 {
 	s8 iovbuf[32];
-	s32 roamtrigger[2];
-	s32 roam_delta[2];
 	s32 err = 0;
+	__le32 roamtrigger[2];
+	__le32 roam_delta[2];
+	__le32 bcn_to_le;
+	__le32 roamvar_le;
 
 	/*
 	 * Setup timeout if Beacons are lost and roam is
 	 * off to report link down
 	 */
 	if (roamvar) {
-		brcmu_mkiovar("bcn_timeout", (char *)&bcn_timeout,
-			sizeof(bcn_timeout), iovbuf, sizeof(iovbuf));
+		bcn_to_le = cpu_to_le32(bcn_timeout);
+		brcmf_c_mkiovar("bcn_timeout", (char *)&bcn_to_le,
+			sizeof(bcn_to_le), iovbuf, sizeof(iovbuf));
 		err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_VAR,
 				   iovbuf, sizeof(iovbuf));
 		if (err) {
@@ -3452,16 +3586,17 @@ brcmf_dongle_roam(struct net_device *ndev, u32 roamvar, u32 bcn_timeout)
 	 * to take care of roaming
 	 */
 	WL_INFO("Internal Roaming = %s\n", roamvar ? "Off" : "On");
-	brcmu_mkiovar("roam_off", (char *)&roamvar,
-				sizeof(roamvar), iovbuf, sizeof(iovbuf));
+	roamvar_le = cpu_to_le32(roamvar);
+	brcmf_c_mkiovar("roam_off", (char *)&roamvar_le,
+				sizeof(roamvar_le), iovbuf, sizeof(iovbuf));
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_VAR, iovbuf, sizeof(iovbuf));
 	if (err) {
 		WL_ERR("roam_off error (%d)\n", err);
 		goto dongle_rom_out;
 	}
 
-	roamtrigger[0] = WL_ROAM_TRIGGER_LEVEL;
-	roamtrigger[1] = BRCM_BAND_ALL;
+	roamtrigger[0] = cpu_to_le32(WL_ROAM_TRIGGER_LEVEL);
+	roamtrigger[1] = cpu_to_le32(BRCM_BAND_ALL);
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_ROAM_TRIGGER,
 			(void *)roamtrigger, sizeof(roamtrigger));
 	if (err) {
@@ -3469,8 +3604,8 @@ brcmf_dongle_roam(struct net_device *ndev, u32 roamvar, u32 bcn_timeout)
 		goto dongle_rom_out;
 	}
 
-	roam_delta[0] = WL_ROAM_DELTA;
-	roam_delta[1] = BRCM_BAND_ALL;
+	roam_delta[0] = cpu_to_le32(WL_ROAM_DELTA);
+	roam_delta[1] = cpu_to_le32(BRCM_BAND_ALL);
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_ROAM_DELTA,
 				(void *)roam_delta, sizeof(roam_delta));
 	if (err) {
@@ -3484,12 +3619,15 @@ dongle_rom_out:
 
 static s32
 brcmf_dongle_scantime(struct net_device *ndev, s32 scan_assoc_time,
-		s32 scan_unassoc_time, s32 scan_passive_time)
+		      s32 scan_unassoc_time, s32 scan_passive_time)
 {
 	s32 err = 0;
+	__le32 scan_assoc_tm_le = cpu_to_le32(scan_assoc_time);
+	__le32 scan_unassoc_tm_le = cpu_to_le32(scan_unassoc_time);
+	__le32 scan_passive_tm_le = cpu_to_le32(scan_passive_time);
 
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_SCAN_CHANNEL_TIME,
-			   &scan_assoc_time, sizeof(scan_assoc_time));
+			   &scan_assoc_tm_le, sizeof(scan_assoc_tm_le));
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			WL_INFO("Scan assoc time is not supported\n");
@@ -3498,7 +3636,7 @@ brcmf_dongle_scantime(struct net_device *ndev, s32 scan_assoc_time,
 		goto dongle_scantime_out;
 	}
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_SCAN_UNASSOC_TIME,
-			   &scan_unassoc_time, sizeof(scan_unassoc_time));
+			   &scan_unassoc_tm_le, sizeof(scan_unassoc_tm_le));
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			WL_INFO("Scan unassoc time is not supported\n");
@@ -3508,7 +3646,7 @@ brcmf_dongle_scantime(struct net_device *ndev, s32 scan_assoc_time,
 	}
 
 	err = brcmf_exec_dcmd(ndev, BRCMF_C_SET_SCAN_PASSIVE_TIME,
-			   &scan_passive_time, sizeof(scan_passive_time));
+			   &scan_passive_tm_le, sizeof(scan_passive_tm_le));
 	if (err) {
 		if (err == -EOPNOTSUPP)
 			WL_INFO("Scan passive time is not supported\n");

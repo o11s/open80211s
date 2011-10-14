@@ -330,14 +330,14 @@ enum brcmf_bus_state {
  * start matching, the pattern to match, the size of the pattern, and a bitmask
  * that indicates which bits within the pattern should be matched.
  */
-struct brcmf_pkt_filter_pattern {
+struct brcmf_pkt_filter_pattern_le {
 	/*
 	 * Offset within received packet to start pattern matching.
 	 * Offset '0' is the first byte of the ethernet header.
 	 */
-	u32 offset;
+	__le32 offset;
 	/* Size of the pattern.  Bitmask must be the same size.*/
-	u32 size_bytes;
+	__le32 size_bytes;
 	/*
 	 * Variable length mask and pattern data. mask starts at offset 0.
 	 * Pattern immediately follows mask.
@@ -346,19 +346,19 @@ struct brcmf_pkt_filter_pattern {
 };
 
 /* IOVAR "pkt_filter_add" parameter. Used to install packet filters. */
-struct brcmf_pkt_filter {
-	u32 id;		/* Unique filter id, specified by app. */
-	u32 type;		/* Filter type (WL_PKT_FILTER_TYPE_xxx). */
-	u32 negate_match;	/* Negate the result of filter matches */
+struct brcmf_pkt_filter_le {
+	__le32 id;		/* Unique filter id, specified by app. */
+	__le32 type;		/* Filter type (WL_PKT_FILTER_TYPE_xxx). */
+	__le32 negate_match;	/* Negate the result of filter matches */
 	union {			/* Filter definitions */
-		struct brcmf_pkt_filter_pattern pattern; /* Filter pattern */
+		struct brcmf_pkt_filter_pattern_le pattern; /* Filter pattern */
 	} u;
 };
 
 /* IOVAR "pkt_filter_enable" parameter. */
-struct brcmf_pkt_filter_enable {
-	u32 id;		/* Unique filter id */
-	u32 enable;		/* Enable/disable bool */
+struct brcmf_pkt_filter_enable_le {
+	__le32 id;		/* Unique filter id */
+	__le32 enable;		/* Enable/disable bool */
 };
 
 /* BSS info structure
@@ -680,6 +680,9 @@ struct bcmevent_name {
 
 extern const struct bcmevent_name bcmevent_names[];
 
+extern uint brcmf_c_mkiovar(char *name, char *data, uint datalen,
+			  char *buf, uint len);
+
 /* Indication from bus module regarding presence/insertion of dongle.
  * Return struct brcmf_pub pointer, used as handle to OS module in later calls.
  * Returned structure should have bus and prot pointers filled in.
@@ -720,7 +723,7 @@ extern int brcmf_proto_cdc_query_dcmd(struct brcmf_pub *drvr, int ifidx,
 extern int brcmf_os_proto_block(struct brcmf_pub *drvr);
 extern int brcmf_os_proto_unblock(struct brcmf_pub *drvr);
 #ifdef BCMDBG
-extern int brcmf_write_to_file(struct brcmf_pub *drvr, u8 *buf, int size);
+extern int brcmf_write_to_file(struct brcmf_pub *drvr, const u8 *buf, int size);
 #endif				/* BCMDBG */
 
 extern int brcmf_ifname2idx(struct brcmf_info *drvr_priv, char *name);
