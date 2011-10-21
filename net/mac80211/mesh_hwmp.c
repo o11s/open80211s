@@ -1028,8 +1028,11 @@ int mesh_nexthop_lookup(struct sk_buff *skb,
 					PREQ_Q_F_START | PREQ_Q_F_REFRESH);
 		}
 		next_hop = rcu_dereference(mpath->next_hop);
-		if (next_hop)
+		if (next_hop) {
 			memcpy(hdr->addr1, next_hop->sta.addr, ETH_ALEN);
+			skb_set_queue_mapping(skb,
+				ieee80211_select_queue(sdata, skb));
+		}
 		else
 			err = -ENOENT;
 	} else {

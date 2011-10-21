@@ -270,6 +270,11 @@ static void prepare_for_gate(struct sk_buff *skb, char *dst_addr,
 	memcpy(hdr->addr1, next_hop, ETH_ALEN);
 	rcu_read_unlock();
 	memcpy(hdr->addr3, dst_addr, ETH_ALEN);
+
+	/*  once next hop is set we can set qos header */
+	skb_set_queue_mapping(skb,
+			ieee80211_select_queue(gate_mpath->sdata, skb));
+	ieee80211_set_qos_hdr(gate_mpath->sdata, skb);
 }
 
 /**
