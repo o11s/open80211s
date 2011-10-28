@@ -776,6 +776,10 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx)
 	      (ack_policy == IEEE80211_QOS_CTL_ACK_POLICY_NORMAL)))
 		goto dont_reorder;
 
+	/* not actually part of this BA session */
+	if (compare_ether_addr(hdr->addr1, rx->sdata->vif.addr) != 0)
+		goto dont_reorder;
+
 	/* new, potentially un-ordered, ampdu frame - process it */
 
 	/* reset session timer */
