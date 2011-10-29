@@ -182,6 +182,7 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
 			    sdata->u.mesh.ie_len);
 	if (!skb)
 		return -1;
+
 	skb_reserve(skb, local->hw.extra_tx_headroom);
 	mgmt = (struct ieee80211_mgmt *) skb_put(skb, hdr_len);
 	memset(mgmt, 0, hdr_len);

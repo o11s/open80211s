@@ -29,7 +29,7 @@
 #include <net/genetlink.h>
 #include "mac80211_hwsim.h"
 
-#define WARN_QUEUE 100
+#define WARN_QUEUE 2
 #define MAX_QUEUE 200
 
 MODULE_AUTHOR("Jouni Malinen");
@@ -533,12 +533,11 @@ static void mac80211_hwsim_tx_frame_nl(struct ieee80211_hw *hw,
 
 	if (data->ps != PS_DISABLED)
 		hdr->frame_control |= cpu_to_le16(IEEE80211_FCTL_PM);
-	/* If the queue contains MAX_QUEUE skb's drop some */
-	if (skb_queue_len(&data->pending) >= MAX_QUEUE) {
-		/* Droping until WARN_QUEUE level */
-		while (skb_queue_len(&data->pending) >= WARN_QUEUE)
-			skb_dequeue(&data->pending);
-	}
+
+	if (skb_queue_len(&data->pending) >= WARN_QUEUE)
+		ieee80211_stop_queues(hw);
+
+	BUG_ON(skb_queue_len(&data->pending) >= MAX_QUEUE);
 
 	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_ATOMIC);
 	if (skb == NULL)
@@ -1458,6 +1457,7 @@ static int hwsim_tx_info_frame_received_nl(struct sk_buff *skb_2,
 	skb_queue_walk_safe(&data2->pending, skb, tmp) {
 		if (skb == ret_skb) {
 			skb_unlink(skb, &data2->pending);
+			ieee80211_wake_queues(data2->hw);
 			found = true;
 			break;
 		}
