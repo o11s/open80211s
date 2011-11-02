@@ -58,6 +58,8 @@ u16 ieee80211_select_queue(struct ieee80211_sub_if_data *sdata,
 			   struct sk_buff *skb)
 {
 	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	__le16 fc = hdr->frame_control;
 	struct sta_info *sta = NULL;
 	const u8 *ra = NULL;
 	bool qos = false;
@@ -84,6 +86,7 @@ u16 ieee80211_select_queue(struct ieee80211_sub_if_data *sdata,
 #ifdef CONFIG_MAC80211_MESH
 	case NL80211_IFTYPE_MESH_POINT:
 		ra = skb->data;
+		qos = true;
 		break;
 #endif
 	case NL80211_IFTYPE_STATION:
@@ -102,6 +105,11 @@ u16 ieee80211_select_queue(struct ieee80211_sub_if_data *sdata,
 			qos = test_sta_flag(sta, WLAN_STA_WME);
 	}
 	rcu_read_unlock();
+
+	if (qos && ieee80211_is_mgmt(fc)) {
+		skb->priority = 6;
+		return IEEE80211_AC_VO;
+	}
 
 	if (!qos) {
 		skb->priority = 0; /* required for correct WPA/11i MIC */
