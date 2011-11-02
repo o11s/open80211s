@@ -1063,12 +1063,15 @@ void mesh_path_timer(unsigned long data)
 {
 	struct mesh_path *mpath = (void *) data;
 	struct ieee80211_sub_if_data *sdata = mpath->sdata;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	int ret;
 
 	if (sdata->local->quiescing)
 		return;
 
 	spin_lock_bh(&mpath->state_lock);
+	printk(KERN_ERR "%s: frame_queue: %d", sdata->name, skb_queue_len(&mpath->frame_queue));
+	mod_timer(&mpath->timer, jiffies + 1 * HZ);
 	if (mpath->flags & MESH_PATH_RESOLVED ||
 			(!(mpath->flags & MESH_PATH_RESOLVING))) {
 		mpath->flags &= ~(MESH_PATH_RESOLVING | MESH_PATH_RESOLVED);
