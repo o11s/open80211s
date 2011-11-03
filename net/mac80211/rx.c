@@ -1892,12 +1892,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		/* illegal frame */
 		return RX_DROP_MONITOR;
 
-	if (ieee80211_queue_stopped(&local->hw, skb_get_queue_mapping(skb))) {
-		IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
-						dropped_frames_congestion);
-		return RX_DROP_MONITOR;
-	}
-
 	if (mesh_hdr->flags & MESH_FLAGS_AE) {
 		struct mesh_path *mppath;
 		char *proxied_addr;
@@ -1976,6 +1970,12 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 				IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
 								fwded_unicast);
+			}
+			if (ieee80211_queue_stopped(&local->hw,
+						skb_get_queue_mapping(skb))) {
+				IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
+						   dropped_frames_congestion);
+				return RX_DROP_MONITOR;
 			}
 			IEEE80211_IFSTA_MESH_CTR_INC(&sdata->u.mesh,
 						     fwded_frames);
