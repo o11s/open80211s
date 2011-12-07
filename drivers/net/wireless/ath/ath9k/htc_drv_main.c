@@ -178,6 +178,8 @@ static void ath9k_htc_set_opmode(struct ath9k_htc_priv *priv)
 		priv->ah->opmode = NL80211_IFTYPE_ADHOC;
 	else if (priv->num_ap_vif)
 		priv->ah->opmode = NL80211_IFTYPE_AP;
+	else if (priv->num_mbss_vif)
+		priv->ah->opmode = NL80211_IFTYPE_MESH_POINT;
 	else
 		priv->ah->opmode = NL80211_IFTYPE_STATION;
 
@@ -1051,8 +1053,10 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 	}
 
 	if (((vif->type == NL80211_IFTYPE_AP) ||
-	     (vif->type == NL80211_IFTYPE_ADHOC)) &&
-	    ((priv->num_ap_vif + priv->num_ibss_vif) >= ATH9K_HTC_MAX_BCN_VIF)) {
+	     (vif->type == NL80211_IFTYPE_ADHOC) ||
+	     (vif->type == NL80211_IFTYPE_MESH_POINT)) &&
+	    ((priv->num_ap_vif + priv->num_ibss_vif + priv->num_mbss_vif) >=
+	     ATH9K_HTC_MAX_BCN_VIF)) {
 		ath_err(common, "Max. number of beaconing interfaces reached\n");
 		mutex_unlock(&priv->mutex);
 		return -ENOBUFS;
@@ -1071,6 +1075,9 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 		break;
 	case NL80211_IFTYPE_AP:
 		hvif.opmode = HTC_M_HOSTAP;
+		break;
+	case NL80211_IFTYPE_MESH_POINT:
+		hvif.opmode = HTC_M_WDS;	/* close enough */
 		break;
 	default:
 		ath_err(common,
@@ -1104,6 +1111,7 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 	INC_VIF(priv, vif->type);
 
 	if ((vif->type == NL80211_IFTYPE_AP) ||
+	    (vif->type == NL80211_IFTYPE_MESH_POINT) ||
 	    (vif->type == NL80211_IFTYPE_ADHOC))
 		ath9k_htc_assign_bslot(priv, vif);
 
