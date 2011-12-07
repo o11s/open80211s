@@ -180,6 +180,8 @@ static void ath9k_htc_set_opmode(struct ath9k_htc_priv *priv)
 		priv->ah->opmode = NL80211_IFTYPE_ADHOC;
 	else if (priv->num_ap_vif)
 		priv->ah->opmode = NL80211_IFTYPE_AP;
+	else if (priv->num_mbss_vif)
+		priv->ah->opmode = NL80211_IFTYPE_MESH_POINT;
 	else
 		priv->ah->opmode = NL80211_IFTYPE_STATION;
 
@@ -1038,6 +1040,28 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 
 	mutex_lock(&priv->mutex);
 
+	if (priv->nvifs >= ATH9K_HTC_MAX_VIF) {
+		mutex_unlock(&priv->mutex);
+		return -ENOBUFS;
+	}
+
+	if (priv->num_ibss_vif ||
+	    (priv->nvifs && vif->type == NL80211_IFTYPE_ADHOC)) {
+		ath_err(common, "IBSS coexistence with other modes is not allowed\n");
+		mutex_unlock(&priv->mutex);
+		return -ENOBUFS;
+	}
+
+	if (((vif->type == NL80211_IFTYPE_AP) ||
+	     (vif->type == NL80211_IFTYPE_ADHOC) ||
+	     (vif->type == NL80211_IFTYPE_MESH_POINT)) &&
+	    ((priv->num_ap_vif + priv->num_ibss_vif + priv->num_mbss_vif) >=
+	     ATH9K_HTC_MAX_BCN_VIF)) {
+		ath_err(common, "Max. number of beaconing interfaces reached\n");
+		mutex_unlock(&priv->mutex);
+		return -ENOBUFS;
+	}
+
 	ath9k_htc_ps_wakeup(priv);
 	memset(&hvif, 0, sizeof(struct ath9k_htc_target_vif));
 	memcpy(&hvif.myaddr, vif->addr, ETH_ALEN);
@@ -1051,6 +1075,9 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 		break;
 	case NL80211_IFTYPE_AP:
 		hvif.opmode = HTC_M_HOSTAP;
+		break;
+	case NL80211_IFTYPE_MESH_POINT:
+		hvif.opmode = HTC_M_WDS;	/* close enough */
 		break;
 	default:
 		ath_err(common,
@@ -1084,6 +1111,7 @@ static int ath9k_htc_add_interface(struct ieee80211_hw *hw,
 	INC_VIF(priv, vif->type);
 
 	if ((vif->type == NL80211_IFTYPE_AP) ||
+	    (vif->type == NL80211_IFTYPE_MESH_POINT) ||
 	    (vif->type == NL80211_IFTYPE_ADHOC))
 		ath9k_htc_assign_bslot(priv, vif);
 
