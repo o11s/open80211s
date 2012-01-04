@@ -580,14 +580,22 @@ void b43_tsf_read(struct b43_wldev *dev, u64 *tsf)
 
 static void b43_time_lock(struct b43_wldev *dev)
 {
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~0, B43_MACCTL_TBTTHOLD);
+	u32 macctl;
+
+	macctl = b43_read32(dev, B43_MMIO_MACCTL);
+	macctl |= B43_MACCTL_TBTTHOLD;
+	b43_write32(dev, B43_MMIO_MACCTL, macctl);
 	/* Commit the write */
 	b43_read32(dev, B43_MMIO_MACCTL);
 }
 
 static void b43_time_unlock(struct b43_wldev *dev)
 {
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_TBTTHOLD, 0);
+	u32 macctl;
+
+	macctl = b43_read32(dev, B43_MMIO_MACCTL);
+	macctl &= ~B43_MACCTL_TBTTHOLD;
+	b43_write32(dev, B43_MMIO_MACCTL, macctl);
 	/* Commit the write */
 	b43_read32(dev, B43_MMIO_MACCTL);
 }
@@ -2494,8 +2502,10 @@ static int b43_upload_microcode(struct b43_wldev *dev)
 	b43_write32(dev, B43_MMIO_GEN_IRQ_REASON, B43_IRQ_ALL);
 
 	/* Start the microcode PSM */
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_PSM_JMP0,
-		      B43_MACCTL_PSM_RUN);
+	macctl = b43_read32(dev, B43_MMIO_MACCTL);
+	macctl &= ~B43_MACCTL_PSM_JMP0;
+	macctl |= B43_MACCTL_PSM_RUN;
+	b43_write32(dev, B43_MMIO_MACCTL, macctl);
 
 	/* Wait for the microcode to load and respond */
 	i = 0;
@@ -2595,9 +2605,10 @@ static int b43_upload_microcode(struct b43_wldev *dev)
 	return 0;
 
 error:
-	/* Stop the microcode PSM. */
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_PSM_RUN,
-		      B43_MACCTL_PSM_JMP0);
+	macctl = b43_read32(dev, B43_MMIO_MACCTL);
+	macctl &= ~B43_MACCTL_PSM_RUN;
+	macctl |= B43_MACCTL_PSM_JMP0;
+	b43_write32(dev, B43_MMIO_MACCTL, macctl);
 
 	return err;
 }
@@ -2712,8 +2723,11 @@ static int b43_gpio_init(struct b43_wldev *dev)
 	struct ssb_device *gpiodev;
 	u32 mask, set;
 
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_GPOUTSMSK, 0);
-	b43_maskset16(dev, B43_MMIO_GPIO_MASK, ~0, 0xF);
+	b43_write32(dev, B43_MMIO_MACCTL, b43_read32(dev, B43_MMIO_MACCTL)
+		    & ~B43_MACCTL_GPOUTSMSK);
+
+	b43_write16(dev, B43_MMIO_GPIO_MASK, b43_read16(dev, B43_MMIO_GPIO_MASK)
+		    | 0x000F);
 
 	mask = 0x0000001F;
 	set = 0x0000000F;
@@ -2803,7 +2817,9 @@ void b43_mac_enable(struct b43_wldev *dev)
 	dev->mac_suspended--;
 	B43_WARN_ON(dev->mac_suspended < 0);
 	if (dev->mac_suspended == 0) {
-		b43_maskset32(dev, B43_MMIO_MACCTL, ~0, B43_MACCTL_ENABLED);
+		b43_write32(dev, B43_MMIO_MACCTL,
+			    b43_read32(dev, B43_MMIO_MACCTL)
+			    | B43_MACCTL_ENABLED);
 		b43_write32(dev, B43_MMIO_GEN_IRQ_REASON,
 			    B43_IRQ_MAC_SUSPENDED);
 		/* Commit writes */
@@ -2824,7 +2840,9 @@ void b43_mac_suspend(struct b43_wldev *dev)
 
 	if (dev->mac_suspended == 0) {
 		b43_power_saving_ctl_bits(dev, B43_PS_AWAKE);
-		b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_ENABLED, 0);
+		b43_write32(dev, B43_MMIO_MACCTL,
+			    b43_read32(dev, B43_MMIO_MACCTL)
+			    & ~B43_MACCTL_ENABLED);
 		/* force pci to flush the write */
 		b43_read32(dev, B43_MMIO_MACCTL);
 		for (i = 35; i; i--) {
@@ -2930,10 +2948,15 @@ static void b43_adjust_opmode(struct b43_wldev *dev)
 	 *        so always disable it. If we want to implement PMQ,
 	 *        we need to enable it here (clear DISCPMQ) in AP mode.
 	 */
-	if (0  /* ctl & B43_MACCTL_AP */)
-		b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_DISCPMQ, 0);
-	else
-		b43_maskset32(dev, B43_MMIO_MACCTL, ~0, B43_MACCTL_DISCPMQ);
+	if (0  /* ctl & B43_MACCTL_AP */) {
+		b43_write32(dev, B43_MMIO_MACCTL,
+			    b43_read32(dev, B43_MMIO_MACCTL)
+			    & ~B43_MACCTL_DISCPMQ);
+	} else {
+		b43_write32(dev, B43_MMIO_MACCTL,
+			    b43_read32(dev, B43_MMIO_MACCTL)
+			    | B43_MACCTL_DISCPMQ);
+	}
 }
 
 static void b43_rate_memory_write(struct b43_wldev *dev, u16 rate, int is_ofdm)
@@ -3074,8 +3097,10 @@ static int b43_chip_init(struct b43_wldev *dev)
 	if (dev->dev->core_rev < 5)
 		b43_write32(dev, 0x010C, 0x01000000);
 
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_INFRA, 0);
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~0, B43_MACCTL_INFRA);
+	b43_write32(dev, B43_MMIO_MACCTL, b43_read32(dev, B43_MMIO_MACCTL)
+		    & ~B43_MACCTL_INFRA);
+	b43_write32(dev, B43_MMIO_MACCTL, b43_read32(dev, B43_MMIO_MACCTL)
+		    | B43_MACCTL_INFRA);
 
 	/* Probe Response Timeout value */
 	/* FIXME: Default to 0, has to be set by ioctl probably... :-/ */
@@ -4554,6 +4579,8 @@ static void b43_set_pretbtt(struct b43_wldev *dev)
 /* Locking: wl->mutex */
 static void b43_wireless_core_exit(struct b43_wldev *dev)
 {
+	u32 macctl;
+
 	B43_WARN_ON(dev && b43_status(dev) > B43_STAT_INITIALIZED);
 	if (!dev || b43_status(dev) != B43_STAT_INITIALIZED)
 		return;
@@ -4564,8 +4591,10 @@ static void b43_wireless_core_exit(struct b43_wldev *dev)
 	b43_set_status(dev, B43_STAT_UNINIT);
 
 	/* Stop the microcode PSM. */
-	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_PSM_RUN,
-		      B43_MACCTL_PSM_JMP0);
+	macctl = b43_read32(dev, B43_MMIO_MACCTL);
+	macctl &= ~B43_MACCTL_PSM_RUN;
+	macctl |= B43_MACCTL_PSM_JMP0;
+	b43_write32(dev, B43_MMIO_MACCTL, macctl);
 
 	b43_dma_free(dev);
 	b43_pio_free(dev);
