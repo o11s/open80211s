@@ -835,8 +835,8 @@ struct mesh_config {
 struct mesh_setup {
 	const u8 *mesh_id;
 	u8 mesh_id_len;
-	u8  path_sel_proto;
-	u8  path_metric;
+	u8 path_sel_proto;
+	u8 path_metric;
 	const u8 *ie;
 	u8 ie_len;
 	bool is_authenticated;
