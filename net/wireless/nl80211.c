@@ -3280,6 +3280,8 @@ static int nl80211_get_mesh_config(struct sk_buff *skb,
 			cur_params.element_ttl);
 	NLA_PUT_U8(msg, NL80211_MESHCONF_AUTO_OPEN_PLINKS,
 			cur_params.auto_open_plinks);
+	NLA_PUT_U32(msg, NL80211_MESHCONF_SYNC_OFFSET_MAX_NEIGHBOR,
+			cur_params.dot11MeshNbrOffsetMaxNeighbor);
 	NLA_PUT_U8(msg, NL80211_MESHCONF_HWMP_MAX_PREQ_RETRIES,
 			cur_params.dot11MeshHWMPmaxPREQretries);
 	NLA_PUT_U32(msg, NL80211_MESHCONF_PATH_REFRESH_TIME,
@@ -3324,6 +3326,7 @@ static const struct nla_policy nl80211_meshconf_params_policy[NL80211_MESHCONF_A
 	[NL80211_MESHCONF_TTL] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_ELEMENT_TTL] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_AUTO_OPEN_PLINKS] = { .type = NLA_U8 },
+	[NL80211_MESHCONF_SYNC_OFFSET_MAX_NEIGHBOR] = { .type = NLA_U32 },
 
 	[NL80211_MESHCONF_HWMP_MAX_PREQ_RETRIES] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_PATH_REFRESH_TIME] = { .type = NLA_U32 },
@@ -3341,6 +3344,7 @@ static const struct nla_policy nl80211_meshconf_params_policy[NL80211_MESHCONF_A
 
 static const struct nla_policy
 	nl80211_mesh_setup_params_policy[NL80211_MESH_SETUP_ATTR_MAX+1] = {
+	[NL80211_MESH_SETUP_ENABLE_VENDOR_SYNC] = { .type = NLA_U8 },
 	[NL80211_MESH_SETUP_ENABLE_VENDOR_PATH_SEL] = { .type = NLA_U8 },
 	[NL80211_MESH_SETUP_ENABLE_VENDOR_METRIC] = { .type = NLA_U8 },
 	[NL80211_MESH_SETUP_USERSPACE_AUTH] = { .type = NLA_FLAG },
@@ -3393,6 +3397,8 @@ do {\
 			mask, NL80211_MESHCONF_ELEMENT_TTL, nla_get_u8);
 	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, auto_open_plinks,
 			mask, NL80211_MESHCONF_AUTO_OPEN_PLINKS, nla_get_u8);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, dot11MeshNbrOffsetMaxNeighbor,
+			mask, NL80211_MESHCONF_SYNC_OFFSET_MAX_NEIGHBOR, nla_get_u32);
 	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, dot11MeshHWMPmaxPREQretries,
 			mask, NL80211_MESHCONF_HWMP_MAX_PREQ_RETRIES,
 			nla_get_u8);
@@ -3449,6 +3455,12 @@ static int nl80211_parse_mesh_setup(struct genl_info *info,
 			     info->attrs[NL80211_ATTR_MESH_SETUP],
 			     nl80211_mesh_setup_params_policy))
 		return -EINVAL;
+
+	if (tb[NL80211_MESH_SETUP_ENABLE_VENDOR_SYNC])
+		setup->sync_method =
+		(nla_get_u8(tb[NL80211_MESH_SETUP_ENABLE_VENDOR_SYNC])) ?
+		 IEEE80211_SYNC_METHOD_VENDOR :
+		 IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET;
 
 	if (tb[NL80211_MESH_SETUP_ENABLE_VENDOR_PATH_SEL])
 		setup->path_sel_proto =
