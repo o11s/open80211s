@@ -13,9 +13,6 @@
 #include "ieee80211_i.h"
 #include "mesh.h"
 
-#define MESHCONF_CAPAB_ACCEPT_PLINKS 0x01
-#define MESHCONF_CAPAB_FORWARDING    0x08
-
 #define TMR_RUNNING_HK	0
 #define TMR_RUNNING_MP	1
 #define TMR_RUNNING_MPR	2
