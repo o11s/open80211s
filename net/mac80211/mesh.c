@@ -248,9 +248,14 @@ mesh_add_meshconf_ie(struct sk_buff *skb, struct ieee80211_sub_if_data *sdata)
 	/* Mesh capability */
 	ifmsh->accepting_plinks = mesh_plink_availables(sdata);
 	*pos = MESHCONF_CAPAB_FORWARDING;
-	*pos++ |= ifmsh->accepting_plinks ?
+	*pos |= ifmsh->accepting_plinks ?
 	    MESHCONF_CAPAB_ACCEPT_PLINKS : 0x00;
+	*pos++ |= ifmsh->adjusting_tbtt ?
+	    MESHCONF_CAPAB_TBTT_ADJUSTING : 0x00;
 	*pos++ = 0x00;
+
+	if(ifmsh->sync_ops)
+		ifmsh->sync_ops->add_vendor_ie(skb, sdata);
 
 	return 0;
 }
@@ -571,6 +576,8 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 
 	ifmsh->mesh_cc_id = 0;	/* Disabled */
 	ifmsh->mesh_auth_id = 0;	/* Disabled */
+	/* register sync ops from extensible synchronization framework */
+	ifmsh->sync_ops = ieee80211_mesh_sync_ops_get(ifmsh->mesh_sp_id);
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
@@ -612,6 +619,7 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 					struct ieee80211_rx_status *rx_status)
 {
 	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee802_11_elems elems;
 	struct ieee80211_channel *channel;
 	u32 supp_rates = 0;
@@ -651,6 +659,9 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		mesh_neighbour_update(mgmt, supp_rates, sdata, &elems,
 					rx_status);
 	}
+
+	if(ifmsh->sync_ops)
+		ifmsh->sync_ops->rx_bcn_presp(sdata, stype, mgmt, &elems, rx_status);
 }
 
 static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
@@ -758,4 +769,5 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 		    (unsigned long) sdata);
 	INIT_LIST_HEAD(&ifmsh->preq_queue.list);
 	spin_lock_init(&ifmsh->mesh_preq_queue_lock);
+	spin_lock_init(&ifmsh->sync_offset_lock);
 }

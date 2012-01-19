@@ -306,12 +306,6 @@ void mesh_neighbour_update(struct ieee80211_mgmt *mgmt, u32 rates,
 
 	sta->last_rx = jiffies;
 	sta->sta.supp_rates[local->hw.conf.channel->band] = rates;
-	clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
-	if (rx_status->flag & RX_FLAG_MACTIME_MPDU) {
-		sta->t_offset = le64_to_cpu(mgmt->u.beacon.timestamp) -
-				rx_status->mactime;
-		set_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
-	}
 
 	if (mesh_peer_accepts_plinks(elems) &&
 			sta->plink_state == NL80211_PLINK_LISTEN &&
