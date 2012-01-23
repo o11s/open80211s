@@ -34,6 +34,7 @@
 #include <linux/suspend.h>
 #include <linux/memblock.h>
 #include <linux/hugetlb.h>
+#include <linux/slab.h>
 
 #include <asm/pgalloc.h>
 #include <asm/prom.h>
@@ -50,6 +51,7 @@
 #include <asm/vdso.h>
 #include <asm/fixmap.h>
 #include <asm/swiotlb.h>
+#include <asm/rtas.h>
 
 #include "mmu_decl.h"
 
@@ -198,7 +200,7 @@ void __init do_init_bootmem(void)
 		unsigned long start_pfn, end_pfn;
 		start_pfn = memblock_region_memory_base_pfn(reg);
 		end_pfn = memblock_region_memory_end_pfn(reg);
-		add_active_range(0, start_pfn, end_pfn);
+		memblock_set_node(0, (phys_addr_t)ULLONG_MAX, 0);
 	}
 
 	/* Add all physical memory to the bootmem map, mark each area
@@ -552,6 +554,55 @@ void update_mmu_cache(struct vm_area_struct *vma, unsigned long address,
 #if (defined(CONFIG_PPC_BOOK3E_64) || defined(CONFIG_PPC_FSL_BOOK3E)) \
 	&& defined(CONFIG_HUGETLB_PAGE)
 	if (is_vm_hugetlb_page(vma))
-		book3e_hugetlb_preload(vma->vm_mm, address, *ptep);
+		book3e_hugetlb_preload(vma, address, *ptep);
 #endif
 }
+
+/*
+ * System memory should not be in /proc/iomem but various tools expect it
+ * (eg kdump).
+ */
+static int add_system_ram_resources(void)
+{
+	struct memblock_region *reg;
+
+	for_each_memblock(memory, reg) {
+		struct resource *res;
+		unsigned long base = reg->base;
+		unsigned long size = reg->size;
+
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+		WARN_ON(!res);
+
+		if (res) {
+			res->name = "System RAM";
+			res->start = base;
+			res->end = base + size - 1;
+			res->flags = IORESOURCE_MEM;
+			WARN_ON(request_resource(&iomem_resource, res) < 0);
+		}
+	}
+
+	return 0;
+}
+subsys_initcall(add_system_ram_resources);
+
+#ifdef CONFIG_STRICT_DEVMEM
+/*
+ * devmem_is_allowed(): check to see if /dev/mem access to a certain address
+ * is valid. The argument is a physical page number.
+ *
+ * Access has to be given to non-kernel-ram areas as well, these contain the
+ * PCI mmio resources as well as potential bios/acpi data regions.
+ */
+int devmem_is_allowed(unsigned long pfn)
+{
+	if (iomem_is_exclusive(pfn << PAGE_SHIFT))
+		return 0;
+	if (!page_is_ram(pfn))
+		return 1;
+	if (page_is_rtas_user_buf(pfn))
+		return 1;
+	return 0;
+}
+#endif /* CONFIG_STRICT_DEVMEM */

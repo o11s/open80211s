@@ -241,8 +241,13 @@ static struct resource bfin_uart0_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART0_TX,
+		.end = IRQ_UART0_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART0_RX,
-		.end = IRQ_UART0_RX+1,
+		.end = IRQ_UART0_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -284,8 +289,13 @@ static struct resource bfin_uart1_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART1_TX,
+		.end = IRQ_UART1_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART1_RX,
-		.end = IRQ_UART1_RX+1,
+		.end = IRQ_UART1_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -343,8 +353,13 @@ static struct resource bfin_uart2_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART2_TX,
+		.end = IRQ_UART2_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART2_RX,
-		.end = IRQ_UART2_RX+1,
+		.end = IRQ_UART2_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -386,8 +401,13 @@ static struct resource bfin_uart3_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART3_TX,
+		.end = IRQ_UART3_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART3_RX,
-		.end = IRQ_UART3_RX+1,
+		.end = IRQ_UART3_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -1090,7 +1110,7 @@ static struct spi_board_info bfin_spi_board_info[] __initdata = {
 	},
 #endif
 };
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 /* SPI (0) */
 static struct resource bfin_spi0_resource[] = {
 	[0] = {
@@ -1162,6 +1182,71 @@ static struct platform_device bf54x_spi_master1 = {
 		},
 };
 #endif  /* spi master and devices */
+
+#if defined(CONFIG_VIDEO_BLACKFIN_CAPTURE) \
+	|| defined(CONFIG_VIDEO_BLACKFIN_CAPTURE_MODULE)
+#include <linux/videodev2.h>
+#include <media/blackfin/bfin_capture.h>
+#include <media/blackfin/ppi.h>
+
+static const unsigned short ppi_req[] = {
+	P_PPI1_D0, P_PPI1_D1, P_PPI1_D2, P_PPI1_D3,
+	P_PPI1_D4, P_PPI1_D5, P_PPI1_D6, P_PPI1_D7,
+	P_PPI1_CLK, P_PPI1_FS1, P_PPI1_FS2,
+	0,
+};
+
+static const struct ppi_info ppi_info = {
+	.type = PPI_TYPE_EPPI,
+	.dma_ch = CH_EPPI1,
+	.irq_err = IRQ_EPPI1_ERROR,
+	.base = (void __iomem *)EPPI1_STATUS,
+	.pin_req = ppi_req,
+};
+
+#if defined(CONFIG_VIDEO_VS6624) \
+	|| defined(CONFIG_VIDEO_VS6624_MODULE)
+static struct v4l2_input vs6624_inputs[] = {
+	{
+		.index = 0,
+		.name = "Camera",
+		.type = V4L2_INPUT_TYPE_CAMERA,
+		.std = V4L2_STD_UNKNOWN,
+	},
+};
+
+static struct bcap_route vs6624_routes[] = {
+	{
+		.input = 0,
+		.output = 0,
+	},
+};
+
+static const unsigned vs6624_ce_pin = GPIO_PG6;
+
+static struct bfin_capture_config bfin_capture_data = {
+	.card_name = "BF548",
+	.inputs = vs6624_inputs,
+	.num_inputs = ARRAY_SIZE(vs6624_inputs),
+	.routes = vs6624_routes,
+	.i2c_adapter_id = 0,
+	.board_info = {
+		.type = "vs6624",
+		.addr = 0x10,
+		.platform_data = (void *)&vs6624_ce_pin,
+	},
+	.ppi_info = &ppi_info,
+	.ppi_control = (POLC | PACKEN | DLEN_8 | XFR_TYPE | 0x20),
+};
+#endif
+
+static struct platform_device bfin_capture_device = {
+	.name = "bfin_capture",
+	.dev = {
+		.platform_data = &bfin_capture_data,
+	},
+};
+#endif
 
 #if defined(CONFIG_I2C_BLACKFIN_TWI) || defined(CONFIG_I2C_BLACKFIN_TWI_MODULE)
 static struct resource bfin_twi0_resource[] = {
@@ -1482,9 +1567,13 @@ static struct platform_device *ezkit_devices[] __initdata = {
 	&bf54x_sdh_device,
 #endif
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 	&bf54x_spi_master0,
 	&bf54x_spi_master1,
+#endif
+#if defined(CONFIG_VIDEO_BLACKFIN_CAPTURE) \
+	|| defined(CONFIG_VIDEO_BLACKFIN_CAPTURE_MODULE)
+	&bfin_capture_device,
 #endif
 
 #if defined(CONFIG_KEYBOARD_BFIN) || defined(CONFIG_KEYBOARD_BFIN_MODULE)

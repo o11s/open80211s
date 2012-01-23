@@ -51,6 +51,9 @@ struct btrfs_inode {
 	/* held while logging the inode in tree-log.c */
 	struct mutex log_mutex;
 
+	/* held while doing delalloc reservations */
+	struct mutex delalloc_mutex;
+
 	/* used to order data wrt metadata */
 	struct btrfs_ordered_inode_tree ordered_tree;
 
@@ -147,14 +150,12 @@ struct btrfs_inode {
 	 * the btrfs file release call will add this inode to the
 	 * ordered operations list so that we make sure to flush out any
 	 * new data the application may have written before commit.
-	 *
-	 * yes, its silly to have a single bitflag, but we might grow more
-	 * of these.
 	 */
 	unsigned ordered_data_close:1;
 	unsigned orphan_meta_reserved:1;
 	unsigned dummy_inode:1;
 	unsigned in_defrag:1;
+	unsigned delalloc_meta_reserved:1;
 
 	/*
 	 * always compress this one file

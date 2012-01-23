@@ -13,6 +13,7 @@
  * TODO: Event handling with irq_chip. Waiting for PRCMU fw support.
  */
 
+#include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
@@ -21,8 +22,8 @@
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/random.h>
-#include <linux/mfd/ab5500/ab5500.h>
 #include <linux/mfd/abx500.h>
+#include <linux/mfd/abx500/ab5500.h>
 #include <linux/list.h>
 #include <linux/bitops.h>
 #include <linux/spinlock.h>

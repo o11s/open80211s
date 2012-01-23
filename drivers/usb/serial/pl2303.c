@@ -36,7 +36,7 @@
  */
 #define DRIVER_DESC "Prolific PL2303 USB to serial adaptor driver"
 
-static int debug;
+static bool debug;
 
 #define PL2303_CLOSING_WAIT	(30*HZ)
 
@@ -91,7 +91,6 @@ static const struct usb_device_id id_table[] = {
 	{ USB_DEVICE(SONY_VENDOR_ID, SONY_QN3USB_PRODUCT_ID) },
 	{ USB_DEVICE(SANWA_VENDOR_ID, SANWA_PRODUCT_ID) },
 	{ USB_DEVICE(ADLINK_VENDOR_ID, ADLINK_ND6530_PRODUCT_ID) },
-	{ USB_DEVICE(WINCHIPHEAD_VENDOR_ID, WINCHIPHEAD_USBSER_PRODUCT_ID) },
 	{ USB_DEVICE(SMART_VENDOR_ID, SMART_PRODUCT_ID) },
 	{ }					/* Terminating entry */
 };
@@ -503,21 +502,20 @@ static int pl2303_open(struct tty_struct *tty, struct usb_serial_port *port)
 	if (tty)
 		pl2303_set_termios(tty, port, &tmp_termios);
 
-	dbg("%s - submitting read urb", __func__);
-	result = usb_serial_generic_submit_read_urb(port, GFP_KERNEL);
-	if (result) {
-		pl2303_close(port);
-		return -EPROTO;
-	}
-
 	dbg("%s - submitting interrupt urb", __func__);
 	result = usb_submit_urb(port->interrupt_in_urb, GFP_KERNEL);
 	if (result) {
 		dev_err(&port->dev, "%s - failed submitting interrupt urb,"
 			" error %d\n", __func__, result);
-		pl2303_close(port);
-		return -EPROTO;
+		return result;
 	}
+
+	result = usb_serial_generic_open(tty, port);
+	if (result) {
+		usb_kill_urb(port->interrupt_in_urb);
+		return result;
+	}
+
 	port->port.drain_delay = 256;
 	return 0;
 }

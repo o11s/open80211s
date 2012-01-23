@@ -213,9 +213,6 @@ static int board_added(struct slot *p_slot)
 		goto err_exit;
 	}
 
-	/* Wait for 1 second after checking link training status */
-	msleep(1000);
-
 	/* Check for a power fault */
 	if (ctrl->power_fault_detected || pciehp_query_power_fault(p_slot)) {
 		ctrl_err(ctrl, "Power fault on slot %s\n", slot_name(p_slot));
@@ -347,7 +344,7 @@ void pciehp_queue_pushbutton_work(struct work_struct *work)
 		kfree(info);
 		goto out;
 	}
-	queue_work(pciehp_ordered_wq, &info->work);
+	queue_work(pciehp_wq, &info->work);
  out:
 	mutex_unlock(&p_slot->lock);
 }
@@ -442,7 +439,7 @@ static void handle_surprise_event(struct slot *p_slot)
 	else
 		p_slot->state = POWERON_STATE;
 
-	queue_work(pciehp_ordered_wq, &info->work);
+	queue_work(pciehp_wq, &info->work);
 }
 
 static void interrupt_event_handler(struct work_struct *work)

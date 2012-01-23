@@ -390,6 +390,8 @@ static __init void detect_machine_facilities(void)
 		S390_lowcore.machine_flags |= MACHINE_FLAG_MVCOS;
 	if (test_facility(40))
 		S390_lowcore.machine_flags |= MACHINE_FLAG_SPP;
+	if (test_facility(25))
+		S390_lowcore.machine_flags |= MACHINE_FLAG_STCKF;
 #endif
 }
 
@@ -432,18 +434,22 @@ static void __init append_to_cmdline(size_t (*ipl_data)(char *, size_t))
 	}
 }
 
-static void __init setup_boot_command_line(void)
+static inline int has_ebcdic_char(const char *str)
 {
 	int i;
 
-	/* convert arch command line to ascii */
-	for (i = 0; i < ARCH_COMMAND_LINE_SIZE; i++)
-		if (COMMAND_LINE[i] & 0x80)
-			break;
-	if (i < ARCH_COMMAND_LINE_SIZE)
-		EBCASC(COMMAND_LINE, ARCH_COMMAND_LINE_SIZE);
-	COMMAND_LINE[ARCH_COMMAND_LINE_SIZE-1] = 0;
+	for (i = 0; str[i]; i++)
+		if (str[i] & 0x80)
+			return 1;
+	return 0;
+}
 
+static void __init setup_boot_command_line(void)
+{
+	COMMAND_LINE[ARCH_COMMAND_LINE_SIZE - 1] = 0;
+	/* convert arch command line to ascii if necessary */
+	if (has_ebcdic_char(COMMAND_LINE))
+		EBCASC(COMMAND_LINE, ARCH_COMMAND_LINE_SIZE);
 	/* copy arch command line */
 	strlcpy(boot_command_line, strstrip(COMMAND_LINE),
 		ARCH_COMMAND_LINE_SIZE);

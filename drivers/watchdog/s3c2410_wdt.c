@@ -378,6 +378,8 @@ static int __devinit s3c2410wdt_probe(struct platform_device *pdev)
 							"cannot start\n");
 	}
 
+	watchdog_set_nowayout(&s3c2410_wdd, nowayout);
+
 	ret = watchdog_register_device(&s3c2410_wdd);
 	if (ret) {
 		dev_err(dev, "cannot register watchdog (%d)\n", ret);
@@ -401,8 +403,8 @@ static int __devinit s3c2410wdt_probe(struct platform_device *pdev)
 
 	dev_info(dev, "watchdog %sactive, reset %sabled, irq %sabled\n",
 		 (wtcon & S3C2410_WTCON_ENABLE) ?  "" : "in",
-		 (wtcon & S3C2410_WTCON_RSTEN) ? "" : "dis",
-		 (wtcon & S3C2410_WTCON_INTEN) ? "" : "en");
+		 (wtcon & S3C2410_WTCON_RSTEN) ? "en" : "dis",
+		 (wtcon & S3C2410_WTCON_INTEN) ? "en" : "dis");
 
 	return 0;
 

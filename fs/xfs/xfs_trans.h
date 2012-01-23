@@ -163,9 +163,8 @@ typedef struct xfs_trans_header {
  */
 struct xfs_log_item_desc {
 	struct xfs_log_item	*lid_item;
-	ushort			lid_size;
-	unsigned char		lid_flags;
 	struct list_head	lid_trans;
+	unsigned char		lid_flags;
 };
 
 #define XFS_LID_DIRTY		0x1
@@ -326,7 +325,7 @@ typedef struct xfs_log_item {
 						 struct xfs_log_item *);
 							/* buffer item iodone */
 							/* callback func */
-	struct xfs_item_ops		*li_ops;	/* function list */
+	const struct xfs_item_ops	*li_ops;	/* function list */
 
 	/* delayed logging */
 	struct list_head		li_cil;		/* CIL pointers */
@@ -341,7 +340,7 @@ typedef struct xfs_log_item {
 	{ XFS_LI_IN_AIL,	"IN_AIL" }, \
 	{ XFS_LI_ABORTED,	"ABORTED" }
 
-typedef struct xfs_item_ops {
+struct xfs_item_ops {
 	uint (*iop_size)(xfs_log_item_t *);
 	void (*iop_format)(xfs_log_item_t *, struct xfs_log_iovec *);
 	void (*iop_pin)(xfs_log_item_t *);
@@ -352,7 +351,7 @@ typedef struct xfs_item_ops {
 	void (*iop_push)(xfs_log_item_t *);
 	bool (*iop_pushbuf)(xfs_log_item_t *);
 	void (*iop_committing)(xfs_log_item_t *, xfs_lsn_t);
-} xfs_item_ops_t;
+};
 
 #define IOP_SIZE(ip)		(*(ip)->li_ops->iop_size)(ip)
 #define IOP_FORMAT(ip,vp)	(*(ip)->li_ops->iop_format)(ip, vp)

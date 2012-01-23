@@ -131,8 +131,8 @@ nv50_graph_init(struct drm_device *dev, int engine)
 	NV_DEBUG(dev, "\n");
 
 	/* master reset */
-	nv_mask(dev, 0x000200, 0x00200100, 0x00000000);
-	nv_mask(dev, 0x000200, 0x00200100, 0x00200100);
+	nv_mask(dev, 0x000200, 0x00201000, 0x00000000);
+	nv_mask(dev, 0x000200, 0x00201000, 0x00201000);
 	nv_wr32(dev, 0x40008c, 0x00000004); /* HW_CTX_SWITCH_ENABLED */
 
 	/* reset/enable traps and interrupts */
@@ -616,9 +616,9 @@ nv50_pgraph_tp_trap(struct drm_device *dev, int type, uint32_t ustatus_old,
 			}
 			break;
 		case 7: /* MP error */
-			if (ustatus & 0x00010000) {
+			if (ustatus & 0x04030000) {
 				nv50_pgraph_mp_trap(dev, i, display);
-				ustatus &= ~0x00010000;
+				ustatus &= ~0x04030000;
 			}
 			break;
 		case 8: /* TPDMA error */

@@ -112,6 +112,9 @@ kvm_start_guest:
 	stbcix	r0, r5, r6		/* clear it */
 	stwcix	r8, r5, r7		/* EOI it */
 
+	/* NV GPR values from power7_idle() will no longer be valid */
+	stb	r0, PACA_NAPSTATELOST(r13)
+
 .global kvmppc_hv_entry
 kvmppc_hv_entry:
 
@@ -1263,7 +1266,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_206)
 	addi	r6,r5,VCORE_NAPPING_THREADS
 31:	lwarx	r4,0,r6
 	or	r4,r4,r0
-	popcntw	r7,r4
+	PPC_POPCNTW(r7,r4)
 	cmpw	r7,r8
 	bge	2f
 	stwcx.	r4,0,r6

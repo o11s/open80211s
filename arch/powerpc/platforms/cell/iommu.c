@@ -412,8 +412,7 @@ static void cell_iommu_enable_hardware(struct cbe_iommu *iommu)
 			IIC_IRQ_IOEX_ATI | (iommu->nid << IIC_IRQ_NODE_SHIFT));
 	BUG_ON(virq == NO_IRQ);
 
-	ret = request_irq(virq, ioc_interrupt, IRQF_DISABLED,
-			iommu->name, iommu);
+	ret = request_irq(virq, ioc_interrupt, 0, iommu->name, iommu);
 	BUG_ON(ret);
 
 	/* set the IOC segment table origin register (and turn on the iommu) */
@@ -1038,6 +1037,8 @@ static int __init cell_iommu_fixed_mapping_init(void)
 
 	/* The fixed mapping is only supported on axon machines */
 	np = of_find_node_by_name(NULL, "axon");
+	of_node_put(np);
+
 	if (!np) {
 		pr_debug("iommu: fixed mapping disabled, no axons found\n");
 		return -1;

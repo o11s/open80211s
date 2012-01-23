@@ -104,7 +104,7 @@ static struct platform_device dm9000_device2 = {
 #endif
 
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 /* all SPI peripherals info goes here */
 
 #if defined(CONFIG_MMC_SPI) || defined(CONFIG_MMC_SPI_MODULE)
@@ -151,8 +151,13 @@ static struct resource bfin_uart0_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART0_TX,
+		.end = IRQ_UART0_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART0_RX,
-		.end = IRQ_UART0_RX + 1,
+		.end = IRQ_UART0_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -265,7 +270,7 @@ static struct platform_device *ip0x_devices[] __initdata = {
 #endif
 #endif
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 	&spi_bfin_master_device,
 #endif
 

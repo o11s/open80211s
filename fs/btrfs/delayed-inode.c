@@ -595,8 +595,12 @@ static int btrfs_delayed_item_reserve_metadata(struct btrfs_trans_handle *trans,
 
 	num_bytes = btrfs_calc_trans_metadata_size(root, 1);
 	ret = btrfs_block_rsv_migrate(src_rsv, dst_rsv, num_bytes);
-	if (!ret)
+	if (!ret) {
+		trace_btrfs_space_reservation(root->fs_info, "delayed_item",
+					      item->key.objectid,
+					      num_bytes, 1);
 		item->bytes_reserved = num_bytes;
+	}
 
 	return ret;
 }
@@ -610,6 +614,9 @@ static void btrfs_delayed_item_release_metadata(struct btrfs_root *root,
 		return;
 
 	rsv = &root->fs_info->delayed_block_rsv;
+	trace_btrfs_space_reservation(root->fs_info, "delayed_item",
+				      item->key.objectid, item->bytes_reserved,
+				      0);
 	btrfs_block_rsv_release(root, rsv,
 				item->bytes_reserved);
 }
@@ -617,12 +624,14 @@ static void btrfs_delayed_item_release_metadata(struct btrfs_root *root,
 static int btrfs_delayed_inode_reserve_metadata(
 					struct btrfs_trans_handle *trans,
 					struct btrfs_root *root,
+					struct inode *inode,
 					struct btrfs_delayed_node *node)
 {
 	struct btrfs_block_rsv *src_rsv;
 	struct btrfs_block_rsv *dst_rsv;
 	u64 num_bytes;
 	int ret;
+	bool release = false;
 
 	src_rsv = trans->block_rsv;
 	dst_rsv = &root->fs_info->delayed_block_rsv;
@@ -638,8 +647,8 @@ static int btrfs_delayed_inode_reserve_metadata(
 	 * Now if src_rsv == delalloc_block_rsv we'll let it just steal since
 	 * we're accounted for.
 	 */
-	if (!trans->bytes_reserved &&
-	    src_rsv != &root->fs_info->delalloc_block_rsv) {
+	if (!src_rsv || (!trans->bytes_reserved &&
+	    src_rsv != &root->fs_info->delalloc_block_rsv)) {
 		ret = btrfs_block_rsv_add_noflush(root, dst_rsv, num_bytes);
 		/*
 		 * Since we're under a transaction reserve_metadata_bytes could
@@ -649,14 +658,78 @@ static int btrfs_delayed_inode_reserve_metadata(
 		 */
 		if (ret == -EAGAIN)
 			ret = -ENOSPC;
-		if (!ret)
+		if (!ret) {
 			node->bytes_reserved = num_bytes;
+			trace_btrfs_space_reservation(root->fs_info,
+						      "delayed_inode",
+						      btrfs_ino(inode),
+						      num_bytes, 1);
+		}
 		return ret;
+	} else if (src_rsv == &root->fs_info->delalloc_block_rsv) {
+		spin_lock(&BTRFS_I(inode)->lock);
+		if (BTRFS_I(inode)->delalloc_meta_reserved) {
+			BTRFS_I(inode)->delalloc_meta_reserved = 0;
+			spin_unlock(&BTRFS_I(inode)->lock);
+			release = true;
+			goto migrate;
+		}
+		spin_unlock(&BTRFS_I(inode)->lock);
+
+		/* Ok we didn't have space pre-reserved.  This shouldn't happen
+		 * too often but it can happen if we do delalloc to an existing
+		 * inode which gets dirtied because of the time update, and then
+		 * isn't touched again until after the transaction commits and
+		 * then we try to write out the data.  First try to be nice and
+		 * reserve something strictly for us.  If not be a pain and try
+		 * to steal from the delalloc block rsv.
+		 */
+		ret = btrfs_block_rsv_add_noflush(root, dst_rsv, num_bytes);
+		if (!ret)
+			goto out;
+
+		ret = btrfs_block_rsv_migrate(src_rsv, dst_rsv, num_bytes);
+		if (!ret)
+			goto out;
+
+		/*
+		 * Ok this is a problem, let's just steal from the global rsv
+		 * since this really shouldn't happen that often.
+		 */
+		WARN_ON(1);
+		ret = btrfs_block_rsv_migrate(&root->fs_info->global_block_rsv,
+					      dst_rsv, num_bytes);
+		goto out;
 	}
 
+migrate:
 	ret = btrfs_block_rsv_migrate(src_rsv, dst_rsv, num_bytes);
-	if (!ret)
+
+out:
+	/*
+	 * Migrate only takes a reservation, it doesn't touch the size of the
+	 * block_rsv.  This is to simplify people who don't normally have things
+	 * migrated from their block rsv.  If they go to release their
+	 * reservation, that will decrease the size as well, so if migrate
+	 * reduced size we'd end up with a negative size.  But for the
+	 * delalloc_meta_reserved stuff we will only know to drop 1 reservation,
+	 * but we could in fact do this reserve/migrate dance several times
+	 * between the time we did the original reservation and we'd clean it
+	 * up.  So to take care of this, release the space for the meta
+	 * reservation here.  I think it may be time for a documentation page on
+	 * how block rsvs. work.
+	 */
+	if (!ret) {
+		trace_btrfs_space_reservation(root->fs_info, "delayed_inode",
+					      btrfs_ino(inode), num_bytes, 1);
 		node->bytes_reserved = num_bytes;
+	}
+
+	if (release) {
+		trace_btrfs_space_reservation(root->fs_info, "delalloc",
+					      btrfs_ino(inode), num_bytes, 0);
+		btrfs_block_rsv_release(root, src_rsv, num_bytes);
+	}
 
 	return ret;
 }
@@ -670,6 +743,8 @@ static void btrfs_delayed_inode_release_metadata(struct btrfs_root *root,
 		return;
 
 	rsv = &root->fs_info->delayed_block_rsv;
+	trace_btrfs_space_reservation(root->fs_info, "delayed_inode",
+				      node->inode_id, node->bytes_reserved, 0);
 	btrfs_block_rsv_release(root, rsv,
 				node->bytes_reserved);
 	node->bytes_reserved = 0;
@@ -1317,13 +1392,6 @@ int btrfs_insert_delayed_dir_index(struct btrfs_trans_handle *trans,
 		goto release_node;
 	}
 
-	ret = btrfs_delayed_item_reserve_metadata(trans, root, delayed_item);
-	/*
-	 * we have reserved enough space when we start a new transaction,
-	 * so reserving metadata failure is impossible
-	 */
-	BUG_ON(ret);
-
 	delayed_item->key.objectid = btrfs_ino(dir);
 	btrfs_set_key_type(&delayed_item->key, BTRFS_DIR_INDEX_KEY);
 	delayed_item->key.offset = index;
@@ -1335,6 +1403,14 @@ int btrfs_insert_delayed_dir_index(struct btrfs_trans_handle *trans,
 	dir_item->name_len = cpu_to_le16(name_len);
 	dir_item->type = type;
 	memcpy((char *)(dir_item + 1), name, name_len);
+
+	ret = btrfs_delayed_item_reserve_metadata(trans, root, delayed_item);
+	/*
+	 * we have reserved enough space when we start a new transaction,
+	 * so reserving metadata failure is impossible
+	 */
+	BUG_ON(ret);
+
 
 	mutex_lock(&delayed_node->mutex);
 	ret = __btrfs_add_delayed_insertion_item(delayed_node, delayed_item);
@@ -1708,7 +1784,8 @@ int btrfs_delayed_update_inode(struct btrfs_trans_handle *trans,
 		goto release_node;
 	}
 
-	ret = btrfs_delayed_inode_reserve_metadata(trans, root, delayed_node);
+	ret = btrfs_delayed_inode_reserve_metadata(trans, root, inode,
+						   delayed_node);
 	if (ret)
 		goto release_node;
 

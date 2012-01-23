@@ -884,7 +884,6 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 {
 	struct uart_hsu_port *up =
 			container_of(port, struct uart_hsu_port, port);
-	struct tty_struct *tty = port->state->port.tty;
 	unsigned char cval, fcr = 0;
 	unsigned long flags;
 	unsigned int baud, quot;
@@ -907,8 +906,7 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 	}
 
 	/* CMSPAR isn't supported by this driver */
-	if (tty)
-		tty->termios->c_cflag &= ~CMSPAR;
+	termios->c_cflag &= ~CMSPAR;
 
 	if (termios->c_cflag & CSTOPB)
 		cval |= UART_LCR_STOP;
@@ -1156,7 +1154,6 @@ serial_hsu_console_setup(struct console *co, char *options)
 	int bits = 8;
 	int parity = 'n';
 	int flow = 'n';
-	int ret;
 
 	if (co->index == -1 || co->index >= serial_hsu_reg.nr)
 		co->index = 0;
@@ -1167,9 +1164,7 @@ serial_hsu_console_setup(struct console *co, char *options)
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
 
-	ret = uart_set_options(&up->port, co, baud, parity, bits, flow);
-
-	return ret;
+	return uart_set_options(&up->port, co, baud, parity, bits, flow);
 }
 
 static struct console serial_hsu_console = {
@@ -1178,9 +1173,13 @@ static struct console serial_hsu_console = {
 	.device		= uart_console_device,
 	.setup		= serial_hsu_console_setup,
 	.flags		= CON_PRINTBUFFER,
-	.index		= 2,
+	.index		= -1,
 	.data		= &serial_hsu_reg,
 };
+
+#define SERIAL_HSU_CONSOLE	(&serial_hsu_console)
+#else
+#define SERIAL_HSU_CONSOLE	NULL
 #endif
 
 struct uart_ops serial_hsu_pops = {
@@ -1210,6 +1209,7 @@ static struct uart_driver serial_hsu_reg = {
 	.major		= TTY_MAJOR,
 	.minor		= 128,
 	.nr		= 3,
+	.cons		= SERIAL_HSU_CONSOLE,
 };
 
 #ifdef CONFIG_PM
@@ -1344,12 +1344,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		}
 		uart_add_one_port(&serial_hsu_reg, &uport->port);
 
-#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE
-		if (index == 2) {
-			register_console(&serial_hsu_console);
-			uport->port.cons = &serial_hsu_console;
-		}
-#endif
 		pci_set_drvdata(pdev, uport);
 	}
 

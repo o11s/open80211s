@@ -314,13 +314,6 @@ config NUC900_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called nuc900_wdt.
 
-config ADX_WATCHDOG
-	tristate "Avionic Design Xanthos watchdog"
-	depends on ARCH_PXA_ADX
-	help
-	  Say Y here if you want support for the watchdog timer on Avionic
-	  Design Xanthos boards.
-
 config TS72XX_WATCHDOG
 	tristate "TS-72XX SBC Watchdog"
 	depends on MACH_TS72XX
@@ -778,6 +771,19 @@ config SMSC37B787_WDT
 	  module will be called smsc37b787_wdt.
 
 	  Most people will say N.
+
+config VIA_WDT
+	tristate "VIA Watchdog Timer"
+	depends on X86
+	select WATCHDOG_CORE
+	---help---
+	This is the driver for the hardware watchdog timer on VIA
+	southbridge chipset CX700, VX800/VX820 or VX855/VX875.
+
+	To compile this driver as a module, choose M here; the module
+	will be called via_wdt.
+
+	Most people will say N.
 
 config W83627HF_WDT
 	tristate "W83627HF/W83627DHG Watchdog Timer"

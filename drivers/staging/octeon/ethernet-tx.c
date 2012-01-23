@@ -47,13 +47,13 @@
 #include "ethernet-tx.h"
 #include "ethernet-util.h"
 
-#include "cvmx-wqe.h"
-#include "cvmx-fau.h"
-#include "cvmx-pip.h"
-#include "cvmx-pko.h"
-#include "cvmx-helper.h"
+#include <asm/octeon/cvmx-wqe.h>
+#include <asm/octeon/cvmx-fau.h>
+#include <asm/octeon/cvmx-pip.h>
+#include <asm/octeon/cvmx-pko.h>
+#include <asm/octeon/cvmx-helper.h>
 
-#include "cvmx-gmxx-defs.h"
+#include <asm/octeon/cvmx-gmxx-defs.h>
 
 #define CVM_OCT_SKB_CB(skb)	((u64 *)((skb)->cb))
 
@@ -275,7 +275,7 @@ int cvm_oct_xmit(struct sk_buff *skb, struct net_device *dev)
 		CVM_OCT_SKB_CB(skb)[0] = hw_buffer.u64;
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 			struct skb_frag_struct *fs = skb_shinfo(skb)->frags + i;
-			hw_buffer.s.addr = XKPHYS_TO_PHYS((u64)(page_address(fs->page) + fs->page_offset));
+			hw_buffer.s.addr = XKPHYS_TO_PHYS((u64)(page_address(fs->page.p) + fs->page_offset));
 			hw_buffer.s.size = fs->size;
 			CVM_OCT_SKB_CB(skb)[i + 1] = hw_buffer.u64;
 		}

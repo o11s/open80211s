@@ -128,28 +128,11 @@ static inline int is_zero_pfn(unsigned long pfn)
  * effect, this also makes sure that 64 bit module code cannot be used
  * as system call address.
  */
-
 extern unsigned long VMALLOC_START;
+extern unsigned long VMALLOC_END;
+extern struct page *vmemmap;
 
-#ifndef __s390x__
-#define VMALLOC_SIZE	(96UL << 20)
-#define VMALLOC_END	0x7e000000UL
-#define VMEM_MAP_END	0x80000000UL
-#else /* __s390x__ */
-#define VMALLOC_SIZE	(128UL << 30)
-#define VMALLOC_END	0x3e000000000UL
-#define VMEM_MAP_END	0x40000000000UL
-#endif /* __s390x__ */
-
-/*
- * VMEM_MAX_PHYS is the highest physical address that can be added to the 1:1
- * mapping. This needs to be calculated at compile time since the size of the
- * VMEM_MAP is static but the size of struct page can change.
- */
-#define VMEM_MAX_PAGES	((VMEM_MAP_END - VMALLOC_END) / sizeof(struct page))
-#define VMEM_MAX_PFN	min(VMALLOC_START >> PAGE_SHIFT, VMEM_MAX_PAGES)
-#define VMEM_MAX_PHYS	((VMEM_MAX_PFN << PAGE_SHIFT) & ~((16 << 20) - 1))
-#define vmemmap		((struct page *) VMALLOC_END)
+#define VMEM_MAX_PHYS ((unsigned long) vmemmap)
 
 /*
  * A 31 bit pagetable entry of S390 has following format:
@@ -593,14 +576,16 @@ static inline pgste_t pgste_update_all(pte_t *ptep, pgste_t pgste)
 	unsigned long address, bits;
 	unsigned char skey;
 
+	if (!pte_present(*ptep))
+		return pgste;
 	address = pte_val(*ptep) & PAGE_MASK;
 	skey = page_get_storage_key(address);
 	bits = skey & (_PAGE_CHANGED | _PAGE_REFERENCED);
 	/* Clear page changed & referenced bit in the storage key */
-	if (bits) {
-		skey ^= bits;
-		page_set_storage_key(address, skey, 1);
-	}
+	if (bits & _PAGE_CHANGED)
+		page_set_storage_key(address, skey ^ bits, 1);
+	else if (bits)
+		page_reset_referenced(address);
 	/* Transfer page changed & referenced bit to guest bits in pgste */
 	pgste_val(pgste) |= bits << 48;		/* RCP_GR_BIT & RCP_GC_BIT */
 	/* Get host changed & referenced bits from pgste */
@@ -625,6 +610,8 @@ static inline pgste_t pgste_update_young(pte_t *ptep, pgste_t pgste)
 #ifdef CONFIG_PGSTE
 	int young;
 
+	if (!pte_present(*ptep))
+		return pgste;
 	young = page_reset_referenced(pte_val(*ptep) & PAGE_MASK);
 	/* Transfer page referenced bit to pte software bit (host view) */
 	if (young || (pgste_val(pgste) & RCP_HR_BIT))
@@ -638,13 +625,15 @@ static inline pgste_t pgste_update_young(pte_t *ptep, pgste_t pgste)
 
 }
 
-static inline void pgste_set_pte(pte_t *ptep, pgste_t pgste)
+static inline void pgste_set_pte(pte_t *ptep, pgste_t pgste, pte_t entry)
 {
 #ifdef CONFIG_PGSTE
 	unsigned long address;
 	unsigned long okey, nkey;
 
-	address = pte_val(*ptep) & PAGE_MASK;
+	if (!pte_present(entry))
+		return;
+	address = pte_val(entry) & PAGE_MASK;
 	okey = nkey = page_get_storage_key(address);
 	nkey &= ~(_PAGE_ACC_BITS | _PAGE_FP_BIT);
 	/* Set page access key and fetch protection bit from pgste */
@@ -712,7 +701,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 
 	if (mm_has_pgste(mm)) {
 		pgste = pgste_get_lock(ptep);
-		pgste_set_pte(ptep, pgste);
+		pgste_set_pte(ptep, pgste, entry);
 		*ptep = entry;
 		pgste_set_unlock(ptep, pgste);
 	} else

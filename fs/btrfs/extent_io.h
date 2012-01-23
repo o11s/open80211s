@@ -70,7 +70,7 @@ struct extent_io_ops {
 			      unsigned long bio_flags);
 	int (*readpage_io_hook)(struct page *page, u64 start, u64 end);
 	int (*readpage_io_failed_hook)(struct bio *bio, struct page *page,
-				       u64 start, u64 end, u64 failed_mirror,
+				       u64 start, u64 end, int failed_mirror,
 				       struct extent_state *state);
 	int (*writepage_io_failed_hook)(struct bio *bio, struct page *page,
 					u64 start, u64 end,
@@ -129,6 +129,7 @@ struct extent_buffer {
 	struct list_head leak_list;
 	struct rcu_head rcu_head;
 	atomic_t refs;
+	pid_t lock_owner;
 
 	/* count of read lock holders on the extent buffer */
 	atomic_t write_locks;
@@ -137,6 +138,7 @@ struct extent_buffer {
 	atomic_t blocking_readers;
 	atomic_t spinning_readers;
 	atomic_t spinning_writers;
+	int lock_nested;
 
 	/* protects write locks */
 	rwlock_t lock;

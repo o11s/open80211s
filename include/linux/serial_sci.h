@@ -49,6 +49,10 @@ enum {
 
 #define SCIF_DEFAULT_ERROR_MASK (SCIF_PER | SCIF_FER | SCIF_ER | SCIF_BRK)
 
+/* SCSPTR, optional */
+#define SCSPTR_RTSIO	(1 << 7)
+#define SCSPTR_CTSIO	(1 << 5)
+
 /* Offsets into the sci_port->irqs array */
 enum {
 	SCIx_ERI_IRQ,
@@ -60,6 +64,17 @@ enum {
 	SCIx_MUX_IRQ = SCIx_NR_IRQS,	/* special case */
 };
 
+/* Offsets into the sci_port->gpios array */
+enum {
+	SCIx_SCK,
+	SCIx_RXD,
+	SCIx_TXD,
+	SCIx_CTS,
+	SCIx_RTS,
+
+	SCIx_NR_FNS,
+};
+
 enum {
 	SCIx_PROBE_REGTYPE,
 
@@ -67,6 +82,7 @@ enum {
 	SCIx_IRDA_REGTYPE,
 	SCIx_SCIFA_REGTYPE,
 	SCIx_SCIFB_REGTYPE,
+	SCIx_SH2_SCIF_FIFODATA_REGTYPE,
 	SCIx_SH3_SCIF_REGTYPE,
 	SCIx_SH4_SCIF_REGTYPE,
 	SCIx_SH4_SCIF_NO_SCSPTR_REGTYPE,
@@ -108,13 +124,20 @@ struct plat_sci_port_ops {
 };
 
 /*
+ * Port-specific capabilities
+ */
+#define SCIx_HAVE_RTSCTS	(1 << 0)
+
+/*
  * Platform device specific platform_data struct
  */
 struct plat_sci_port {
 	unsigned long	mapbase;		/* resource base */
 	unsigned int	irqs[SCIx_NR_IRQS];	/* ERI, RXI, TXI, BRI */
+	unsigned int	gpios[SCIx_NR_FNS];	/* SCK, RXD, TXD, CTS, RTS */
 	unsigned int	type;			/* SCI / SCIF / IRDA */
 	upf_t		flags;			/* UPF_* flags */
+	unsigned long	capabilities;		/* Port features/capabilities */
 
 	unsigned int	scbrr_algo_id;		/* SCBRR calculation algo */
 	unsigned int	scscr;			/* SCSCR initialization */

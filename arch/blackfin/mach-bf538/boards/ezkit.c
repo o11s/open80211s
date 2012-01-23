@@ -49,8 +49,13 @@ static struct resource bfin_uart0_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART0_TX,
+		.end = IRQ_UART0_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART0_RX,
-		.end = IRQ_UART0_RX+1,
+		.end = IRQ_UART0_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -104,8 +109,13 @@ static struct resource bfin_uart1_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART1_TX,
+		.end = IRQ_UART1_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART1_RX,
-		.end = IRQ_UART1_RX+1,
+		.end = IRQ_UART1_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -147,8 +157,13 @@ static struct resource bfin_uart2_resources[] = {
 		.flags = IORESOURCE_MEM,
 	},
 	{
+		.start = IRQ_UART2_TX,
+		.end = IRQ_UART2_TX,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
 		.start = IRQ_UART2_RX,
-		.end = IRQ_UART2_RX+1,
+		.end = IRQ_UART2_RX,
 		.flags = IORESOURCE_IRQ,
 	},
 	{
@@ -475,7 +490,7 @@ static struct platform_device smc91x_device = {
 };
 #endif
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 /* all SPI peripherals info goes here */
 #if defined(CONFIG_MTD_M25P80) \
 	|| defined(CONFIG_MTD_M25P80_MODULE)
@@ -859,7 +874,7 @@ static struct platform_device *cm_bf538_devices[] __initdata = {
 #endif
 #endif
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 	&bf538_spi_master0,
 	&bf538_spi_master1,
 	&bf538_spi_master2,
@@ -923,7 +938,7 @@ static int __init ezkit_init(void)
 	printk(KERN_INFO "%s(): registering device resources\n", __func__);
 	platform_add_devices(cm_bf538_devices, ARRAY_SIZE(cm_bf538_devices));
 
-#if defined(CONFIG_SPI_BFIN) || defined(CONFIG_SPI_BFIN_MODULE)
+#if defined(CONFIG_SPI_BFIN5XX) || defined(CONFIG_SPI_BFIN5XX_MODULE)
 	spi_register_board_info(bf538_spi_board_info,
 			ARRAY_SIZE(bf538_spi_board_info));
 #endif

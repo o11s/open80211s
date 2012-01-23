@@ -929,11 +929,11 @@ static void atapi_pio_bytes(struct ata_queued_cmd *qc)
 	bytes = (bc_hi << 8) | bc_lo;
 
 	/* shall be cleared to zero, indicating xfer of data */
-	if (unlikely(ireason & (1 << 0)))
+	if (unlikely(ireason & ATAPI_COD))
 		goto atapi_check;
 
 	/* make sure transfer direction matches expected */
-	i_write = ((ireason & (1 << 1)) == 0) ? 1 : 0;
+	i_write = ((ireason & ATAPI_IO) == 0) ? 1 : 0;
 	if (unlikely(do_write != i_write))
 		goto atapi_check;
 
@@ -2533,10 +2533,12 @@ static int ata_pci_init_one(struct pci_dev *pdev,
 	if (rc)
 		goto out;
 
+#ifdef CONFIG_ATA_BMDMA
 	if (bmdma)
 		/* prepare and activate BMDMA host */
 		rc = ata_pci_bmdma_prepare_host(pdev, ppi, &host);
 	else
+#endif
 		/* prepare and activate SFF host */
 		rc = ata_pci_sff_prepare_host(pdev, ppi, &host);
 	if (rc)
@@ -2544,10 +2546,12 @@ static int ata_pci_init_one(struct pci_dev *pdev,
 	host->private_data = host_priv;
 	host->flags |= hflags;
 
+#ifdef CONFIG_ATA_BMDMA
 	if (bmdma) {
 		pci_set_master(pdev);
 		rc = ata_pci_sff_activate_host(host, ata_bmdma_interrupt, sht);
 	} else
+#endif
 		rc = ata_pci_sff_activate_host(host, ata_sff_interrupt, sht);
 out:
 	if (rc == 0)

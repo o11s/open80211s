@@ -25,30 +25,6 @@
 #include <linux/gpio.h>
 #include <linux/mfd/tps65910.h>
 
-#define TPS65910_REG_VRTC		0
-#define TPS65910_REG_VIO		1
-#define TPS65910_REG_VDD1		2
-#define TPS65910_REG_VDD2		3
-#define TPS65910_REG_VDD3		4
-#define TPS65910_REG_VDIG1		5
-#define TPS65910_REG_VDIG2		6
-#define TPS65910_REG_VPLL		7
-#define TPS65910_REG_VDAC		8
-#define TPS65910_REG_VAUX1		9
-#define TPS65910_REG_VAUX2		10
-#define TPS65910_REG_VAUX33		11
-#define TPS65910_REG_VMMC		12
-
-#define TPS65911_REG_VDDCTRL		4
-#define TPS65911_REG_LDO1		5
-#define TPS65911_REG_LDO2		6
-#define TPS65911_REG_LDO3		7
-#define TPS65911_REG_LDO4		8
-#define TPS65911_REG_LDO5		9
-#define TPS65911_REG_LDO6		10
-#define TPS65911_REG_LDO7		11
-#define TPS65911_REG_LDO8		12
-
 #define TPS65910_SUPPLY_STATE_ENABLED	0x1
 
 /* supported VIO voltages in milivolts */
@@ -664,10 +640,10 @@ static int tps65910_set_voltage_dcdc(struct regulator_dev *dev,
 
 	switch (id) {
 	case TPS65910_REG_VDD1:
-		dcdc_mult = (selector / VDD1_2_NUM_VOLTS) + 1;
+		dcdc_mult = (selector / VDD1_2_NUM_VOLT_FINE) + 1;
 		if (dcdc_mult == 1)
 			dcdc_mult--;
-		vsel = (selector % VDD1_2_NUM_VOLTS) + 3;
+		vsel = (selector % VDD1_2_NUM_VOLT_FINE) + 3;
 
 		tps65910_modify_bits(pmic, TPS65910_VDD1,
 				(dcdc_mult << VDD1_VGAIN_SEL_SHIFT),
@@ -675,10 +651,10 @@ static int tps65910_set_voltage_dcdc(struct regulator_dev *dev,
 		tps65910_reg_write(pmic, TPS65910_VDD1_OP, vsel);
 		break;
 	case TPS65910_REG_VDD2:
-		dcdc_mult = (selector / VDD1_2_NUM_VOLTS) + 1;
+		dcdc_mult = (selector / VDD1_2_NUM_VOLT_FINE) + 1;
 		if (dcdc_mult == 1)
 			dcdc_mult--;
-		vsel = (selector % VDD1_2_NUM_VOLTS) + 3;
+		vsel = (selector % VDD1_2_NUM_VOLT_FINE) + 3;
 
 		tps65910_modify_bits(pmic, TPS65910_VDD2,
 				(dcdc_mult << VDD2_VGAIN_SEL_SHIFT),
@@ -756,9 +732,9 @@ static int tps65910_list_voltage_dcdc(struct regulator_dev *dev,
 	switch (id) {
 	case TPS65910_REG_VDD1:
 	case TPS65910_REG_VDD2:
-		mult = (selector / VDD1_2_NUM_VOLTS) + 1;
+		mult = (selector / VDD1_2_NUM_VOLT_FINE) + 1;
 		volt = VDD1_2_MIN_VOLT +
-				(selector % VDD1_2_NUM_VOLTS) * VDD1_2_OFFSET;
+				(selector % VDD1_2_NUM_VOLT_FINE) * VDD1_2_OFFSET;
 		break;
 	case TPS65911_REG_VDDCTRL:
 		volt = VDDCTRL_MIN_VOLT + (selector * VDDCTRL_OFFSET);
@@ -885,8 +861,6 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 	if (!pmic_plat_data)
 		return -EINVAL;
 
-	reg_data = pmic_plat_data->tps65910_pmic_init_data;
-
 	pmic = kzalloc(sizeof(*pmic), GFP_KERNEL);
 	if (!pmic)
 		return -ENOMEM;
@@ -937,7 +911,16 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 		goto err_free_info;
 	}
 
-	for (i = 0; i < pmic->num_regulators; i++, info++, reg_data++) {
+	for (i = 0; i < pmic->num_regulators && i < TPS65910_NUM_REGS;
+			i++, info++) {
+
+		reg_data = pmic_plat_data->tps65910_pmic_init_data[i];
+
+		/* Regulator API handles empty constraints but not NULL
+		 * constraints */
+		if (!reg_data)
+			continue;
+
 		/* Register the regulators */
 		pmic->info[i] = info;
 
@@ -947,6 +930,8 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 
 		if (i == TPS65910_REG_VDD1 || i == TPS65910_REG_VDD2) {
 			pmic->desc[i].ops = &tps65910_ops_dcdc;
+			pmic->desc[i].n_voltages = VDD1_2_NUM_VOLT_FINE *
+							VDD1_2_NUM_VOLT_COARSE;
 		} else if (i == TPS65910_REG_VDD3) {
 			if (tps65910_chip_id(tps65910) == TPS65910)
 				pmic->desc[i].ops = &tps65910_ops_vdd3;
@@ -963,7 +948,7 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 		pmic->desc[i].owner = THIS_MODULE;
 
 		rdev = regulator_register(&pmic->desc[i],
-				tps65910->dev, reg_data, pmic);
+				tps65910->dev, reg_data, pmic, NULL);
 		if (IS_ERR(rdev)) {
 			dev_err(tps65910->dev,
 				"failed to register %s regulator\n",

@@ -44,9 +44,6 @@ static struct crypto_alg *crypto_alg_match(struct crypto_user_alg *p, int exact)
 
 	down_read(&crypto_alg_sem);
 
-	if (list_empty(&crypto_alg_list))
-		return NULL;
-
 	list_for_each_entry(q, &crypto_alg_list, cra_list) {
 		int match = 0;
 
@@ -301,7 +298,7 @@ static int crypto_del_alg(struct sk_buff *skb, struct nlmsghdr *nlh,
 	if (atomic_read(&alg->cra_refcnt) != 1)
 		return -EBUSY;
 
-	return crypto_unregister_alg(alg);
+	return crypto_unregister_instance(alg);
 }
 
 static int crypto_add_alg(struct sk_buff *skb, struct nlmsghdr *nlh,
@@ -385,7 +382,7 @@ static int crypto_user_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 	type -= CRYPTO_MSG_BASE;
 	link = &crypto_dispatch[type];
 
-	if (security_netlink_recv(skb, CAP_NET_ADMIN))
+	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
 	if ((type == (CRYPTO_MSG_GETALG - CRYPTO_MSG_BASE) &&

@@ -158,6 +158,7 @@ nouveau_channel_alloc(struct drm_device *dev, struct nouveau_channel **chan_ret,
 	INIT_LIST_HEAD(&chan->nvsw.vbl_wait);
 	INIT_LIST_HEAD(&chan->nvsw.flip);
 	INIT_LIST_HEAD(&chan->fence.pending);
+	spin_lock_init(&chan->fence.lock);
 
 	/* setup channel's memory and vm */
 	ret = nouveau_gpuobj_channel_init(chan, vram_handle, gart_handle);
@@ -186,6 +187,8 @@ nouveau_channel_alloc(struct drm_device *dev, struct nouveau_channel **chan_ret,
 	nouveau_dma_pre_init(chan);
 	chan->user_put = 0x40;
 	chan->user_get = 0x44;
+	if (dev_priv->card_type >= NV_50)
+                chan->user_get_hi = 0x60;
 
 	/* disable the fifo caches */
 	pfifo->reassign(dev, false);

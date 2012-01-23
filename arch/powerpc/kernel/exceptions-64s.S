@@ -65,7 +65,7 @@ BEGIN_FTR_SECTION
 	lbz	r0,PACAPROCSTART(r13)
 	cmpwi	r0,0x80
 	bne	1f
-	li	r0,0
+	li	r0,1
 	stb	r0,PACAPROCSTART(r13)
 	b	kvm_start_guest
 1:
@@ -267,7 +267,7 @@ vsx_unavailable_pSeries_1:
 
 #ifdef CONFIG_CBE_RAS
 	STD_EXCEPTION_HV(0x1200, 0x1202, cbe_system_error)
-	KVM_HANDLER_PR_SKIP(PACA_EXGEN, EXC_HV, 0x1202)
+	KVM_HANDLER_SKIP(PACA_EXGEN, EXC_HV, 0x1202)
 #endif /* CONFIG_CBE_RAS */
 
 	STD_EXCEPTION_PSERIES(0x1300, 0x1300, instruction_breakpoint)
@@ -275,7 +275,7 @@ vsx_unavailable_pSeries_1:
 
 #ifdef CONFIG_CBE_RAS
 	STD_EXCEPTION_HV(0x1600, 0x1602, cbe_maintenance)
-	KVM_HANDLER_PR_SKIP(PACA_EXGEN, EXC_HV, 0x1602)
+	KVM_HANDLER_SKIP(PACA_EXGEN, EXC_HV, 0x1602)
 #endif /* CONFIG_CBE_RAS */
 
 	STD_EXCEPTION_PSERIES(0x1700, 0x1700, altivec_assist)
@@ -283,7 +283,7 @@ vsx_unavailable_pSeries_1:
 
 #ifdef CONFIG_CBE_RAS
 	STD_EXCEPTION_HV(0x1800, 0x1802, cbe_thermal)
-	KVM_HANDLER_PR_SKIP(PACA_EXGEN, EXC_HV, 0x1802)
+	KVM_HANDLER_SKIP(PACA_EXGEN, EXC_HV, 0x1802)
 #endif /* CONFIG_CBE_RAS */
 
 	. = 0x3000
