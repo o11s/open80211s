@@ -1819,10 +1819,12 @@ struct mac_iveiv_entry {
  * RFCSR 7:
  */
 #define RFCSR7_RF_TUNING		FIELD8(0x01)
-#define RFCSR7_R02				FIELD8(0x07)
-#define RFCSR7_R3				FIELD8(0x08)
-#define RFCSR7_R45				FIELD8(0x30)
-#define RFCSR7_R67				FIELD8(0xc0)
+#define RFCSR7_BIT1			FIELD8(0x02)
+#define RFCSR7_BIT2			FIELD8(0x04)
+#define RFCSR7_BIT3			FIELD8(0x08)
+#define RFCSR7_BIT4			FIELD8(0x10)
+#define RFCSR7_BIT5			FIELD8(0x20)
+#define RFCSR7_BITS67			FIELD8(0xc0)
 
 /*
  * RFCSR 11:
@@ -1845,6 +1847,11 @@ struct mac_iveiv_entry {
  * RFCSR 15:
  */
 #define RFCSR15_TX_LO2_EN		FIELD8(0x08)
+
+/*
+ * RFCSR 16:
+ */
+#define RFCSR16_TXMIXER_GAIN		FIELD8(0x07)
 
 /*
  * RFCSR 17:
@@ -2107,6 +2114,12 @@ struct mac_iveiv_entry {
 #define EEPROM_RSSI_A2			0x0026
 #define EEPROM_RSSI_A2_OFFSET2		FIELD16(0x00ff)
 #define EEPROM_RSSI_A2_LNA_A2		FIELD16(0xff00)
+
+/*
+ * EEPROM TXMIXER GAIN A offset (note overlaps with EEPROM RSSI A2).
+ */
+#define EEPROM_TXMIXER_GAIN_A		0x0026
+#define EEPROM_TXMIXER_GAIN_A_VAL	FIELD16(0x0007)
 
 /*
  * EEPROM EIRP Maximum TX power values(unit: dbm)
@@ -2437,5 +2450,17 @@ struct mac_iveiv_entry {
  *  Board's maximun TX power limitation
  */
 #define EIRP_MAX_TX_POWER_LIMIT	0x50
+
+/*
+ * RT2800 driver data structure
+ */
+struct rt2800_drv_data {
+	u8 calibration_bw20;
+	u8 calibration_bw40;
+	u8 bbp25;
+	u8 bbp26;
+	u8 txmixer_gain_24g;
+	u8 txmixer_gain_5g;
+};
 
 #endif /* RT2800_H */
