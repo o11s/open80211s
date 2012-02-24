@@ -1980,6 +1980,7 @@ static int wl12xx_init_vif_data(struct wl1271 *wl, struct ieee80211_vif *vif)
 	case NL80211_IFTYPE_ADHOC:
 		wlvif->bss_type = BSS_TYPE_IBSS;
 		break;
+	case NL80211_IFTYPE_MESH_POINT:
 	case NL80211_IFTYPE_P2P_GO:
 		wlvif->p2p = 1;
 		/* fall-through */
@@ -3361,7 +3362,13 @@ static int wl1271_ssid_set(struct ieee80211_vif *vif, struct sk_buff *skb,
 {
 	struct wl12xx_vif *wlvif = wl12xx_vif_to_data(vif);
 	u8 ssid_len;
-	const u8 *ptr = cfg80211_find_ie(WLAN_EID_SSID, skb->data + offset,
+	const u8 *ptr;
+	
+	if (vif->type == NL80211_IFTYPE_MESH_POINT)
+		ptr = cfg80211_find_ie(WLAN_EID_MESH_ID, skb->data + offset,
+					 skb->len - offset);
+	else
+		ptr = cfg80211_find_ie(WLAN_EID_SSID, skb->data + offset,
 					 skb->len - offset);
 
 	if (!ptr) {
@@ -5173,6 +5180,7 @@ static int wl1271_init_ieee80211(struct wl1271 *wl)
 
 	wl->hw->wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
 		BIT(NL80211_IFTYPE_ADHOC) | BIT(NL80211_IFTYPE_AP) |
+		BIT(NL80211_IFTYPE_MESH_POINT) |
 		BIT(NL80211_IFTYPE_P2P_CLIENT) | BIT(NL80211_IFTYPE_P2P_GO);
 	wl->hw->wiphy->max_scan_ssids = 1;
 	wl->hw->wiphy->max_sched_scan_ssids = 16;

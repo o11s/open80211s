@@ -578,6 +578,8 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
+	/* XXX: basic_rates = 0 break wl12xx */
+	sdata->vif.bss_conf.basic_rates = 0xf;
 	sdata->vif.bss_conf.beacon_int = MESH_DEFAULT_BEACON_INTERVAL;
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
