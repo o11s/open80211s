@@ -2238,14 +2238,28 @@ ieee80211_rx_mgmt_assoc_resp(struct ieee80211_sub_if_data *sdata,
 	} else {
 		printk(KERN_DEBUG "%s: associated\n", sdata->name);
 
-		ieee80211_destroy_assoc_data(sdata, true);
+		/* tell driver about sync done first */
+		if (assoc_data->synced) {
+			drv_finish_tx_sync(sdata->local, sdata,
+					   assoc_data->bss->bssid,
+					   IEEE80211_TX_SYNC_ASSOC);
+			assoc_data->synced = false;
+		}
 
 		if (!ieee80211_assoc_success(sdata, *bss, mgmt, len)) {
 			/* oops -- internal error -- send timeout for now */
+			ieee80211_destroy_assoc_data(sdata, true);
 			sta_info_destroy_addr(sdata, mgmt->bssid);
 			cfg80211_put_bss(*bss);
 			return RX_MGMT_CFG80211_ASSOC_TIMEOUT;
 		}
+
+		/*
+		 * destroy assoc_data afterwards, as otherwise an idle
+		 * recalc after assoc_data is NULL but before associated
+		 * is set can cause the interface to go idle
+		 */
+		ieee80211_destroy_assoc_data(sdata, true);
 	}
 
 	return RX_MGMT_CFG80211_RX_ASSOC;
@@ -2974,13 +2988,17 @@ static void ieee80211_sta_monitor_work(struct work_struct *work)
 
 static void ieee80211_restart_sta_timer(struct ieee80211_sub_if_data *sdata)
 {
+	u32 flags;
+
 	if (sdata->vif.type == NL80211_IFTYPE_STATION) {
 		sdata->u.mgd.flags &= ~(IEEE80211_STA_BEACON_POLL |
 					IEEE80211_STA_CONNECTION_POLL);
 
 		/* let's probe the connection once */
-		ieee80211_queue_work(&sdata->local->hw,
-			   &sdata->u.mgd.monitor_work);
+		flags = sdata->local->hw.flags;
+		if (!(flags & IEEE80211_HW_CONNECTION_MONITOR))
+			ieee80211_queue_work(&sdata->local->hw,
+					     &sdata->u.mgd.monitor_work);
 		/* and do all the other regular work too */
 		ieee80211_queue_work(&sdata->local->hw, &sdata->work);
 	}
@@ -3044,7 +3062,6 @@ void ieee80211_sta_restart(struct ieee80211_sub_if_data *sdata)
 		add_timer(&ifmgd->chswitch_timer);
 	ieee80211_sta_reset_beacon_monitor(sdata);
 	ieee80211_restart_sta_timer(sdata);
-	ieee80211_queue_work(&sdata->local->hw, &sdata->u.mgd.monitor_work);
 }
 #endif
 
@@ -3494,6 +3511,19 @@ int ieee80211_mgd_disassoc(struct ieee80211_sub_if_data *sdata,
 	mutex_unlock(&sdata->local->mtx);
 
 	return 0;
+}
+
+void ieee80211_mgd_teardown(struct ieee80211_sub_if_data *sdata)
+{
+	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
+
+	mutex_lock(&ifmgd->mtx);
+	if (ifmgd->assoc_data)
+		ieee80211_destroy_assoc_data(sdata, false);
+	if (ifmgd->auth_data)
+		ieee80211_destroy_auth_data(sdata, false);
+	del_timer_sync(&ifmgd->timer);
+	mutex_unlock(&ifmgd->mtx);
 }
 
 void ieee80211_cqm_rssi_notify(struct ieee80211_vif *vif,

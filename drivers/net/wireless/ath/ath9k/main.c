@@ -735,12 +735,7 @@ void ath9k_tasklet(unsigned long data)
 			ath_tx_tasklet(sc);
 	}
 
-	if (ath9k_hw_get_btcoex_scheme(ah) == ATH_BTCOEX_CFG_3WIRE)
-		if (status & ATH9K_INT_GENTIMER)
-			ath_gen_timer_isr(sc->sc_ah);
-
-	if ((status & ATH9K_INT_MCI) && ATH9K_HW_CAP_MCI)
-		ath_mci_intr(sc);
+	ath9k_btcoex_handle_interrupt(sc, status);
 
 out:
 	/* re-enable hardware interrupt */
@@ -1075,16 +1070,7 @@ static int ath9k_start(struct ieee80211_hw *hw)
 
 	spin_unlock_bh(&sc->sc_pcu_lock);
 
-	if ((ath9k_hw_get_btcoex_scheme(ah) != ATH_BTCOEX_CFG_NONE) &&
-	    !ah->btcoex_hw.enabled) {
-		if (!(sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_MCI))
-			ath9k_hw_btcoex_set_weight(ah, AR_BT_COEX_WGHT,
-						   AR_STOMP_LOW_WLAN_WGHT);
-		ath9k_hw_btcoex_enable(ah);
-
-		if (ath9k_hw_get_btcoex_scheme(ah) == ATH_BTCOEX_CFG_3WIRE)
-			ath9k_btcoex_timer_resume(sc);
-	}
+	ath9k_start_btcoex(sc);
 
 	if (ah->caps.pcie_lcr_extsync_en && common->bus_ops->extn_synch_en)
 		common->bus_ops->extn_synch_en(common);
@@ -1185,13 +1171,7 @@ static void ath9k_stop(struct ieee80211_hw *hw)
 	/* Ensure HW is awake when we try to shut it down. */
 	ath9k_ps_wakeup(sc);
 
-	if (ah->btcoex_hw.enabled &&
-	    ath9k_hw_get_btcoex_scheme(ah) != ATH_BTCOEX_CFG_NONE) {
-		ath9k_hw_btcoex_disable(ah);
-		if (ath9k_hw_get_btcoex_scheme(ah) == ATH_BTCOEX_CFG_3WIRE)
-			ath9k_btcoex_timer_pause(sc);
-		ath_mci_flush_profile(&sc->btcoex.mci);
-	}
+	ath9k_stop_btcoex(sc);
 
 	spin_lock_bh(&sc->sc_pcu_lock);
 

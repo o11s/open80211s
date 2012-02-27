@@ -65,7 +65,7 @@
 #define BRCMF_USB_CBCTL_READ	1
 #define BRCMF_USB_MAX_PKT_SIZE	1600
 
-#define BRCMF_USB_FW_NAME	"brcm/brcmfmac-usb.bin"
+#define BRCMF_USB_43236_FW_NAME	"brcm/brcmfmac43236b.bin"
 
 enum usbdev_suspend_state {
 	USBOS_SUSPEND_STATE_DEVICE_ACTIVE = 0, /* Device is busy, won't allow
@@ -482,7 +482,7 @@ static void brcmf_usb_free_q(struct list_head *q, bool pending)
 	struct brcmf_usbreq *req, *next;
 	int i = 0;
 	list_for_each_entry_safe(req, next, q, list) {
-		if (!req || !req->urb) {
+		if (!req->urb) {
 			brcmf_dbg(ERROR, "bad req\n");
 			break;
 		}
@@ -712,11 +712,11 @@ static int brcmf_usb_up(struct device *dev)
 	struct brcmf_usbdev_info *devinfo = brcmf_usb_get_businfo(dev);
 	u16 ifnum;
 
-	if (devinfo->bus_pub.state == BCMFMAC_USB_STATE_UP)
-		return 0;
-
 	if (devinfo == NULL)
 		return -EINVAL;
+
+	if (devinfo->bus_pub.state == BCMFMAC_USB_STATE_UP)
+		return 0;
 
 	/* If the USB/HSIC bus in sleep state, wake it up */
 	if (devinfo->suspend_state == USBOS_SUSPEND_STATE_SUSPENDED) {
@@ -1229,7 +1229,7 @@ static int brcmf_usb_get_fw(struct brcmf_usbdev_info *devinfo)
 	if (devinfo->image)
 		return 0;
 
-	fwname = BRCMF_USB_FW_NAME;
+	fwname = BRCMF_USB_43236_FW_NAME;
 
 	err = request_firmware(&fw, fwname, devinfo->dev);
 	if (!fw) {
@@ -1596,7 +1596,7 @@ static struct usb_device_id brcmf_usb_devid_table[] = {
 	{ }
 };
 MODULE_DEVICE_TABLE(usb, brcmf_usb_devid_table);
-MODULE_FIRMWARE(BRCMF_USB_FW_NAME);
+MODULE_FIRMWARE(BRCMF_USB_43236_FW_NAME);
 
 /* TODO: suspend and resume entries */
 static struct usb_driver brcmf_usbdrvr = {
