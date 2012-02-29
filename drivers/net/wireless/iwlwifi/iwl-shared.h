@@ -94,7 +94,6 @@
  * This implementation is iwl-pci.c
  */
 
-struct iwl_bus;
 struct iwl_priv;
 struct iwl_trans;
 struct iwl_sensitivity_ranges;
@@ -385,7 +384,6 @@ struct iwl_shared {
 	bool wowlan;
 	u8 valid_contexts;
 
-	struct iwl_bus *bus;
 	struct iwl_cfg *cfg;
 	struct iwl_priv *priv;
 	struct iwl_trans *trans;
@@ -416,10 +414,9 @@ struct iwl_shared {
 
 };
 
-/*Whatever _m is (iwl_trans, iwl_priv, iwl_bus, these macros will work */
+/*Whatever _m is (iwl_trans, iwl_priv, these macros will work */
 #define priv(_m)	((_m)->shrd->priv)
 #define cfg(_m)		((_m)->shrd->cfg)
-#define bus(_m)		((_m)->shrd->bus)
 #define nic(_m)		((_m)->shrd->nic)
 #define trans(_m)	((_m)->shrd->trans)
 #define hw_params(_m)	((_m)->shrd->hw_params)
@@ -532,24 +529,11 @@ enum iwl_rxon_context_id {
 	NUM_IWL_RXON_CTX
 };
 
-int iwl_probe(struct iwl_bus *bus, const struct iwl_trans_ops *trans_ops,
-		struct iwl_cfg *cfg);
-void __devexit iwl_remove(struct iwl_priv * priv);
-struct iwl_device_cmd;
-int __must_check iwl_rx_dispatch(struct iwl_priv *priv,
-				 struct iwl_rx_mem_buffer *rxb,
-				 struct iwl_device_cmd *cmd);
-
 int iwlagn_hw_valid_rtc_data_addr(u32 addr);
-void iwl_set_hw_rfkill_state(struct iwl_priv *priv, bool state);
 void iwl_nic_config(struct iwl_priv *priv);
-void iwl_free_skb(struct iwl_priv *priv, struct sk_buff *skb);
-void iwlagn_fw_error(struct iwl_priv *priv, bool ondemand);
 const char *get_cmd_string(u8 cmd);
 bool iwl_check_for_ct_kill(struct iwl_priv *priv);
 
-void iwl_stop_sw_queue(struct iwl_priv *priv, u8 ac);
-void iwl_wake_sw_queue(struct iwl_priv *priv, u8 ac);
 
 /* notification wait support */
 void iwl_abort_notification_waits(struct iwl_shared *shrd);
@@ -568,20 +552,6 @@ iwl_wait_notification(struct iwl_shared *shrd,
 void __releases(wait_entry)
 iwl_remove_notification(struct iwl_shared *shrd,
 			   struct iwl_notification_wait *wait_entry);
-
-#ifdef CONFIG_IWLWIFI_DEBUGFS
-void iwl_reset_traffic_log(struct iwl_priv *priv);
-#endif /* CONFIG_IWLWIFI_DEBUGFS */
-
-#ifdef CONFIG_IWLWIFI_DEBUG
-void iwl_print_rx_config_cmd(struct iwl_priv *priv,
-			     enum iwl_rxon_context_id ctxid);
-#else
-static inline void iwl_print_rx_config_cmd(struct iwl_priv *priv,
-					   enum iwl_rxon_context_id ctxid)
-{
-}
-#endif
 
 #define IWL_CMD(x) case x: return #x
 #define IWL_MASK(lo, hi) ((1 << (hi)) | ((1 << (hi)) - (1 << (lo))))

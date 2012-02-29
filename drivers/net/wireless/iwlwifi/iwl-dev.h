@@ -47,9 +47,9 @@
 #include "iwl-power.h"
 #include "iwl-agn-rs.h"
 #include "iwl-agn-tt.h"
-#include "iwl-bus.h"
 #include "iwl-trans.h"
 #include "iwl-shared.h"
+#include "iwl-op-mode.h"
 
 struct iwl_tx_queue;
 
@@ -442,9 +442,6 @@ struct iwl_chain_noise_data {
 	u8 state;
 };
 
-#define	EEPROM_SEM_TIMEOUT 10		/* milliseconds */
-#define EEPROM_SEM_RETRY_LIMIT 1000	/* number of attempts (not time) */
-
 enum {
 	MEASUREMENT_READY = (1 << 0),
 	MEASUREMENT_ACTIVE = (1 << 1),
@@ -709,6 +706,13 @@ struct iwl_wipan_noa_data {
 	u32 length;
 	u8 data[];
 };
+
+#define IWL_OP_MODE_GET_DVM(_iwl_op_mode) \
+	((struct iwl_priv *) ((_iwl_op_mode)->op_mode_specific))
+
+#define IWL_MAC80211_GET_DVM(_hw) \
+	((struct iwl_priv *) ((struct iwl_op_mode *) \
+	(_hw)->priv)->op_mode_specific)
 
 struct iwl_priv {
 

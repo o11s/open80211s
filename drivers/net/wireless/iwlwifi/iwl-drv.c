@@ -60,54 +60,44 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *****************************************************************************/
-#ifndef __iwl_pci_h__
-#define __iwl_pci_h__
+#include <linux/completion.h>
 
+#include "iwl-drv.h"
+#include "iwl-trans.h"
+#include "iwl-wifi.h"
+#include "iwl-op-mode.h"
 
-/*
- * This file declares the config structures for all devices.
- */
+int iwl_drv_start(struct iwl_shared *shrd,
+		  struct iwl_trans *trans, struct iwl_cfg *cfg)
+{
+	int ret;
 
-extern struct iwl_cfg iwl5300_agn_cfg;
-extern struct iwl_cfg iwl5100_agn_cfg;
-extern struct iwl_cfg iwl5350_agn_cfg;
-extern struct iwl_cfg iwl5100_bgn_cfg;
-extern struct iwl_cfg iwl5100_abg_cfg;
-extern struct iwl_cfg iwl5150_agn_cfg;
-extern struct iwl_cfg iwl5150_abg_cfg;
-extern struct iwl_cfg iwl6005_2agn_cfg;
-extern struct iwl_cfg iwl6005_2abg_cfg;
-extern struct iwl_cfg iwl6005_2bg_cfg;
-extern struct iwl_cfg iwl6005_2agn_sff_cfg;
-extern struct iwl_cfg iwl6005_2agn_d_cfg;
-extern struct iwl_cfg iwl6005_2agn_mow1_cfg;
-extern struct iwl_cfg iwl6005_2agn_mow2_cfg;
-extern struct iwl_cfg iwl1030_bgn_cfg;
-extern struct iwl_cfg iwl1030_bg_cfg;
-extern struct iwl_cfg iwl6030_2agn_cfg;
-extern struct iwl_cfg iwl6030_2abg_cfg;
-extern struct iwl_cfg iwl6030_2bgn_cfg;
-extern struct iwl_cfg iwl6030_2bg_cfg;
-extern struct iwl_cfg iwl6000i_2agn_cfg;
-extern struct iwl_cfg iwl6000i_2abg_cfg;
-extern struct iwl_cfg iwl6000i_2bg_cfg;
-extern struct iwl_cfg iwl6000_3agn_cfg;
-extern struct iwl_cfg iwl6050_2agn_cfg;
-extern struct iwl_cfg iwl6050_2abg_cfg;
-extern struct iwl_cfg iwl6150_bgn_cfg;
-extern struct iwl_cfg iwl6150_bg_cfg;
-extern struct iwl_cfg iwl1000_bgn_cfg;
-extern struct iwl_cfg iwl1000_bg_cfg;
-extern struct iwl_cfg iwl100_bgn_cfg;
-extern struct iwl_cfg iwl100_bg_cfg;
-extern struct iwl_cfg iwl130_bgn_cfg;
-extern struct iwl_cfg iwl130_bg_cfg;
-extern struct iwl_cfg iwl2000_2bgn_cfg;
-extern struct iwl_cfg iwl2000_2bgn_d_cfg;
-extern struct iwl_cfg iwl2030_2bgn_cfg;
-extern struct iwl_cfg iwl6035_2agn_cfg;
-extern struct iwl_cfg iwl105_bgn_cfg;
-extern struct iwl_cfg iwl105_bgn_d_cfg;
-extern struct iwl_cfg iwl135_bgn_cfg;
+	shrd->cfg = cfg;
 
-#endif /* __iwl_pci_h__ */
+	shrd->nic = kzalloc(sizeof(*shrd->nic), GFP_KERNEL);
+	if (!shrd->nic) {
+		dev_printk(KERN_ERR, trans->dev, "Couldn't allocate iwl_nic");
+		return -ENOMEM;
+	}
+	shrd->nic->shrd = shrd;
+
+	init_completion(&shrd->nic->request_firmware_complete);
+
+	ret = iwl_request_firmware(shrd->nic, true);
+
+	if (ret) {
+		dev_printk(KERN_ERR, trans->dev, "Couldn't request the fw");
+		kfree(shrd->nic);
+	}
+
+	return ret;
+}
+
+void iwl_drv_stop(struct iwl_shared *shrd)
+{
+	/* op_mode can be NULL if its start failed */
+	if (shrd->nic->op_mode)
+		iwl_op_mode_stop(shrd->nic->op_mode);
+
+	kfree(shrd->nic);
+}

@@ -5,7 +5,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2007 - 2012 Intel Corporation. All rights reserved.
+ * Copyright(c) 2008 - 2012 Intel Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -58,56 +58,66 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
  *****************************************************************************/
-#ifndef __iwl_pci_h__
-#define __iwl_pci_h__
 
+#ifndef __iwl_drv_h__
+#define __iwl_drv_h__
 
-/*
- * This file declares the config structures for all devices.
+#include "iwl-shared.h"
+
+/**
+ * DOC: Driver system flows - drv component
+ *
+ * This component implements the system flows such as bus enumeration, bus
+ * removal. Bus dependent parts of system flows (such as iwl_pci_probe) are in
+ * bus specific files (transport files). This is the code that is common among
+ * different buses.
+ *
+ * This component is also in charge of managing the several implementations of
+ * the wifi flows: it will allow to have several fw API implementation. These
+ * different implementations will differ in the way they implement mac80211's
+ * handlers too.
+
+ * The init flow wrt to the drv component looks like this:
+ * 1) The bus specific component is called from module_init
+ * 2) The bus specific component registers the bus driver
+ * 3) The bus driver calls the probe function
+ * 4) The bus specific component configures the bus
+ * 5) The bus specific component calls to the drv bus agnostic part
+ *    (iwl_drv_start)
+ * 6) iwl_drv_start fetches the fw ASYNC, iwl_ucode_callback
+ * 7) iwl_ucode_callback parses the fw file
+ * 8) iwl_ucode_callback starts the wifi implementation to matches the fw
  */
 
-extern struct iwl_cfg iwl5300_agn_cfg;
-extern struct iwl_cfg iwl5100_agn_cfg;
-extern struct iwl_cfg iwl5350_agn_cfg;
-extern struct iwl_cfg iwl5100_bgn_cfg;
-extern struct iwl_cfg iwl5100_abg_cfg;
-extern struct iwl_cfg iwl5150_agn_cfg;
-extern struct iwl_cfg iwl5150_abg_cfg;
-extern struct iwl_cfg iwl6005_2agn_cfg;
-extern struct iwl_cfg iwl6005_2abg_cfg;
-extern struct iwl_cfg iwl6005_2bg_cfg;
-extern struct iwl_cfg iwl6005_2agn_sff_cfg;
-extern struct iwl_cfg iwl6005_2agn_d_cfg;
-extern struct iwl_cfg iwl6005_2agn_mow1_cfg;
-extern struct iwl_cfg iwl6005_2agn_mow2_cfg;
-extern struct iwl_cfg iwl1030_bgn_cfg;
-extern struct iwl_cfg iwl1030_bg_cfg;
-extern struct iwl_cfg iwl6030_2agn_cfg;
-extern struct iwl_cfg iwl6030_2abg_cfg;
-extern struct iwl_cfg iwl6030_2bgn_cfg;
-extern struct iwl_cfg iwl6030_2bg_cfg;
-extern struct iwl_cfg iwl6000i_2agn_cfg;
-extern struct iwl_cfg iwl6000i_2abg_cfg;
-extern struct iwl_cfg iwl6000i_2bg_cfg;
-extern struct iwl_cfg iwl6000_3agn_cfg;
-extern struct iwl_cfg iwl6050_2agn_cfg;
-extern struct iwl_cfg iwl6050_2abg_cfg;
-extern struct iwl_cfg iwl6150_bgn_cfg;
-extern struct iwl_cfg iwl6150_bg_cfg;
-extern struct iwl_cfg iwl1000_bgn_cfg;
-extern struct iwl_cfg iwl1000_bg_cfg;
-extern struct iwl_cfg iwl100_bgn_cfg;
-extern struct iwl_cfg iwl100_bg_cfg;
-extern struct iwl_cfg iwl130_bgn_cfg;
-extern struct iwl_cfg iwl130_bg_cfg;
-extern struct iwl_cfg iwl2000_2bgn_cfg;
-extern struct iwl_cfg iwl2000_2bgn_d_cfg;
-extern struct iwl_cfg iwl2030_2bgn_cfg;
-extern struct iwl_cfg iwl6035_2agn_cfg;
-extern struct iwl_cfg iwl105_bgn_cfg;
-extern struct iwl_cfg iwl105_bgn_d_cfg;
-extern struct iwl_cfg iwl135_bgn_cfg;
+/**
+ * iwl_drv_start - start the drv
+ *
+ * @shrd: the shrd area
+ * @trans_ops: the ops of the transport
+ * @cfg: device specific constants / virtual functions
+ *
+ * TODO: review the parameters given to this function
+ *
+ * starts the driver: fetches the firmware. This should be called by bus
+ * specific system flows implementations. For example, the bus specific probe
+ * function should do bus related operations only, and then call to this
+ * function.
+ */
+int iwl_drv_start(struct iwl_shared *shrd,
+		  struct iwl_trans *trans, struct iwl_cfg *cfg);
 
-#endif /* __iwl_pci_h__ */
+/**
+ * iwl_drv_stop - stop the drv
+ *
+ * @shrd: the shrd area
+ *
+ * TODO: review the parameters given to this function
+ *
+ * Stop the driver. This should be called by bus specific system flows
+ * implementations. For example, the bus specific remove function should first
+ * call this function and then do the bus related operations only.
+ */
+void iwl_drv_stop(struct iwl_shared *shrd);
+
+#endif /* __iwl_drv_h__ */

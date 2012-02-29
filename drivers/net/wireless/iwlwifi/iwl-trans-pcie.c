@@ -76,6 +76,7 @@
 #include "iwl-eeprom.h"
 #include "iwl-agn-hw.h"
 #include "iwl-core.h"
+#include "iwl-ucode.h"
 
 static int iwl_trans_rx_alloc(struct iwl_trans *trans)
 {
@@ -1045,7 +1046,7 @@ static int iwl_trans_pcie_start_fw(struct iwl_trans *trans, struct fw_img *fw)
 		set_bit(STATUS_RF_KILL_HW, &trans->shrd->status);
 
 	if (iwl_is_rfkill(trans->shrd)) {
-		iwl_set_hw_rfkill_state(priv(trans), true);
+		iwl_op_mode_hw_rf_kill(trans->op_mode, true);
 		iwl_enable_interrupts(trans);
 		return -ERFKILL;
 	}
@@ -1524,7 +1525,7 @@ static int iwl_trans_pcie_start_hw(struct iwl_trans *trans)
 	else
 		set_bit(STATUS_RF_KILL_HW, &trans->shrd->status);
 
-	iwl_set_hw_rfkill_state(priv(trans),
+	iwl_op_mode_hw_rf_kill(trans->op_mode,
 				test_bit(STATUS_RF_KILL_HW,
 					 &trans->shrd->status));
 
@@ -1669,7 +1670,7 @@ static int iwl_trans_pcie_resume(struct iwl_trans *trans)
 	else
 		clear_bit(STATUS_RF_KILL_HW, &trans->shrd->status);
 
-	iwl_set_hw_rfkill_state(priv(trans), hw_rfkill);
+	iwl_op_mode_hw_rf_kill(trans->op_mode, hw_rfkill);
 
 	return 0;
 }

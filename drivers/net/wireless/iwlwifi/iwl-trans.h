@@ -63,12 +63,9 @@
 #ifndef __iwl_trans_h__
 #define __iwl_trans_h__
 
-#include <linux/debugfs.h>
-#include <linux/skbuff.h>
+#include <linux/ieee80211.h>
 
 #include "iwl-shared.h"
-#include "iwl-commands.h"
-#include "iwl-ucode.h"
 #include "iwl-debug.h"
 
 /**
@@ -106,14 +103,12 @@
  *	6) Eventually, the free function will be called.
  */
 
-/**
- * DOC: API needed by the transport layer from the op_mode
- *
- * TODO
- */
-
 struct iwl_priv;
 struct iwl_shared;
+struct iwl_op_mode;
+struct fw_img;
+struct sk_buff;
+struct dentry;
 
 /**
  * DOC: Host command section
@@ -312,6 +307,7 @@ enum iwl_trans_state {
  * struct iwl_trans - transport common data
  *
  * @ops - pointer to iwl_trans_ops
+ * @op_mode - pointer to the op_mode
  * @shrd - pointer to iwl_shared which holds shared data from the upper layer
  * @hcmd_lock: protects HCMD
  * @reg_lock - protect hw register access
@@ -327,6 +323,7 @@ enum iwl_trans_state {
  */
 struct iwl_trans {
 	const struct iwl_trans_ops *ops;
+	struct iwl_op_mode *op_mode;
 	struct iwl_shared *shrd;
 	enum iwl_trans_state state;
 	spinlock_t hcmd_lock;
@@ -347,8 +344,18 @@ struct iwl_trans {
 
 	/* pointer to trans specific struct */
 	/*Ensure that this pointer will always be aligned to sizeof pointer */
-	char trans_specific[0] __attribute__((__aligned__(sizeof(void *))));
+	char trans_specific[0] __aligned(sizeof(void *));
 };
+
+static inline void iwl_trans_configure(struct iwl_trans *trans,
+				       struct iwl_op_mode *op_mode)
+{
+	/*
+	 * only set the op_mode for the moment. Later on, this function will do
+	 * more
+	 */
+	trans->op_mode = op_mode;
+}
 
 static inline int iwl_trans_start_hw(struct iwl_trans *trans)
 {
@@ -550,6 +557,8 @@ extern const struct iwl_trans_ops trans_ops_pcie;
 struct iwl_trans *iwl_trans_pcie_alloc(struct iwl_shared *shrd,
 				       struct pci_dev *pdev,
 				       const struct pci_device_id *ent);
+int __must_check iwl_pci_register_driver(void);
+void iwl_pci_unregister_driver(void);
 
 extern const struct iwl_trans_ops trans_ops_idi;
 struct iwl_trans *iwl_trans_idi_alloc(struct iwl_shared *shrd,

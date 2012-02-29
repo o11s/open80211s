@@ -44,6 +44,7 @@
 #include "iwl-agn-calib.h"
 #include "iwl-trans.h"
 #include "iwl-fh.h"
+#include "iwl-op-mode.h"
 
 static struct iwl_wimax_coex_event_entry cu_priorities[COEX_NUM_OF_EVENTS] = {
 	{COEX_CU_UNASSOC_IDLE_RP, COEX_CU_UNASSOC_IDLE_WP,
@@ -687,7 +688,6 @@ int iwl_run_init_ucode(struct iwl_trans *trans)
 
 static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context);
 
-#define UCODE_EXPERIMENTAL_INDEX	100
 #define UCODE_EXPERIMENTAL_TAG		"exp"
 
 int __must_check iwl_request_firmware(struct iwl_nic *nic, bool first)
@@ -731,8 +731,6 @@ struct iwlagn_firmware_pieces {
 	size_t inst_size, data_size, init_size, init_data_size,
 	       wowlan_inst_size, wowlan_data_size;
 
-	u32 build;
-
 	u32 init_evtlog_ptr, init_evtlog_size, init_errlog_ptr;
 	u32 inst_evtlog_ptr, inst_evtlog_size, inst_errlog_ptr;
 };
@@ -742,7 +740,8 @@ static int iwl_parse_v1_v2_firmware(struct iwl_nic *nic,
 				       struct iwlagn_firmware_pieces *pieces)
 {
 	struct iwl_ucode_header *ucode = (void *)ucode_raw->data;
-	u32 api_ver, hdr_size;
+	u32 api_ver, hdr_size, build;
+	char buildstr[25];
 	const u8 *src;
 
 	nic->fw.ucode_ver = le32_to_cpu(ucode->ver);
@@ -755,7 +754,7 @@ static int iwl_parse_v1_v2_firmware(struct iwl_nic *nic,
 			IWL_ERR(nic, "File size too small!\n");
 			return -EINVAL;
 		}
-		pieces->build = le32_to_cpu(ucode->u.v2.build);
+		build = le32_to_cpu(ucode->u.v2.build);
 		pieces->inst_size = le32_to_cpu(ucode->u.v2.inst_size);
 		pieces->data_size = le32_to_cpu(ucode->u.v2.data_size);
 		pieces->init_size = le32_to_cpu(ucode->u.v2.init_size);
@@ -770,7 +769,7 @@ static int iwl_parse_v1_v2_firmware(struct iwl_nic *nic,
 			IWL_ERR(nic, "File size too small!\n");
 			return -EINVAL;
 		}
-		pieces->build = 0;
+		build = 0;
 		pieces->inst_size = le32_to_cpu(ucode->u.v1.inst_size);
 		pieces->data_size = le32_to_cpu(ucode->u.v1.data_size);
 		pieces->init_size = le32_to_cpu(ucode->u.v1.init_size);
@@ -778,6 +777,22 @@ static int iwl_parse_v1_v2_firmware(struct iwl_nic *nic,
 		src = ucode->u.v1.data;
 		break;
 	}
+
+	if (build)
+		sprintf(buildstr, " build %u%s", build,
+		       (nic->fw_index == UCODE_EXPERIMENTAL_INDEX)
+				? " (EXP)" : "");
+	else
+		buildstr[0] = '\0';
+
+	snprintf(nic->fw.fw_version,
+		 sizeof(nic->fw.fw_version),
+		 "%u.%u.%u.%u%s",
+		 IWL_UCODE_MAJOR(nic->fw.ucode_ver),
+		 IWL_UCODE_MINOR(nic->fw.ucode_ver),
+		 IWL_UCODE_API(nic->fw.ucode_ver),
+		 IWL_UCODE_SERIAL(nic->fw.ucode_ver),
+		 buildstr);
 
 	/* Verify size of file vs. image size info in file's header */
 	if (ucode_raw->size != hdr_size + pieces->inst_size +
@@ -817,6 +832,8 @@ static int iwl_parse_tlv_firmware(struct iwl_nic *nic,
 	u32 tlv_len;
 	enum iwl_ucode_tlv_type tlv_type;
 	const u8 *tlv_data;
+	char buildstr[25];
+	u32 build;
 
 	if (len < sizeof(*ucode)) {
 		IWL_ERR(nic, "uCode has invalid length: %zd\n", len);
@@ -847,7 +864,24 @@ static int iwl_parse_tlv_firmware(struct iwl_nic *nic,
 			 tmp, wanted_alternative);
 
 	nic->fw.ucode_ver = le32_to_cpu(ucode->ver);
-	pieces->build = le32_to_cpu(ucode->build);
+	build = le32_to_cpu(ucode->build);
+
+	if (build)
+		sprintf(buildstr, " build %u%s", build,
+		       (nic->fw_index == UCODE_EXPERIMENTAL_INDEX)
+				? " (EXP)" : "");
+	else
+		buildstr[0] = '\0';
+
+	snprintf(nic->fw.fw_version,
+		 sizeof(nic->fw.fw_version),
+		 "%u.%u.%u.%u%s",
+		 IWL_UCODE_MAJOR(nic->fw.ucode_ver),
+		 IWL_UCODE_MINOR(nic->fw.ucode_ver),
+		 IWL_UCODE_API(nic->fw.ucode_ver),
+		 IWL_UCODE_SERIAL(nic->fw.ucode_ver),
+		 buildstr);
+
 	data = ucode->data;
 
 	len -= sizeof(*ucode);
@@ -1013,7 +1047,6 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 	struct iwl_nic *nic = context;
 	struct iwl_cfg *cfg = cfg(nic);
 	struct iwl_fw *fw = &nic->fw;
-	struct iwl_priv *priv = priv(nic); /* temporary */
 	struct iwl_ucode_header *ucode;
 	int err;
 	struct iwlagn_firmware_pieces pieces;
@@ -1021,8 +1054,6 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 	unsigned int api_ok = cfg->ucode_api_ok;
 	const unsigned int api_min = cfg->ucode_api_min;
 	u32 api_ver;
-	char buildstr[25];
-	u32 build;
 
 	fw->ucode_capa.max_probe_length = 200;
 	fw->ucode_capa.standard_phy_calibration_size =
@@ -1063,7 +1094,6 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 		goto try_again;
 
 	api_ver = IWL_UCODE_API(nic->fw.ucode_ver);
-	build = pieces.build;
 
 	/*
 	 * api_ver should match the api version forming part of the
@@ -1094,28 +1124,7 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 		}
 	}
 
-	if (build)
-		sprintf(buildstr, " build %u%s", build,
-		       (nic->fw_index == UCODE_EXPERIMENTAL_INDEX)
-				? " (EXP)" : "");
-	else
-		buildstr[0] = '\0';
-
-	IWL_INFO(nic, "loaded firmware version %u.%u.%u.%u%s\n",
-		 IWL_UCODE_MAJOR(nic->fw.ucode_ver),
-		 IWL_UCODE_MINOR(nic->fw.ucode_ver),
-		 IWL_UCODE_API(nic->fw.ucode_ver),
-		 IWL_UCODE_SERIAL(nic->fw.ucode_ver),
-		 buildstr);
-
-	snprintf(priv->hw->wiphy->fw_version,
-		 sizeof(priv->hw->wiphy->fw_version),
-		 "%u.%u.%u.%u%s",
-		 IWL_UCODE_MAJOR(nic->fw.ucode_ver),
-		 IWL_UCODE_MINOR(nic->fw.ucode_ver),
-		 IWL_UCODE_API(nic->fw.ucode_ver),
-		 IWL_UCODE_SERIAL(nic->fw.ucode_ver),
-		 buildstr);
+	IWL_INFO(nic, "loaded firmware version %s", nic->fw.fw_version);
 
 	/*
 	 * For any of the failures below (before allocating pci memory)
@@ -1218,30 +1227,7 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 		nic->inst_evtlog_size =
 			cfg->base_params->max_event_log_size;
 	nic->inst_errlog_ptr = pieces.inst_errlog_ptr;
-#ifndef CONFIG_IWLWIFI_P2P
-	fw->ucode_capa.flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
-#endif
 
-	priv->new_scan_threshold_behaviour =
-		!!(fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_NEWSCAN);
-
-	if (!(cfg->sku & EEPROM_SKU_CAP_IPAN_ENABLE))
-		fw->ucode_capa.flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
-
-	/*
-	 * if not PAN, then don't support P2P -- might be a uCode
-	 * packaging bug or due to the eeprom check above
-	 */
-	if (!(fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_PAN))
-		fw->ucode_capa.flags &= ~IWL_UCODE_TLV_FLAGS_P2P;
-
-	if (fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_PAN) {
-		priv->sta_key_max_num = STA_KEY_MAX_NUM_PAN;
-		nic->shrd->cmd_queue = IWL_IPAN_CMD_QUEUE_NUM;
-	} else {
-		priv->sta_key_max_num = STA_KEY_MAX_NUM;
-		nic->shrd->cmd_queue = IWL_DEFAULT_CMD_QUEUE_NUM;
-	}
 	/*
 	 * figure out the offset of chain noise reset and gain commands
 	 * base on the size of standard phy calibration commands table size
@@ -1251,47 +1237,30 @@ static void iwl_ucode_callback(const struct firmware *ucode_raw, void *context)
 		fw->ucode_capa.standard_phy_calibration_size =
 			IWL_MAX_STANDARD_PHY_CALIBRATE_TBL_SIZE;
 
-	priv->phy_calib_chain_noise_reset_cmd =
-		fw->ucode_capa.standard_phy_calibration_size;
-	priv->phy_calib_chain_noise_gain_cmd =
-		fw->ucode_capa.standard_phy_calibration_size + 1;
-
-	/* initialize all valid contexts */
-	iwl_init_context(priv, fw->ucode_capa.flags);
-
-	/**************************************************
-	 * This is still part of probe() in a sense...
-	 *
-	 * 9. Setup and register with mac80211 and debugfs
-	 **************************************************/
-	err = iwlagn_mac_setup_register(priv, &fw->ucode_capa);
-	if (err)
-		goto out_unbind;
-
-	err = iwl_dbgfs_register(priv, DRV_NAME);
-	if (err)
-		IWL_ERR(nic,
-			"failed to create debugfs files. Ignoring error: %d\n",
-			err);
-
 	/* We have our copies now, allow OS release its copies */
 	release_firmware(ucode_raw);
 	complete(&nic->request_firmware_complete);
+
+	nic->op_mode = iwl_dvm_ops.start(nic->shrd->trans);
+
+	if (!nic->op_mode)
+		goto out_unbind;
+
 	return;
 
  try_again:
 	/* try next, if any */
+	release_firmware(ucode_raw);
 	if (iwl_request_firmware(nic, false))
 		goto out_unbind;
-	release_firmware(ucode_raw);
 	return;
 
  err_pci_alloc:
 	IWL_ERR(nic, "failed to allocate pci memory\n");
 	iwl_dealloc_ucode(nic);
+	release_firmware(ucode_raw);
  out_unbind:
 	complete(&nic->request_firmware_complete);
 	device_release_driver(trans(nic)->dev);
-	release_firmware(ucode_raw);
 }
 

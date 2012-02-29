@@ -35,6 +35,7 @@
 #include "iwl-io.h"
 #include "iwl-trans-pcie-int.h"
 #include "iwl-wifi.h"
+#include "iwl-op-mode.h"
 
 #ifdef CONFIG_IWLWIFI_IDI
 #include "iwl-amfh.h"
@@ -460,7 +461,7 @@ static void iwl_rx_handle(struct iwl_trans *trans)
 		     "reclaim is false, SEQ_RX_FRAME unset: %s\n",
 		     get_cmd_string(pkt->hdr.cmd));
 
-		err = iwl_rx_dispatch(priv(trans), rxb, cmd);
+		err = iwl_op_mode_rx(trans->op_mode, rxb, cmd);
 
 		/*
 		 * XXX: After here, we should always check rxb->page
@@ -670,9 +671,8 @@ static void iwl_dump_nic_error_log(struct iwl_trans *trans)
  */
 static void iwl_irq_handle_error(struct iwl_trans *trans)
 {
-	struct iwl_priv *priv = priv(trans);
 	/* W/A for WiFi/WiMAX coex and WiMAX own the RF */
-	if (cfg(priv)->internal_wimax_coex &&
+	if (cfg(trans)->internal_wimax_coex &&
 	    (!(iwl_read_prph(trans, APMG_CLK_CTRL_REG) &
 			APMS_CLK_VAL_MRB_FUNC_MODE) ||
 	     (iwl_read_prph(trans, APMG_PS_CTRL_REG) &
@@ -683,24 +683,20 @@ static void iwl_irq_handle_error(struct iwl_trans *trans)
 		 */
 		clear_bit(STATUS_READY, &trans->shrd->status);
 		clear_bit(STATUS_HCMD_ACTIVE, &trans->shrd->status);
-		wake_up(&priv->shrd->wait_command_queue);
+		wake_up(&trans->shrd->wait_command_queue);
 		IWL_ERR(trans, "RF is used by WiMAX\n");
 		return;
 	}
 
 	IWL_ERR(trans, "Loaded firmware version: %s\n",
-		priv->hw->wiphy->fw_version);
+		nic(trans)->fw.fw_version);
 
 	iwl_dump_nic_error_log(trans);
 	iwl_dump_csr(trans);
 	iwl_dump_fh(trans, NULL, false);
 	iwl_dump_nic_event_log(trans, false, NULL, false);
-#ifdef CONFIG_IWLWIFI_DEBUG
-	if (iwl_get_debug_level(trans->shrd) & IWL_DL_FW_ERRORS)
-		iwl_print_rx_config_cmd(priv(trans), IWL_RXON_CTX_BSS);
-#endif
 
-	iwlagn_fw_error(priv, false);
+	iwl_op_mode_nic_error(trans->op_mode);
 }
 
 #define EVENT_START_OFFSET  (4 * sizeof(u32))
@@ -1035,7 +1031,7 @@ void iwl_irq_tasklet(struct iwl_trans *trans)
 			else
 				clear_bit(STATUS_RF_KILL_HW,
 					  &trans->shrd->status);
-			iwl_set_hw_rfkill_state(priv(trans), hw_rf_kill);
+			iwl_op_mode_hw_rf_kill(trans->op_mode, hw_rf_kill);
 		}
 
 		handled |= CSR_INT_BIT_RF_KILL;
