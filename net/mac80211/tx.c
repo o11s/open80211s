@@ -2401,6 +2401,15 @@ struct sk_buff *ieee80211_beacon_get_tim(struct ieee80211_hw *hw,
 
 		pos = skb_put(skb, 2);
 		*pos++ = WLAN_EID_SSID;
+		*pos++ = 0x00;
+
+		/* bogus TIM IE, needed or wl12xx firmware will choke on beacon */
+		pos = skb_put(skb, 2 + 4);
+		*pos++ = WLAN_EID_TIM;
+		*pos++ = 0x4;
+		*pos++ = 0x1;
+		*pos++ = 0x2;
+		*pos++ = 0x0;
 		*pos++ = 0x0;
 
 		if (ieee80211_add_srates_ie(&sdata->vif, skb) ||
