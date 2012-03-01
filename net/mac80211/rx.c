@@ -2212,7 +2212,10 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 	if (len < IEEE80211_MIN_ACTION_SIZE)
 		return RX_DROP_UNUSABLE;
 
-	if (!rx->sta && mgmt->u.action.category != WLAN_CATEGORY_PUBLIC)
+	/* XXX: here we will DROP_UNUSABLE if a sta entry for this mesh peer
+	 * does not exist, which isn't quite right, find a proper fix */
+	if (!rx->sta && ((mgmt->u.action.category != WLAN_CATEGORY_PUBLIC) &&
+			  !ieee80211_vif_is_mesh(&sdata->vif)))
 		return RX_DROP_UNUSABLE;
 
 	if (!(status->rx_flags & IEEE80211_RX_RA_MATCH))
