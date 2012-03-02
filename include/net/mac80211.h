@@ -1011,7 +1011,7 @@ enum ieee80211_sta_state {
  * call to your sta_remove callback that removed it.
  *
  * @addr: MAC address
- * @aid: AID we assigned to the station if we're an AP
+ * @aid: AID we assigned to the station if we're an AP or mesh node
  * @supp_rates: Bitmap of supported rates (per band)
  * @ht_cap: HT capabilities of this STA; restricted to our own TX capabilities
  * @wme: indicates whether the STA supports WME. Only valid during AP-mode.

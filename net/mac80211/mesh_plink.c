@@ -86,6 +86,7 @@ static struct sta_info *mesh_plink_alloc(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	struct sta_info *sta;
+	u16 aid;
 
 	sband = local->hw.wiphy->bands[local->oper_channel->band];
 
@@ -108,6 +109,11 @@ static struct sta_info *mesh_plink_alloc(struct ieee80211_sub_if_data *sdata,
 						  elems->ht_cap_elem,
 						  &sta->sta.ht_cap);
 	rate_control_rate_init(sta);
+	get_random_bytes(&aid, 2);
+	/* XXX: needs to be unique in the MBSS (at least amongst neighbors),
+	 * and can't allow peerings if plid == existing llid. Check the
+	 * standard on this! */
+	sta->sta.aid = aid % IEEE80211_MAX_AID + 1;
 
 	return sta;
 }
@@ -408,15 +414,13 @@ static inline void mesh_plink_timer_set(struct sta_info *sta, int timeout)
 
 int mesh_plink_open(struct sta_info *sta)
 {
-	__le16 llid;
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
 
 	if (!test_sta_flag(sta, WLAN_STA_AUTH))
 		return -EPERM;
 
 	spin_lock_bh(&sta->lock);
-	get_random_bytes(&llid, 2);
-	sta->llid = llid;
+	sta->llid = cpu_to_le16(sta->sta.aid);
 	if (sta->plink_state != NL80211_PLINK_LISTEN) {
 		spin_unlock_bh(&sta->lock);
 		return -EBUSY;
@@ -428,7 +432,7 @@ int mesh_plink_open(struct sta_info *sta)
 		sta->sta.addr);
 
 	return mesh_plink_frame_tx(sdata, WLAN_SP_MESH_PEERING_OPEN,
-				   sta->sta.addr, llid, 0, 0);
+				   sta->sta.addr, sta->llid, 0, 0);
 }
 
 void mesh_plink_block(struct sta_info *sta)
@@ -583,6 +587,7 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 			mpl_dbg("Mesh plink error: plink table full\n");
 			return;
 		}
+		sta->sta.aid = le16_to_cpu(plid);
 		if (sta_info_insert_rcu(sta)) {
 			rcu_read_unlock();
 			return;
