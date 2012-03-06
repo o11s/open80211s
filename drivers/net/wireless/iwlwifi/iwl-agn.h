@@ -82,7 +82,7 @@ void iwl_cancel_deferred_work(struct iwl_priv *priv);
 void iwlagn_prepare_restart(struct iwl_priv *priv);
 void iwl_free_skb(struct iwl_op_mode *op_mode, struct sk_buff *skb);
 int __must_check iwl_rx_dispatch(struct iwl_op_mode *op_mode,
-				 struct iwl_rx_mem_buffer *rxb,
+				 struct iwl_rx_cmd_buffer *rxb,
 				 struct iwl_device_cmd *cmd);
 void iwl_stop_sw_queue(struct iwl_op_mode *op_mode, u8 ac);
 void iwl_wake_sw_queue(struct iwl_op_mode *op_mode, u8 ac);
@@ -110,7 +110,7 @@ void iwlagn_config_ht40(struct ieee80211_conf *conf,
 
 /* uCode */
 int iwlagn_rx_calib_result(struct iwl_priv *priv,
-			    struct iwl_rx_mem_buffer *rxb,
+			    struct iwl_rx_cmd_buffer *rxb,
 			    struct iwl_device_cmd *cmd);
 void iwl_init_context(struct iwl_priv *priv, u32 ucode_flags);
 
@@ -142,9 +142,9 @@ int iwlagn_tx_agg_oper(struct iwl_priv *priv, struct ieee80211_vif *vif,
 int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 		       struct ieee80211_sta *sta, u16 tid);
 int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
-				   struct iwl_rx_mem_buffer *rxb,
+				   struct iwl_rx_cmd_buffer *rxb,
 				   struct iwl_device_cmd *cmd);
-int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
+int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb,
 			       struct iwl_device_cmd *cmd);
 
 static inline u32 iwl_tx_status_to_mac80211(u32 status)
@@ -179,7 +179,7 @@ void iwlagn_disable_roc(struct iwl_priv *priv);
 /* bt coex */
 void iwlagn_send_advance_bt_config(struct iwl_priv *priv);
 int iwlagn_bt_coex_profile_notif(struct iwl_priv *priv,
-				  struct iwl_rx_mem_buffer *rxb,
+				  struct iwl_rx_cmd_buffer *rxb,
 				  struct iwl_device_cmd *cmd);
 void iwlagn_bt_rx_handler_setup(struct iwl_priv *priv);
 void iwlagn_bt_setup_deferred_work(struct iwl_priv *priv);
@@ -227,45 +227,11 @@ void iwl_sta_fill_lq(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
 		     u8 sta_id, struct iwl_link_quality_cmd *link_cmd);
 int iwl_send_lq_cmd(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
 		    struct iwl_link_quality_cmd *lq, u8 flags, bool init);
-void iwl_reprogram_ap_sta(struct iwl_priv *priv, struct iwl_rxon_context *ctx);
-int iwl_add_sta_callback(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
+int iwl_add_sta_callback(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb,
 			       struct iwl_device_cmd *cmd);
+int iwl_sta_update_ht(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
+		      struct ieee80211_sta *sta);
 
-
-/**
- * iwl_clear_driver_stations - clear knowledge of all stations from driver
- * @priv: iwl priv struct
- *
- * This is called during iwl_down() to make sure that in the case
- * we're coming there from a hardware restart mac80211 will be
- * able to reconfigure stations -- if we're getting there in the
- * normal down flow then the stations will already be cleared.
- */
-static inline void iwl_clear_driver_stations(struct iwl_priv *priv)
-{
-	unsigned long flags;
-	struct iwl_rxon_context *ctx;
-
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
-	memset(priv->stations, 0, sizeof(priv->stations));
-	priv->num_stations = 0;
-
-	priv->ucode_key_table = 0;
-
-	for_each_context(priv, ctx) {
-		/*
-		 * Remove all key information that is not stored as part
-		 * of station information since mac80211 may not have had
-		 * a chance to remove all the keys. When device is
-		 * reconfigured by mac80211 after an error all keys will
-		 * be reconfigured.
-		 */
-		memset(ctx->wep_keys, 0, sizeof(ctx->wep_keys));
-		ctx->key_mapping_keys = 0;
-	}
-
-	spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
-}
 
 static inline int iwl_sta_id(struct ieee80211_sta *sta)
 {

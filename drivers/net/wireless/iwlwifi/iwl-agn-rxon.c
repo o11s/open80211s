@@ -274,8 +274,6 @@ static int iwlagn_rxon_connect(struct iwl_priv *priv,
 	}
 	memcpy(active, &ctx->staging, sizeof(*active));
 
-	iwl_reprogram_ap_sta(priv, ctx);
-
 	/* IBSS beacon needs to be sent after setting assoc */
 	if (ctx->vif && (ctx->vif->type == NL80211_IFTYPE_ADHOC))
 		if (iwlagn_update_beacon(priv, ctx->vif))
@@ -422,9 +420,6 @@ int iwlagn_commit_rxon(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 
 	lockdep_assert_held(&priv->shrd->mutex);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
-		return -EINVAL;
-
 	if (!iwl_is_alive(priv->shrd))
 		return -EBUSY;
 
@@ -433,10 +428,6 @@ int iwlagn_commit_rxon(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 
 	if (!ctx->is_active)
 		return 0;
-
-	/* override BSSID if necessary due to preauth */
-	if (ctx->preauth_bssid)
-		memcpy(ctx->staging.bssid_addr, ctx->bssid, ETH_ALEN);
 
 	/* always get timestamp with Rx frame */
 	ctx->staging.flags |= RXON_FLG_TSF2HOST_MSK;
@@ -560,9 +551,6 @@ int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed)
 
 	mutex_lock(&priv->shrd->mutex);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
-		goto out;
-
 	if (unlikely(test_bit(STATUS_SCANNING, &priv->shrd->status))) {
 		IWL_DEBUG_MAC80211(priv, "leave - scanning\n");
 		goto out;
@@ -590,8 +578,6 @@ int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed)
 	}
 
 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
-		unsigned long flags;
-
 		ch_info = iwl_get_channel_info(priv, channel->band,
 					       channel->hw_value);
 		if (!is_channel_valid(ch_info)) {
@@ -599,8 +585,6 @@ int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed)
 			ret = -EINVAL;
 			goto out;
 		}
-
-		spin_lock_irqsave(&priv->shrd->lock, flags);
 
 		for_each_context(priv, ctx) {
 			/* Configure HT40 channels */
@@ -635,8 +619,6 @@ int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed)
 			iwl_set_flags_for_band(priv, ctx, channel->band,
 					       ctx->vif);
 		}
-
-		spin_unlock_irqrestore(&priv->shrd->lock, flags);
 
 		iwl_update_bcast_stations(priv);
 
@@ -932,7 +914,6 @@ void iwlagn_bss_info_changed(struct ieee80211_hw *hw,
 		if (!priv->disable_chain_noise_cal)
 			iwlagn_chain_noise_reset(priv);
 		priv->start_calib = 1;
-		WARN_ON(ctx->preauth_bssid);
 	}
 
 	if (changes & BSS_CHANGED_IBSS) {

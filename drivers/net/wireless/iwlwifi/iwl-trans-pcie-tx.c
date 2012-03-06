@@ -41,6 +41,43 @@
 #define IWL_TX_CRC_SIZE 4
 #define IWL_TX_DELIMITER_SIZE 4
 
+/*
+ * mac80211 queues, ACs, hardware queues, FIFOs.
+ *
+ * Cf. http://wireless.kernel.org/en/developers/Documentation/mac80211/queues
+ *
+ * Mac80211 uses the following numbers, which we get as from it
+ * by way of skb_get_queue_mapping(skb):
+ *
+ *	VO	0
+ *	VI	1
+ *	BE	2
+ *	BK	3
+ *
+ *
+ * Regular (not A-MPDU) frames are put into hardware queues corresponding
+ * to the FIFOs, see comments in iwl-prph.h. Aggregated frames get their
+ * own queue per aggregation session (RA/TID combination), such queues are
+ * set up to map into FIFOs too, for which we need an AC->FIFO mapping. In
+ * order to map frames to the right queue, we also need an AC->hw queue
+ * mapping. This is implemented here.
+ *
+ * Due to the way hw queues are set up (by the hw specific code), the AC->hw
+ * queue mapping is the identity mapping.
+ */
+
+static const u8 tid_to_ac[] = {
+	IEEE80211_AC_BE,
+	IEEE80211_AC_BK,
+	IEEE80211_AC_BK,
+	IEEE80211_AC_BE,
+	IEEE80211_AC_VI,
+	IEEE80211_AC_VI,
+	IEEE80211_AC_VO,
+	IEEE80211_AC_VO
+};
+
+
 /**
  * iwl_trans_txq_update_byte_cnt_tbl - Set up entry in Tx byte-count array
  */
@@ -216,6 +253,8 @@ void iwlagn_txq_free_tfd(struct iwl_trans *trans, struct iwl_tx_queue *txq,
 	int index, enum dma_data_direction dma_dir)
 {
 	struct iwl_tfd *tfd_tmp = txq->tfds;
+
+	lockdep_assert_held(&txq->lock);
 
 	iwlagn_unmap_tfd(trans, &txq->meta[index], &tfd_tmp[index], dma_dir);
 
@@ -440,6 +479,15 @@ void iwl_trans_tx_queue_set_status(struct iwl_trans *trans,
 			scd_retry ? "BA" : "AC/CMD", txq_id);
 }
 
+static inline int get_ac_from_tid(u16 tid)
+{
+	if (likely(tid < ARRAY_SIZE(tid_to_ac)))
+		return tid_to_ac[tid];
+
+	/* no support for TIDs 8-15 yet */
+	return -EINVAL;
+}
+
 static inline int get_fifo_from_tid(struct iwl_trans_pcie *trans_pcie,
 				    u8 ctx, u16 tid)
 {
@@ -621,7 +669,6 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	struct iwl_device_cmd *out_cmd;
 	struct iwl_cmd_meta *out_meta;
 	dma_addr_t phys_addr;
-	unsigned long flags;
 	u32 idx;
 	u16 copy_size, cmd_size;
 	bool is_ct_kill = false;
@@ -680,10 +727,10 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 		return -EIO;
 	}
 
-	spin_lock_irqsave(&trans->hcmd_lock, flags);
+	spin_lock_bh(&txq->lock);
 
 	if (iwl_queue_space(q) < ((cmd->flags & CMD_ASYNC) ? 2 : 1)) {
-		spin_unlock_irqrestore(&trans->hcmd_lock, flags);
+		spin_unlock_bh(&txq->lock);
 
 		IWL_ERR(trans, "No space in command queue\n");
 		is_ct_kill = iwl_check_for_ct_kill(priv(trans));
@@ -790,7 +837,7 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	iwl_txq_update_write_ptr(trans, txq);
 
  out:
-	spin_unlock_irqrestore(&trans->hcmd_lock, flags);
+	spin_unlock_bh(&txq->lock);
 	return idx;
 }
 
@@ -808,6 +855,8 @@ static void iwl_hcmd_queue_reclaim(struct iwl_trans *trans, int txq_id,
 	struct iwl_tx_queue *txq = &trans_pcie->txq[txq_id];
 	struct iwl_queue *q = &txq->q;
 	int nfreed = 0;
+
+	lockdep_assert_held(&txq->lock);
 
 	if ((idx >= q->n_bd) || (iwl_queue_used(q, idx) == 0)) {
 		IWL_ERR(trans, "%s: Read index for DMA queue txq id (%d), "
@@ -838,7 +887,7 @@ static void iwl_hcmd_queue_reclaim(struct iwl_trans *trans, int txq_id,
  * will be executed.  The attached skb (if present) will only be freed
  * if the callback returns 1
  */
-void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_mem_buffer *rxb,
+void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_cmd_buffer *rxb,
 			 int handler_status)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
@@ -850,7 +899,6 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_mem_buffer *rxb,
 	struct iwl_cmd_meta *meta;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	struct iwl_tx_queue *txq = &trans_pcie->txq[trans->shrd->cmd_queue];
-	unsigned long flags;
 
 	/* If a Tx command is being handled and it isn't in the actual
 	 * command queue then there a command routing bug has been introduced
@@ -864,6 +912,8 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_mem_buffer *rxb,
 		return;
 	}
 
+	spin_lock(&txq->lock);
+
 	cmd_index = get_cmd_index(&txq->q, index);
 	cmd = txq->cmd[cmd_index];
 	meta = &txq->meta[cmd_index];
@@ -875,12 +925,13 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_mem_buffer *rxb,
 
 	/* Input error checking is done when commands are added to queue. */
 	if (meta->flags & CMD_WANT_SKB) {
-		meta->source->reply_page = (unsigned long)rxb_addr(rxb);
-		meta->source->handler_status = handler_status;
-		rxb->page = NULL;
-	}
+		struct page *p = rxb_steal_page(rxb);
 
-	spin_lock_irqsave(&trans->hcmd_lock, flags);
+		meta->source->resp_pkt = pkt;
+		meta->source->_rx_page_addr = (unsigned long)page_address(p);
+		meta->source->_rx_page_order = hw_params(trans).rx_page_order;
+		meta->source->handler_status = handler_status;
+	}
 
 	iwl_hcmd_queue_reclaim(trans, txq_id, index);
 
@@ -898,7 +949,7 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_mem_buffer *rxb,
 
 	meta->flags = 0;
 
-	spin_unlock_irqrestore(&trans->hcmd_lock, flags);
+	spin_unlock(&txq->lock);
 }
 
 #define HOST_COMPLETE_TIMEOUT (2 * HZ)
@@ -911,9 +962,6 @@ static int iwl_send_cmd_async(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	if (WARN_ON(cmd->flags & CMD_WANT_SKB))
 		return -EINVAL;
 
-
-	if (test_bit(STATUS_EXIT_PENDING, &trans->shrd->status))
-		return -EBUSY;
 
 	ret = iwl_enqueue_hcmd(trans, cmd);
 	if (ret < 0) {
@@ -935,10 +983,6 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 
 	IWL_DEBUG_INFO(trans, "Attempting to send sync command %s\n",
 			get_cmd_string(cmd->id));
-
-	if (test_bit(STATUS_EXIT_PENDING, &trans->shrd->status))
-		return -EBUSY;
-
 
 	if (test_bit(STATUS_RF_KILL_HW, &trans->shrd->status)) {
 		IWL_ERR(trans, "Command %s aborted: RF KILL Switch\n",
@@ -990,7 +1034,7 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 		}
 	}
 
-	if ((cmd->flags & CMD_WANT_SKB) && !cmd->reply_page) {
+	if ((cmd->flags & CMD_WANT_SKB) && !cmd->resp_pkt) {
 		IWL_ERR(trans, "Error: Response NULL in '%s'\n",
 			  get_cmd_string(cmd->id));
 		ret = -EIO;
@@ -1011,9 +1055,9 @@ cancel:
 							~CMD_WANT_SKB;
 	}
 
-	if (cmd->reply_page) {
-		iwl_free_pages(trans->shrd, cmd->reply_page);
-		cmd->reply_page = 0;
+	if (cmd->resp_pkt) {
+		iwl_free_resp(cmd);
+		cmd->resp_pkt = NULL;
 	}
 
 	return ret;
@@ -1040,6 +1084,8 @@ int iwl_tx_queue_reclaim(struct iwl_trans *trans, int txq_id, int index,
 	/* This function is not meant to release cmd queue*/
 	if (WARN_ON(txq_id == trans->shrd->cmd_queue))
 		return 0;
+
+	lockdep_assert_held(&txq->lock);
 
 	/*Since we free until index _not_ inclusive, the one before index is
 	 * the last we will free. This one must be used */

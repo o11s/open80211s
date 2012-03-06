@@ -137,7 +137,7 @@ int iwl_init_geos(struct iwl_priv *priv)
 	sband->bitrates = &rates[IWL_FIRST_OFDM_RATE];
 	sband->n_bitrates = IWL_RATE_COUNT_LEGACY - IWL_FIRST_OFDM_RATE;
 
-	if (cfg(priv)->sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
 		iwl_init_ht_hw_capab(priv, &sband->ht_cap,
 					 IEEE80211_BAND_5GHZ);
 
@@ -147,7 +147,7 @@ int iwl_init_geos(struct iwl_priv *priv)
 	sband->bitrates = rates;
 	sband->n_bitrates = IWL_RATE_COUNT_LEGACY;
 
-	if (cfg(priv)->sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
 		iwl_init_ht_hw_capab(priv, &sband->ht_cap,
 					 IEEE80211_BAND_2GHZ);
 
@@ -202,11 +202,11 @@ int iwl_init_geos(struct iwl_priv *priv)
 	priv->tx_power_next = max_tx_power;
 
 	if ((priv->bands[IEEE80211_BAND_5GHZ].n_channels == 0) &&
-	     cfg(priv)->sku & EEPROM_SKU_CAP_BAND_52GHZ) {
+	     hw_params(priv).sku & EEPROM_SKU_CAP_BAND_52GHZ) {
 		IWL_INFO(priv, "Incorrectly detected BG card as ABG. "
 			"Please send your %s to maintainer.\n",
 			trans(priv)->hw_id_str);
-		cfg(priv)->sku &= ~EEPROM_SKU_CAP_BAND_52GHZ;
+		hw_params(priv).sku &= ~EEPROM_SKU_CAP_BAND_52GHZ;
 	}
 
 	IWL_INFO(priv, "Tunable channels: %d 802.11bg, %d 802.11a channels\n",
@@ -836,7 +836,7 @@ static void iwlagn_fw_error(struct iwl_priv *priv, bool ondemand)
 	unsigned long reload_jiffies;
 
 #ifdef CONFIG_IWLWIFI_DEBUG
-	if (iwl_get_debug_level(priv->shrd) & IWL_DL_FW_ERRORS)
+	if (iwl_have_debug_level(IWL_DL_FW_ERRORS))
 		iwl_print_rx_config_cmd(priv, IWL_RXON_CTX_BSS);
 #endif
 
@@ -1004,7 +1004,7 @@ int iwl_alloc_traffic_mem(struct iwl_priv *priv)
 {
 	u32 traffic_size = IWL_TRAFFIC_DUMP_SIZE;
 
-	if (iwl_get_debug_level(priv->shrd) & IWL_DL_TX) {
+	if (iwl_have_debug_level(IWL_DL_TX)) {
 		if (!priv->tx_traffic) {
 			priv->tx_traffic =
 				kzalloc(traffic_size, GFP_KERNEL);
@@ -1012,7 +1012,7 @@ int iwl_alloc_traffic_mem(struct iwl_priv *priv)
 				return -ENOMEM;
 		}
 	}
-	if (iwl_get_debug_level(priv->shrd) & IWL_DL_RX) {
+	if (iwl_have_debug_level(IWL_DL_RX)) {
 		if (!priv->rx_traffic) {
 			priv->rx_traffic =
 				kzalloc(traffic_size, GFP_KERNEL);
@@ -1039,7 +1039,7 @@ void iwl_dbg_log_tx_data_frame(struct iwl_priv *priv,
 	__le16 fc;
 	u16 len;
 
-	if (likely(!(iwl_get_debug_level(priv->shrd) & IWL_DL_TX)))
+	if (likely(!iwl_have_debug_level(IWL_DL_TX)))
 		return;
 
 	if (!priv->tx_traffic)
@@ -1063,7 +1063,7 @@ void iwl_dbg_log_rx_data_frame(struct iwl_priv *priv,
 	__le16 fc;
 	u16 len;
 
-	if (likely(!(iwl_get_debug_level(priv->shrd) & IWL_DL_RX)))
+	if (likely(!iwl_have_debug_level(IWL_DL_RX)))
 		return;
 
 	if (!priv->rx_traffic)
@@ -1345,20 +1345,10 @@ void iwl_bg_watchdog(unsigned long data)
 	if (timeout == 0)
 		return;
 
-	/* monitor and check for stuck cmd queue */
-	if (iwl_check_stuck_queue(priv, priv->shrd->cmd_queue))
-		return;
-
-	/* monitor and check for other stuck queues */
-	if (iwl_is_any_associated(priv)) {
-		for (cnt = 0; cnt < hw_params(priv).max_txq_num; cnt++) {
-			/* skip as we already checked the command queue */
-			if (cnt == priv->shrd->cmd_queue)
-				continue;
-			if (iwl_check_stuck_queue(priv, cnt))
-				return;
-		}
-	}
+	/* monitor and check for stuck queues */
+	for (cnt = 0; cnt < hw_params(priv).max_txq_num; cnt++)
+		if (iwl_check_stuck_queue(priv, cnt))
+			return;
 
 	mod_timer(&priv->watchdog, jiffies +
 		  msecs_to_jiffies(IWL_WD_TICK(timeout)));

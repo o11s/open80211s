@@ -78,6 +78,8 @@
 #include "iwl-core.h"
 #include "iwl-ucode.h"
 
+#define IWL_MASK(lo, hi) ((1 << (hi)) | ((1 << (hi)) - (1 << (lo))))
+
 static int iwl_trans_rx_alloc(struct iwl_trans *trans)
 {
 	struct iwl_trans_pcie *trans_pcie =
@@ -390,6 +392,8 @@ static int iwl_trans_txq_init(struct iwl_trans *trans, struct iwl_tx_queue *txq,
 	if (ret)
 		return ret;
 
+	spin_lock_init(&txq->lock);
+
 	/*
 	 * Tell nic where to find circular buffer of Tx Frame Descriptors for
 	 * given Tx queue, and enable the DMA channel used for that queue.
@@ -409,8 +413,6 @@ static void iwl_tx_queue_unmap(struct iwl_trans *trans, int txq_id)
 	struct iwl_tx_queue *txq = &trans_pcie->txq[txq_id];
 	struct iwl_queue *q = &txq->q;
 	enum dma_data_direction dma_dir;
-	unsigned long flags;
-	spinlock_t *lock;
 
 	if (!q->n_bd)
 		return;
@@ -418,22 +420,19 @@ static void iwl_tx_queue_unmap(struct iwl_trans *trans, int txq_id)
 	/* In the command queue, all the TBs are mapped as BIDI
 	 * so unmap them as such.
 	 */
-	if (txq_id == trans->shrd->cmd_queue) {
+	if (txq_id == trans->shrd->cmd_queue)
 		dma_dir = DMA_BIDIRECTIONAL;
-		lock = &trans->hcmd_lock;
-	} else {
+	else
 		dma_dir = DMA_TO_DEVICE;
-		lock = &trans->shrd->sta_lock;
-	}
 
-	spin_lock_irqsave(lock, flags);
+	spin_lock_bh(&txq->lock);
 	while (q->write_ptr != q->read_ptr) {
 		/* The read_ptr needs to bound by q->n_window */
 		iwlagn_txq_free_tfd(trans, txq, get_cmd_index(q, q->read_ptr),
 				    dma_dir);
 		q->read_ptr = iwl_queue_inc_wrap(q->read_ptr, q->n_bd);
 	}
-	spin_unlock_irqrestore(lock, flags);
+	spin_unlock_bh(&txq->lock);
 }
 
 /**
@@ -1306,6 +1305,17 @@ static void iwl_trans_pcie_stop_device(struct iwl_trans *trans)
 	iwl_write32(trans, CSR_RESET, CSR_RESET_REG_FLAG_NEVO_RESET);
 }
 
+static void iwl_trans_pcie_wowlan_suspend(struct iwl_trans *trans)
+{
+	/* let the ucode operate on its own */
+	iwl_write32(trans, CSR_UCODE_DRV_GP1_SET,
+		    CSR_UCODE_DRV_GP1_BIT_D3_CFG_COMPLETE);
+
+	iwl_disable_interrupts(trans);
+	iwl_clear_bit(trans, CSR_GP_CNTRL,
+		      CSR_GP_CNTRL_REG_FLAG_MAC_ACCESS_REQ);
+}
+
 static int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 		struct iwl_device_cmd *dev_cmd, enum iwl_rxon_context_id ctx,
 		u8 sta_id, u8 tid)
@@ -1358,6 +1368,8 @@ static int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 	txq = &trans_pcie->txq[txq_id];
 	q = &txq->q;
 
+	spin_lock(&txq->lock);
+
 	/* In AGG mode, the index in the ring must correspond to the WiFi
 	 * sequence number. This is a HW requirements to help the SCD to parse
 	 * the BA.
@@ -1404,7 +1416,7 @@ static int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 				    &dev_cmd->hdr, firstlen,
 				    DMA_BIDIRECTIONAL);
 	if (unlikely(dma_mapping_error(trans->dev, txcmd_phys)))
-		return -1;
+		goto out_err;
 	dma_unmap_addr_set(out_meta, mapping, txcmd_phys);
 	dma_unmap_len_set(out_meta, len, firstlen);
 
@@ -1426,7 +1438,7 @@ static int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 					 dma_unmap_addr(out_meta, mapping),
 					 dma_unmap_len(out_meta, len),
 					 DMA_BIDIRECTIONAL);
-			return -1;
+			goto out_err;
 		}
 	}
 
@@ -1481,7 +1493,11 @@ static int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 			iwl_stop_queue(trans, txq, "Queue is full");
 		}
 	}
+	spin_unlock(&txq->lock);
 	return 0;
+ out_err:
+	spin_unlock(&txq->lock);
+	return -1;
 }
 
 static int iwl_trans_pcie_start_hw(struct iwl_trans *trans)
@@ -1560,6 +1576,8 @@ static int iwl_trans_pcie_reclaim(struct iwl_trans *trans, int sta_id, int tid,
 	int tfd_num = ssn & (txq->q.n_bd - 1);
 	int freed = 0;
 
+	spin_lock(&txq->lock);
+
 	txq->time_stamp = jiffies;
 
 	if (unlikely(txq_id >= IWLAGN_FIRST_AMPDU_QUEUE &&
@@ -1574,6 +1592,7 @@ static int iwl_trans_pcie_reclaim(struct iwl_trans *trans, int sta_id, int tid,
 		IWL_DEBUG_TX_QUEUES(trans, "Bad queue mapping txq_id %d, "
 			"agg_txq[sta_id[tid] %d", txq_id,
 			trans_pcie->agg_txq[sta_id][tid]);
+		spin_unlock(&txq->lock);
 		return 1;
 	}
 
@@ -1587,6 +1606,8 @@ static int iwl_trans_pcie_reclaim(struct iwl_trans *trans, int sta_id, int tid,
 		   status != TX_STATUS_FAIL_PASSIVE_NO_RX))
 			iwl_wake_queue(trans, txq, "Packets reclaimed");
 	}
+
+	spin_unlock(&txq->lock);
 	return 0;
 }
 
@@ -1633,25 +1654,6 @@ static void iwl_trans_pcie_free(struct iwl_trans *trans)
 #ifdef CONFIG_PM_SLEEP
 static int iwl_trans_pcie_suspend(struct iwl_trans *trans)
 {
-	/*
-	 * This function is called when system goes into suspend state
-	 * mac80211 will call iwlagn_mac_stop() from the mac80211 suspend
-	 * function first but since iwlagn_mac_stop() has no knowledge of
-	 * who the caller is,
-	 * it will not call apm_ops.stop() to stop the DMA operation.
-	 * Calling apm_ops.stop here to make sure we stop the DMA.
-	 *
-	 * But of course ... if we have configured WoWLAN then we did other
-	 * things already :-)
-	 */
-	if (!trans->shrd->wowlan) {
-		iwl_apm_stop(trans);
-	} else {
-		iwl_disable_interrupts(trans);
-		iwl_clear_bit(trans, CSR_GP_CNTRL,
-			      CSR_GP_CNTRL_REG_FLAG_MAC_ACCESS_REQ);
-	}
-
 	return 0;
 }
 
@@ -2219,6 +2221,8 @@ const struct iwl_trans_ops trans_ops_pcie = {
 	.start_fw = iwl_trans_pcie_start_fw,
 	.stop_device = iwl_trans_pcie_stop_device,
 
+	.wowlan_suspend = iwl_trans_pcie_wowlan_suspend,
+
 	.wake_any_queue = iwl_trans_pcie_wake_any_queue,
 
 	.send_cmd = iwl_trans_pcie_send_cmd,
@@ -2267,7 +2271,6 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct iwl_shared *shrd,
 	trans->ops = &trans_ops_pcie;
 	trans->shrd = shrd;
 	trans_pcie->trans = trans;
-	spin_lock_init(&trans->hcmd_lock);
 	spin_lock_init(&trans_pcie->irq_lock);
 
 	/* W/A - seems to solve weird behavior. We need to remove this if we

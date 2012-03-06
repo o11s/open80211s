@@ -49,6 +49,12 @@ struct iwl_host_cmd;
 /*This file includes the declaration that are internal to the
  * trans_pcie layer */
 
+struct iwl_rx_mem_buffer {
+	dma_addr_t page_dma;
+	struct page *page;
+	struct list_head list;
+};
+
 /**
  * struct isr_statistics - interrupt statistics
  *
@@ -108,6 +114,26 @@ struct iwl_dma_ptr {
 	void *addr;
 	size_t size;
 };
+
+/**
+ * iwl_queue_inc_wrap - increment queue index, wrap back to beginning
+ * @index -- current index
+ * @n_bd -- total number of entries in queue (must be power of 2)
+ */
+static inline int iwl_queue_inc_wrap(int index, int n_bd)
+{
+	return ++index & (n_bd - 1);
+}
+
+/**
+ * iwl_queue_dec_wrap - decrement queue index, wrap back to end
+ * @index -- current index
+ * @n_bd -- total number of entries in queue (must be power of 2)
+ */
+static inline int iwl_queue_dec_wrap(int index, int n_bd)
+{
+	return --index & (n_bd - 1);
+}
 
 /*
  * This queue number is required for proper operation
@@ -169,6 +195,7 @@ struct iwl_queue {
  * @meta: array of meta data for each command/tx buffer
  * @dma_addr_cmd: physical address of cmd/tx buffer array
  * @txb: array of per-TFD driver data
+ * lock: queue lock
  * @time_stamp: time (in jiffies) of last read_ptr change
  * @need_update: indicates need to update read/write index
  * @sched_retry: indicates queue is high-throughput aggregation (HT AGG) enabled
@@ -187,6 +214,7 @@ struct iwl_tx_queue {
 	struct iwl_device_cmd **cmd;
 	struct iwl_cmd_meta *meta;
 	struct sk_buff **skbs;
+	spinlock_t lock;
 	unsigned long time_stamp;
 	u8 need_update;
 	u8 sched_retry;
@@ -285,7 +313,7 @@ int iwlagn_txq_attach_buf_to_tfd(struct iwl_trans *trans,
 int iwl_queue_init(struct iwl_queue *q, int count, int slots_num, u32 id);
 int iwl_trans_pcie_send_cmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
 void iwl_tx_cmd_complete(struct iwl_trans *trans,
-			 struct iwl_rx_mem_buffer *rxb, int handler_status);
+			 struct iwl_rx_cmd_buffer *rxb, int handler_status);
 void iwl_trans_txq_update_byte_cnt_tbl(struct iwl_trans *trans,
 					   struct iwl_tx_queue *txq,
 					   u16 byte_cnt);

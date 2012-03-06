@@ -126,7 +126,7 @@ static void iwlagn_tx_cmd_build_rate(struct iwl_priv *priv,
 	u8 data_retry_limit;
 	u8 rate_plcp;
 
-	if (priv->shrd->wowlan) {
+	if (priv->wowlan) {
 		rts_retry_limit = IWLAGN_LOW_RETRY_LIMIT;
 		data_retry_limit = IWLAGN_LOW_RETRY_LIMIT;
 	} else {
@@ -208,10 +208,9 @@ static void iwlagn_tx_cmd_build_rate(struct iwl_priv *priv,
 }
 
 static void iwlagn_tx_cmd_build_hwcrypto(struct iwl_priv *priv,
-				      struct ieee80211_tx_info *info,
-				      struct iwl_tx_cmd *tx_cmd,
-				      struct sk_buff *skb_frag,
-				      int sta_id)
+					 struct ieee80211_tx_info *info,
+					 struct iwl_tx_cmd *tx_cmd,
+					 struct sk_buff *skb_frag)
 {
 	struct ieee80211_key_conf *keyconf = info->control.hw_key;
 
@@ -260,18 +259,15 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	struct iwl_rxon_context *ctx = &priv->contexts[IWL_RXON_CTX_BSS];
 	struct iwl_device_cmd *dev_cmd = NULL;
 	struct iwl_tx_cmd *tx_cmd;
-
 	__le16 fc;
 	u8 hdr_len;
 	u16 len, seq_number = 0;
 	u8 sta_id, tid = IWL_MAX_TID_COUNT;
-	unsigned long flags;
 	bool is_agg = false;
 
 	if (info->control.vif)
 		ctx = iwl_rxon_ctx_from_vif(info->control.vif);
 
-	spin_lock_irqsave(&priv->shrd->lock, flags);
 	if (iwl_is_rfkill(priv->shrd)) {
 		IWL_DEBUG_DROP(priv, "Dropping - RF KILL\n");
 		goto drop_unlock_priv;
@@ -342,13 +338,10 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	if (info->flags & IEEE80211_TX_CTL_AMPDU)
 		is_agg = true;
 
-	/* irqs already disabled/saved above when locking priv->shrd->lock */
-	spin_lock(&priv->shrd->sta_lock);
-
 	dev_cmd = kmem_cache_alloc(priv->tx_cmd_pool, GFP_ATOMIC);
 
 	if (unlikely(!dev_cmd))
-		goto drop_unlock_sta;
+		goto drop_unlock_priv;
 
 	memset(dev_cmd, 0, sizeof(*dev_cmd));
 	tx_cmd = (struct iwl_tx_cmd *) dev_cmd->payload;
@@ -358,7 +351,7 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	tx_cmd->len = cpu_to_le16(len);
 
 	if (info->control.hw_key)
-		iwlagn_tx_cmd_build_hwcrypto(priv, info, tx_cmd, skb, sta_id);
+		iwlagn_tx_cmd_build_hwcrypto(priv, info, tx_cmd, skb);
 
 	/* TODO need this for burst mode later on */
 	iwlagn_tx_cmd_build_basic(priv, skb, tx_cmd, info, hdr, sta_id);
@@ -372,6 +365,8 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 
 	info->driver_data[0] = ctx;
 	info->driver_data[1] = dev_cmd;
+
+	spin_lock(&priv->sta_lock);
 
 	if (ieee80211_is_data_qos(fc) && !ieee80211_is_qos_nullfunc(fc)) {
 		u8 *qc = NULL;
@@ -418,8 +413,7 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 	    !ieee80211_has_morefrags(fc))
 		priv->tid_data[sta_id][tid].seq_number = seq_number;
 
-	spin_unlock(&priv->shrd->sta_lock);
-	spin_unlock_irqrestore(&priv->shrd->lock, flags);
+	spin_unlock(&priv->sta_lock);
 
 	/*
 	 * Avoid atomic ops if it isn't an associated client.
@@ -436,9 +430,8 @@ int iwlagn_tx_skb(struct iwl_priv *priv, struct sk_buff *skb)
 drop_unlock_sta:
 	if (dev_cmd)
 		kmem_cache_free(priv->tx_cmd_pool, dev_cmd);
-	spin_unlock(&priv->shrd->sta_lock);
+	spin_unlock(&priv->sta_lock);
 drop_unlock_priv:
-	spin_unlock_irqrestore(&priv->shrd->lock, flags);
 	return -1;
 }
 
@@ -446,7 +439,6 @@ int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 			struct ieee80211_sta *sta, u16 tid)
 {
 	struct iwl_tid_data *tid_data;
-	unsigned long flags;
 	int sta_id;
 
 	sta_id = iwl_sta_id(sta);
@@ -456,7 +448,7 @@ int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 		return -ENXIO;
 	}
 
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
+	spin_lock_bh(&priv->sta_lock);
 
 	tid_data = &priv->tid_data[sta_id][tid];
 
@@ -476,7 +468,7 @@ int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 		IWL_WARN(priv, "Stopping AGG while state not ON "
 			 "or starting for %d on %d (%d)\n", sta_id, tid,
 			 priv->tid_data[sta_id][tid].agg.state);
-		spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+		spin_unlock_bh(&priv->sta_lock);
 		return 0;
 	}
 
@@ -490,7 +482,7 @@ int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 				    tid_data->next_reclaimed);
 		priv->tid_data[sta_id][tid].agg.state =
 			IWL_EMPTYING_HW_QUEUE_DELBA;
-		spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+		spin_unlock_bh(&priv->sta_lock);
 		return 0;
 	}
 
@@ -499,13 +491,9 @@ int iwlagn_tx_agg_stop(struct iwl_priv *priv, struct ieee80211_vif *vif,
 turn_off:
 	priv->tid_data[sta_id][tid].agg.state = IWL_AGG_OFF;
 
-	/* do not restore/save irqs */
-	spin_unlock(&priv->shrd->sta_lock);
-	spin_lock(&priv->shrd->lock);
+	spin_unlock_bh(&priv->sta_lock);
 
 	iwl_trans_tx_agg_disable(trans(priv), sta_id, tid);
-
-	spin_unlock_irqrestore(&priv->shrd->lock, flags);
 
 	ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 
@@ -516,7 +504,6 @@ int iwlagn_tx_agg_start(struct iwl_priv *priv, struct ieee80211_vif *vif,
 			struct ieee80211_sta *sta, u16 tid, u16 *ssn)
 {
 	struct iwl_tid_data *tid_data;
-	unsigned long flags;
 	int sta_id;
 	int ret;
 
@@ -540,7 +527,7 @@ int iwlagn_tx_agg_start(struct iwl_priv *priv, struct ieee80211_vif *vif,
 	if (ret)
 		return ret;
 
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
+	spin_lock_bh(&priv->sta_lock);
 
 	tid_data = &priv->tid_data[sta_id][tid];
 	tid_data->agg.ssn = SEQ_TO_SN(tid_data->seq_number);
@@ -549,7 +536,7 @@ int iwlagn_tx_agg_start(struct iwl_priv *priv, struct ieee80211_vif *vif,
 
 	ret = iwl_trans_tx_agg_alloc(trans(priv), sta_id, tid);
 	if (ret) {
-		spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+		spin_unlock_bh(&priv->sta_lock);
 		return ret;
 	}
 
@@ -566,7 +553,7 @@ int iwlagn_tx_agg_start(struct iwl_priv *priv, struct ieee80211_vif *vif,
 		tid_data->agg.state = IWL_EMPTYING_HW_QUEUE_ADDBA;
 	}
 
-	spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+	spin_unlock_bh(&priv->sta_lock);
 
 	return ret;
 }
@@ -576,14 +563,13 @@ int iwlagn_tx_agg_oper(struct iwl_priv *priv, struct ieee80211_vif *vif,
 {
 	struct iwl_station_priv *sta_priv = (void *) sta->drv_priv;
 	struct iwl_rxon_context *ctx = iwl_rxon_ctx_from_vif(vif);
-	unsigned long flags;
 	u16 ssn;
 
 	buf_size = min_t(int, buf_size, LINK_QUAL_AGG_FRAME_LIMIT_DEF);
 
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
+	spin_lock_bh(&priv->sta_lock);
 	ssn = priv->tid_data[sta_priv->sta_id][tid].agg.ssn;
-	spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+	spin_unlock_bh(&priv->sta_lock);
 
 	iwl_trans_tx_agg_setup(trans(priv), ctx->ctxid, sta_priv->sta_id, tid,
 			       buf_size, ssn);
@@ -639,7 +625,7 @@ static void iwlagn_check_ratid_empty(struct iwl_priv *priv, int sta_id, u8 tid)
 	struct ieee80211_vif *vif;
 	u8 *addr;
 
-	lockdep_assert_held(&priv->shrd->sta_lock);
+	lockdep_assert_held(&priv->sta_lock);
 
 	addr = priv->stations[sta_id].sta.sta.addr;
 	ctx = priv->stations[sta_id].ctxid;
@@ -991,7 +977,7 @@ static void iwl_check_abort_status(struct iwl_priv *priv,
 	}
 }
 
-int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
+int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb,
 			       struct iwl_device_cmd *cmd)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
@@ -1006,7 +992,6 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 	int sta_id;
 	int freed;
 	struct ieee80211_tx_info *info;
-	unsigned long flags;
 	struct sk_buff_head skbs;
 	struct sk_buff *skb;
 	struct iwl_rxon_context *ctx;
@@ -1017,10 +1002,12 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 	sta_id = (tx_resp->ra_tid & IWLAGN_TX_RES_RA_MSK) >>
 		IWLAGN_TX_RES_RA_POS;
 
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
+	spin_lock(&priv->sta_lock);
 
 	if (is_agg)
 		iwl_rx_reply_tx_agg(priv, tx_resp);
+
+	__skb_queue_head_init(&skbs);
 
 	if (tx_resp->frame_count == 1) {
 		u16 next_reclaimed = le16_to_cpu(tx_resp->seq_ctl);
@@ -1041,8 +1028,6 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 			next_reclaimed = ssn;
 		}
 
-		__skb_queue_head_init(&skbs);
-
 		if (tid != IWL_TID_NON_QOS) {
 			priv->tid_data[sta_id][tid].next_reclaimed =
 				next_reclaimed;
@@ -1055,8 +1040,9 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 				  ssn, status, &skbs));
 		iwlagn_check_ratid_empty(priv, sta_id, tid);
 		freed = 0;
-		while (!skb_queue_empty(&skbs)) {
-			skb = __skb_dequeue(&skbs);
+
+		/* process frames */
+		skb_queue_walk(&skbs, skb) {
 			hdr = (struct ieee80211_hdr *)skb->data;
 
 			if (!ieee80211_is_data_qos(hdr->frame_control))
@@ -1098,8 +1084,6 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 			if (!is_agg)
 				iwlagn_non_agg_tx_status(priv, ctx, hdr->addr1);
 
-			ieee80211_tx_status_irqsafe(priv->hw, skb);
-
 			freed++;
 		}
 
@@ -1107,7 +1091,13 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
 	}
 
 	iwl_check_abort_status(priv, tx_resp->frame_count, status);
-	spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+	spin_unlock(&priv->sta_lock);
+
+	while (!skb_queue_empty(&skbs)) {
+		skb = __skb_dequeue(&skbs);
+		ieee80211_tx_status(priv->hw, skb);
+	}
+
 	return 0;
 }
 
@@ -1118,7 +1108,7 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_mem_buffer *rxb,
  * of frames sent via aggregation.
  */
 int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
-				   struct iwl_rx_mem_buffer *rxb,
+				   struct iwl_rx_cmd_buffer *rxb,
 				   struct iwl_device_cmd *cmd)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
@@ -1128,7 +1118,6 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 	struct ieee80211_tx_info *info;
 	struct ieee80211_hdr *hdr;
 	struct sk_buff *skb;
-	unsigned long flags;
 	int sta_id;
 	int tid;
 	int freed;
@@ -1150,12 +1139,12 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 	tid = ba_resp->tid;
 	agg = &priv->tid_data[sta_id][tid].agg;
 
-	spin_lock_irqsave(&priv->shrd->sta_lock, flags);
+	spin_lock(&priv->sta_lock);
 
 	if (unlikely(!agg->wait_for_ba)) {
 		if (unlikely(ba_resp->bitmap))
 			IWL_ERR(priv, "Received BA when not expected\n");
-		spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+		spin_unlock(&priv->sta_lock);
 		return 0;
 	}
 
@@ -1166,7 +1155,7 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 	 * transmitted ... if not, it's too late anyway). */
 	if (iwl_trans_reclaim(trans(priv), sta_id, tid, scd_flow,
 			      ba_resp_scd_ssn, 0, &reclaimed_skbs)) {
-		spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+		spin_unlock(&priv->sta_lock);
 		return 0;
 	}
 
@@ -1202,9 +1191,8 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 
 	iwlagn_check_ratid_empty(priv, sta_id, tid);
 	freed = 0;
-	while (!skb_queue_empty(&reclaimed_skbs)) {
 
-		skb = __skb_dequeue(&reclaimed_skbs);
+	skb_queue_walk(&reclaimed_skbs, skb) {
 		hdr = (struct ieee80211_hdr *)skb->data;
 
 		if (ieee80211_is_data_qos(hdr->frame_control))
@@ -1227,10 +1215,14 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 			iwlagn_hwrate_to_tx_control(priv, agg->rate_n_flags,
 						    info);
 		}
-
-		ieee80211_tx_status_irqsafe(priv->hw, skb);
 	}
 
-	spin_unlock_irqrestore(&priv->shrd->sta_lock, flags);
+	spin_unlock(&priv->sta_lock);
+
+	while (!skb_queue_empty(&reclaimed_skbs)) {
+		skb = __skb_dequeue(&reclaimed_skbs);
+		ieee80211_tx_status(priv->hw, skb);
+	}
+
 	return 0;
 }

@@ -67,7 +67,6 @@
 #include <linux/spinlock.h>
 #include <linux/mutex.h>
 #include <linux/gfp.h>
-#include <linux/mm.h> /* for page_address */
 #include <net/mac80211.h>
 
 #include "iwl-commands.h"
@@ -268,6 +267,49 @@ enum iwl_led_mode {
 	IWL_LED_DISABLE,
 };
 
+/*
+ * @max_ll_items: max number of OTP blocks
+ * @shadow_ram_support: shadow support for OTP memory
+ * @led_compensation: compensate on the led on/off time per HW according
+ *	to the deviation to achieve the desired led frequency.
+ *	The detail algorithm is described in iwl-led.c
+ * @chain_noise_num_beacons: number of beacons used to compute chain noise
+ * @adv_thermal_throttle: support advance thermal throttle
+ * @support_ct_kill_exit: support ct kill exit condition
+ * @support_wimax_coexist: support wimax/wifi co-exist
+ * @plcp_delta_threshold: plcp error rate threshold used to trigger
+ *	radio tuning when there is a high receiving plcp error rate
+ * @chain_noise_scale: default chain noise scale used for gain computation
+ * @wd_timeout: TX queues watchdog timeout
+ * @max_event_log_size: size of event log buffer size for ucode event logging
+ * @shadow_reg_enable: HW shadhow register bit
+ * @hd_v2: v2 of enhanced sensitivity value, used for 2000 series and up
+ * @no_idle_support: do not support idle mode
+ * wd_disable: disable watchdog timer
+ */
+struct iwl_base_params {
+	int eeprom_size;
+	int num_of_queues;	/* def: HW dependent */
+	int num_of_ampdu_queues;/* def: HW dependent */
+	/* for iwl_apm_init() */
+	u32 pll_cfg_val;
+
+	const u16 max_ll_items;
+	const bool shadow_ram_support;
+	u16 led_compensation;
+	bool adv_thermal_throttle;
+	bool support_ct_kill_exit;
+	const bool support_wimax_coexist;
+	u8 plcp_delta_threshold;
+	s32 chain_noise_scale;
+	unsigned int wd_timeout;
+	u32 max_event_log_size;
+	const bool shadow_reg_enable;
+	const bool hd_v2;
+	const bool no_idle_support;
+	const bool wd_disable;
+};
+
 /**
  * struct iwl_cfg
  * @name: Offical name of the device
@@ -282,7 +324,6 @@ enum iwl_led_mode {
  * @max_data_size: The maximal length of the fw data section
  * @valid_tx_ant: valid transmit antenna
  * @valid_rx_ant: valid receive antenna
- * @sku: sku information from EEPROM
  * @eeprom_ver: EEPROM version
  * @eeprom_calib_ver: EEPROM calibration version
  * @lib: pointer to the lib ops
@@ -321,7 +362,6 @@ struct iwl_cfg {
 	const u32 max_inst_size;
 	u8   valid_tx_ant;
 	u8   valid_rx_ant;
-	u16  sku;
 	u16  eeprom_ver;
 	u16  eeprom_calib_ver;
 	const struct iwl_lib_ops *lib;
@@ -346,8 +386,6 @@ struct iwl_cfg {
 /**
  * struct iwl_shared - shared fields for all the layers of the driver
  *
- * @dbg_level_dev: dbg level set per device. Prevails on
- *	iwlagn_mod_params.debug_level if set (!= 0)
  * @ucode_owner: IWL_OWNERSHIP_*
  * @cmd_queue: command queue number
  * @status: STATUS_*
@@ -360,8 +398,6 @@ struct iwl_cfg {
  * @nic: pointer to the nic data
  * @hw_params: see struct iwl_hw_params
  * @lock: protect general shared data
- * @sta_lock: protects the station table.
- *	If lock and sta_lock are needed, lock must be acquired first.
  * @mutex:
  * @wait_command_queue: the wait_queue for SYNC host command nad uCode load
  * @eeprom: pointer to the eeprom/OTP image
@@ -372,26 +408,19 @@ struct iwl_cfg {
  * @device_pointers: pointers to ucode event tables
  */
 struct iwl_shared {
-#ifdef CONFIG_IWLWIFI_DEBUG
-	u32 dbg_level_dev;
-#endif /* CONFIG_IWLWIFI_DEBUG */
-
 #define IWL_OWNERSHIP_DRIVER	0
 #define IWL_OWNERSHIP_TM	1
 	u8 ucode_owner;
 	u8 cmd_queue;
 	unsigned long status;
-	bool wowlan;
 	u8 valid_contexts;
 
-	struct iwl_cfg *cfg;
+	const struct iwl_cfg *cfg;
 	struct iwl_priv *priv;
 	struct iwl_trans *trans;
 	struct iwl_nic *nic;
 	struct iwl_hw_params hw_params;
 
-	spinlock_t lock;
-	spinlock_t sta_lock;
 	struct mutex mutex;
 
 	wait_queue_head_t wait_command_queue;
@@ -421,105 +450,9 @@ struct iwl_shared {
 #define trans(_m)	((_m)->shrd->trans)
 #define hw_params(_m)	((_m)->shrd->hw_params)
 
-#ifdef CONFIG_IWLWIFI_DEBUG
-/*
- * iwl_get_debug_level: Return active debug level for device
- *
- * Using sysfs it is possible to set per device debug level. This debug
- * level will be used if set, otherwise the global debug level which can be
- * set via module parameter is used.
- */
-static inline u32 iwl_get_debug_level(struct iwl_shared *shrd)
+static inline bool iwl_have_debug_level(u32 level)
 {
-	if (shrd->dbg_level_dev)
-		return shrd->dbg_level_dev;
-	else
-		return iwlagn_mod_params.debug_level;
-}
-#else
-static inline u32 iwl_get_debug_level(struct iwl_shared *shrd)
-{
-	return iwlagn_mod_params.debug_level;
-}
-#endif
-
-static inline void iwl_free_pages(struct iwl_shared *shrd, unsigned long page)
-{
-	free_pages(page, shrd->hw_params.rx_page_order);
-}
-
-/**
- * iwl_queue_inc_wrap - increment queue index, wrap back to beginning
- * @index -- current index
- * @n_bd -- total number of entries in queue (must be power of 2)
- */
-static inline int iwl_queue_inc_wrap(int index, int n_bd)
-{
-	return ++index & (n_bd - 1);
-}
-
-/**
- * iwl_queue_dec_wrap - decrement queue index, wrap back to end
- * @index -- current index
- * @n_bd -- total number of entries in queue (must be power of 2)
- */
-static inline int iwl_queue_dec_wrap(int index, int n_bd)
-{
-	return --index & (n_bd - 1);
-}
-
-struct iwl_rx_mem_buffer {
-	dma_addr_t page_dma;
-	struct page *page;
-	struct list_head list;
-};
-
-#define rxb_addr(r) page_address(r->page)
-
-/*
- * mac80211 queues, ACs, hardware queues, FIFOs.
- *
- * Cf. http://wireless.kernel.org/en/developers/Documentation/mac80211/queues
- *
- * Mac80211 uses the following numbers, which we get as from it
- * by way of skb_get_queue_mapping(skb):
- *
- *	VO	0
- *	VI	1
- *	BE	2
- *	BK	3
- *
- *
- * Regular (not A-MPDU) frames are put into hardware queues corresponding
- * to the FIFOs, see comments in iwl-prph.h. Aggregated frames get their
- * own queue per aggregation session (RA/TID combination), such queues are
- * set up to map into FIFOs too, for which we need an AC->FIFO mapping. In
- * order to map frames to the right queue, we also need an AC->hw queue
- * mapping. This is implemented here.
- *
- * Due to the way hw queues are set up (by the hw specific modules like
- * iwl-4965.c, iwl-5000.c etc.), the AC->hw queue mapping is the identity
- * mapping.
- */
-
-static const u8 tid_to_ac[] = {
-	IEEE80211_AC_BE,
-	IEEE80211_AC_BK,
-	IEEE80211_AC_BK,
-	IEEE80211_AC_BE,
-	IEEE80211_AC_VI,
-	IEEE80211_AC_VI,
-	IEEE80211_AC_VO,
-	IEEE80211_AC_VO
-};
-
-static inline int get_ac_from_tid(u16 tid)
-{
-	if (likely(tid < ARRAY_SIZE(tid_to_ac)))
-		return tid_to_ac[tid];
-
-	/* no support for TIDs 8-15 yet */
-	return -EINVAL;
+	return iwlagn_mod_params.debug_level & level;
 }
 
 enum iwl_rxon_context_id {
@@ -554,10 +487,6 @@ iwl_remove_notification(struct iwl_shared *shrd,
 			   struct iwl_notification_wait *wait_entry);
 
 #define IWL_CMD(x) case x: return #x
-#define IWL_MASK(lo, hi) ((1 << (hi)) | ((1 << (hi)) - (1 << (lo))))
-
-#define IWL_TRAFFIC_ENTRIES	(256)
-#define IWL_TRAFFIC_ENTRY_SIZE  (64)
 
 /*****************************************************
 * DRIVER STATUS FUNCTIONS

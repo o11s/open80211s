@@ -88,6 +88,8 @@ int iwlagn_send_tx_power(struct iwl_priv *priv)
 
 void iwlagn_temperature(struct iwl_priv *priv)
 {
+	lockdep_assert_held(&priv->statistics.lock);
+
 	/* store temperature from correct statistics (in Celsius) */
 	priv->temperature = le32_to_cpu(priv->statistics.common.temperature);
 	iwl_tt_handler(priv);
@@ -233,7 +235,7 @@ int iwlagn_txfifo_flush(struct iwl_priv *priv, u16 flush_control)
 				IWL_PAN_SCD_BK_MSK | IWL_PAN_SCD_MGMT_MSK |
 				IWL_PAN_SCD_MULTICAST_MSK;
 
-	if (cfg(priv)->sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
 		flush_cmd.fifo_control |= IWL_AGG_TX_QUEUE_MSK;
 
 	IWL_DEBUG_INFO(priv, "fifo queue control: 0X%x\n",
@@ -705,10 +707,9 @@ static void iwlagn_set_kill_msk(struct iwl_priv *priv,
 }
 
 int iwlagn_bt_coex_profile_notif(struct iwl_priv *priv,
-				  struct iwl_rx_mem_buffer *rxb,
+				  struct iwl_rx_cmd_buffer *rxb,
 				  struct iwl_device_cmd *cmd)
 {
-	unsigned long flags;
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
 	struct iwl_bt_coex_profile_notif *coex = &pkt->u.bt_coex_profile_notif;
 	struct iwl_bt_uart_msg *uart_msg = &coex->last_bt_uart_msg;
@@ -754,9 +755,7 @@ int iwlagn_bt_coex_profile_notif(struct iwl_priv *priv,
 
 	/* FIXME: based on notification, adjust the prio_boost */
 
-	spin_lock_irqsave(&priv->shrd->lock, flags);
 	priv->bt_ci_compliance = coex->bt_ci_compliance;
-	spin_unlock_irqrestore(&priv->shrd->lock, flags);
 	return 0;
 }
 
@@ -1194,7 +1193,7 @@ int iwlagn_suspend(struct iwl_priv *priv,
 
 	iwl_trans_stop_device(trans(priv));
 
-	priv->shrd->wowlan = true;
+	priv->wowlan = true;
 
 	ret = iwl_load_ucode_wait_alive(trans(priv), IWL_UCODE_WOWLAN);
 	if (ret)

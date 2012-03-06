@@ -671,9 +671,6 @@ struct iwl_rxon_context {
 		u8 extension_chan_offset;
 	} ht;
 
-	u8 bssid[ETH_ALEN];
-	bool preauth_bssid;
-
 	bool last_tx_rejected;
 };
 
@@ -719,6 +716,8 @@ struct iwl_priv {
 	/*data shared among all the driver's layers */
 	struct iwl_shared *shrd;
 
+	spinlock_t sta_lock;
+
 	/* ieee device used by generic ieee processing code */
 	struct ieee80211_hw *hw;
 	struct ieee80211_channel *ieee_channels;
@@ -730,9 +729,9 @@ struct iwl_priv {
 	enum ieee80211_band band;
 
 	void (*pre_rx_handler)(struct iwl_priv *priv,
-			       struct iwl_rx_mem_buffer *rxb);
+			       struct iwl_rx_cmd_buffer *rxb);
 	int (*rx_handlers[REPLY_MAX])(struct iwl_priv *priv,
-				       struct iwl_rx_mem_buffer *rxb,
+				       struct iwl_rx_cmd_buffer *rxb,
 				       struct iwl_device_cmd *cmd);
 
 	struct ieee80211_supported_band bands[IEEE80211_NUM_BANDS];
@@ -787,6 +786,8 @@ struct iwl_priv {
 	u8 sta_key_max_num;
 
 	bool new_scan_threshold_behaviour;
+
+	bool wowlan;
 
 	/* EEPROM MAC addresses */
 	struct mac_address addresses[2];
@@ -845,6 +846,7 @@ struct iwl_priv {
 		struct statistics_bt_activity bt_activity;
 		__le32 num_bt_kills, accum_num_bt_kills;
 #endif
+		spinlock_t lock;
 	} statistics;
 #ifdef CONFIG_IWLWIFI_DEBUGFS
 	struct {

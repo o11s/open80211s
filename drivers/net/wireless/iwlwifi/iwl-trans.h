@@ -64,6 +64,7 @@
 #define __iwl_trans_h__
 
 #include <linux/ieee80211.h>
+#include <linux/mm.h> /* for page_address */
 
 #include "iwl-shared.h"
 #include "iwl-debug.h"
@@ -173,7 +174,9 @@ enum iwl_hcmd_dataflag {
  * struct iwl_host_cmd - Host command to the uCode
  *
  * @data: array of chunks that composes the data of the host command
- * @reply_page: pointer to the page that holds the response to the host command
+ * @resp_pkt: response packet, if %CMD_WANT_SKB was set
+ * @_rx_page_order: (internally used to free response packet)
+ * @_rx_page_addr: (internally used to free response packet)
  * @handler_status: return value of the handler of the command
  *	(put in setup_rx_handlers) - valid for SYNC mode only
  * @flags: can be CMD_*
@@ -183,7 +186,9 @@ enum iwl_hcmd_dataflag {
  */
 struct iwl_host_cmd {
 	const void *data[IWL_MAX_CMD_TFDS];
-	unsigned long reply_page;
+	struct iwl_rx_packet *resp_pkt;
+	unsigned long _rx_page_addr;
+	u32 _rx_page_order;
 	int handler_status;
 
 	u32 flags;
@@ -191,6 +196,27 @@ struct iwl_host_cmd {
 	u8 dataflags[IWL_MAX_CMD_TFDS];
 	u8 id;
 };
+
+static inline void iwl_free_resp(struct iwl_host_cmd *cmd)
+{
+	free_pages(cmd->_rx_page_addr, cmd->_rx_page_order);
+}
+
+struct iwl_rx_cmd_buffer {
+	struct page *_page;
+};
+
+static inline void *rxb_addr(struct iwl_rx_cmd_buffer *r)
+{
+	return page_address(r->_page);
+}
+
+static inline struct page *rxb_steal_page(struct iwl_rx_cmd_buffer *r)
+{
+	struct page *p = r->_page;
+	r->_page = NULL;
+	return p;
+}
 
 /**
  * struct iwl_trans_ops - transport specific operations
@@ -210,6 +236,9 @@ struct iwl_host_cmd {
  * @wake_any_queue: wake all the queues of a specfic context IWL_RXON_CTX_*
  * @stop_device:stops the whole device (embedded CPU put to reset)
  *	May sleep
+ * @wowlan_suspend: put the device into the correct mode for WoWLAN during
+ *	suspend. This is optional, if not implemented WoWLAN will not be
+ *	supported. This callback may sleep.
  * @send_cmd:send a host command
  *	May sleep only if CMD_SYNC is set
  * @tx: send an skb
@@ -217,7 +246,7 @@ struct iwl_host_cmd {
  * @reclaim: free packet until ssn. Returns a list of freed packets.
  *	Must be atomic
  * @tx_agg_alloc: allocate resources for a TX BA session
- *	May sleep
+ *	Must be atomic
  * @tx_agg_setup: setup a tx queue for AMPDU - will be called once the HW is
  *	ready and a successful ADDBA response has been received.
  *	May sleep
@@ -246,6 +275,8 @@ struct iwl_trans_ops {
 	int (*start_fw)(struct iwl_trans *trans, struct fw_img *fw);
 	void (*fw_alive)(struct iwl_trans *trans);
 	void (*stop_device)(struct iwl_trans *trans);
+
+	void (*wowlan_suspend)(struct iwl_trans *trans);
 
 	void (*wake_any_queue)(struct iwl_trans *trans,
 			       enum iwl_rxon_context_id ctx,
@@ -309,7 +340,6 @@ enum iwl_trans_state {
  * @ops - pointer to iwl_trans_ops
  * @op_mode - pointer to the op_mode
  * @shrd - pointer to iwl_shared which holds shared data from the upper layer
- * @hcmd_lock: protects HCMD
  * @reg_lock - protect hw register access
  * @dev - pointer to struct device * that represents the device
  * @irq - the irq number for the device
@@ -326,7 +356,6 @@ struct iwl_trans {
 	struct iwl_op_mode *op_mode;
 	struct iwl_shared *shrd;
 	enum iwl_trans_state state;
-	spinlock_t hcmd_lock;
 	spinlock_t reg_lock;
 
 	struct device *dev;
@@ -398,6 +427,12 @@ static inline void iwl_trans_stop_device(struct iwl_trans *trans)
 	trans->state = IWL_TRANS_NO_FW;
 }
 
+static inline void iwl_trans_wowlan_suspend(struct iwl_trans *trans)
+{
+	might_sleep();
+	trans->ops->wowlan_suspend(trans);
+}
+
 static inline void iwl_trans_wake_any_queue(struct iwl_trans *trans,
 					    enum iwl_rxon_context_id ctx,
 					    const char *msg)
@@ -456,8 +491,6 @@ static inline int iwl_trans_tx_agg_disable(struct iwl_trans *trans,
 static inline int iwl_trans_tx_agg_alloc(struct iwl_trans *trans,
 					 int sta_id, int tid)
 {
-	might_sleep();
-
 	if (trans->state != IWL_TRANS_FW_ALIVE)
 		IWL_ERR(trans, "%s bad state = %d", __func__, trans->state);
 

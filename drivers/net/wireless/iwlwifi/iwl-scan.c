@@ -69,15 +69,14 @@ static int iwl_send_scan_abort(struct iwl_priv *priv)
 	if (!test_bit(STATUS_READY, &priv->shrd->status) ||
 	    !test_bit(STATUS_GEO_CONFIGURED, &priv->shrd->status) ||
 	    !test_bit(STATUS_SCAN_HW, &priv->shrd->status) ||
-	    test_bit(STATUS_FW_ERROR, &priv->shrd->status) ||
-	    test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	    test_bit(STATUS_FW_ERROR, &priv->shrd->status))
 		return -EIO;
 
 	ret = iwl_trans_send_cmd(trans(priv), &cmd);
 	if (ret)
 		return ret;
 
-	pkt = (struct iwl_rx_packet *)cmd.reply_page;
+	pkt = cmd.resp_pkt;
 	if (pkt->u.status != CAN_ABORT_STATUS) {
 		/* The scan abort will return 1 for success or
 		 * 2 for "failure".  A failure condition can be
@@ -89,7 +88,7 @@ static int iwl_send_scan_abort(struct iwl_priv *priv)
 		ret = -EIO;
 	}
 
-	iwl_free_pages(priv->shrd, cmd.reply_page);
+	iwl_free_resp(&cmd);
 	return ret;
 }
 
@@ -261,7 +260,7 @@ void iwl_scan_cancel_timeout(struct iwl_priv *priv, unsigned long ms)
 
 /* Service response to REPLY_SCAN_CMD (0x80) */
 static int iwl_rx_reply_scan(struct iwl_priv *priv,
-			      struct iwl_rx_mem_buffer *rxb,
+			      struct iwl_rx_cmd_buffer *rxb,
 			      struct iwl_device_cmd *cmd)
 {
 #ifdef CONFIG_IWLWIFI_DEBUG
@@ -276,7 +275,7 @@ static int iwl_rx_reply_scan(struct iwl_priv *priv,
 
 /* Service SCAN_START_NOTIFICATION (0x82) */
 static int iwl_rx_scan_start_notif(struct iwl_priv *priv,
-				    struct iwl_rx_mem_buffer *rxb,
+				    struct iwl_rx_cmd_buffer *rxb,
 				    struct iwl_device_cmd *cmd)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
@@ -303,7 +302,7 @@ static int iwl_rx_scan_start_notif(struct iwl_priv *priv,
 
 /* Service SCAN_RESULTS_NOTIFICATION (0x83) */
 static int iwl_rx_scan_results_notif(struct iwl_priv *priv,
-				      struct iwl_rx_mem_buffer *rxb,
+				      struct iwl_rx_cmd_buffer *rxb,
 				      struct iwl_device_cmd *cmd)
 {
 #ifdef CONFIG_IWLWIFI_DEBUG
@@ -329,7 +328,7 @@ static int iwl_rx_scan_results_notif(struct iwl_priv *priv,
 
 /* Service SCAN_COMPLETE_NOTIFICATION (0x84) */
 static int iwl_rx_scan_complete_notif(struct iwl_priv *priv,
-				       struct iwl_rx_mem_buffer *rxb,
+				       struct iwl_rx_cmd_buffer *rxb,
 				       struct iwl_device_cmd *cmd)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);

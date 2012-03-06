@@ -552,13 +552,11 @@ static void iwl_rf_kill_ct_config(struct iwl_priv *priv)
 {
 	struct iwl_ct_kill_config cmd;
 	struct iwl_ct_kill_throttling_config adv_cmd;
-	unsigned long flags;
 	int ret = 0;
 
-	spin_lock_irqsave(&priv->shrd->lock, flags);
 	iwl_write32(trans(priv), CSR_UCODE_DRV_GP1_CLR,
 		    CSR_UCODE_DRV_GP1_REG_BIT_CT_KILL_EXIT);
-	spin_unlock_irqrestore(&priv->shrd->lock, flags);
+
 	priv->thermal_throttle.ct_kill_toggle = false;
 
 	if (cfg(priv)->base_params->support_ct_kill_exit) {
@@ -701,9 +699,9 @@ int iwl_alive_start(struct iwl_priv *priv)
 	priv->active_rate = IWL_RATES_MASK;
 
 	/* Configure Tx antenna selection based on H/W config */
-	iwlagn_send_tx_ant_config(priv, cfg(priv)->valid_tx_ant);
+	iwlagn_send_tx_ant_config(priv, hw_params(priv).valid_tx_ant);
 
-	if (iwl_is_associated_ctx(ctx) && !priv->shrd->wowlan) {
+	if (iwl_is_associated_ctx(ctx) && !priv->wowlan) {
 		struct iwl_rxon_cmd *active_rxon =
 				(struct iwl_rxon_cmd *)&ctx->active;
 		/* apply any changes in staging */
@@ -718,7 +716,7 @@ int iwl_alive_start(struct iwl_priv *priv)
 		iwlagn_set_rxon_chain(priv, ctx);
 	}
 
-	if (!priv->shrd->wowlan) {
+	if (!priv->wowlan) {
 		/* WoWLAN ucode will not reply in the same way, skip it */
 		iwl_reset_run_time_calib(priv);
 	}
@@ -736,6 +734,40 @@ int iwl_alive_start(struct iwl_priv *priv)
 	IWL_DEBUG_INFO(priv, "ALIVE processing complete.\n");
 
 	return iwl_power_update_mode(priv, true);
+}
+
+/**
+ * iwl_clear_driver_stations - clear knowledge of all stations from driver
+ * @priv: iwl priv struct
+ *
+ * This is called during iwl_down() to make sure that in the case
+ * we're coming there from a hardware restart mac80211 will be
+ * able to reconfigure stations -- if we're getting there in the
+ * normal down flow then the stations will already be cleared.
+ */
+static void iwl_clear_driver_stations(struct iwl_priv *priv)
+{
+	struct iwl_rxon_context *ctx;
+
+	spin_lock_bh(&priv->sta_lock);
+	memset(priv->stations, 0, sizeof(priv->stations));
+	priv->num_stations = 0;
+
+	priv->ucode_key_table = 0;
+
+	for_each_context(priv, ctx) {
+		/*
+		 * Remove all key information that is not stored as part
+		 * of station information since mac80211 may not have had
+		 * a chance to remove all the keys. When device is
+		 * reconfigured by mac80211 after an error all keys will
+		 * be reconfigured.
+		 */
+		memset(ctx->wep_keys, 0, sizeof(ctx->wep_keys));
+		ctx->key_mapping_keys = 0;
+	}
+
+	spin_unlock_bh(&priv->sta_lock);
 }
 
 void iwl_down(struct iwl_priv *priv)
@@ -1004,7 +1036,7 @@ static int iwl_init_drv(struct iwl_priv *priv)
 {
 	int ret;
 
-	spin_lock_init(&priv->shrd->sta_lock);
+	spin_lock_init(&priv->sta_lock);
 
 	mutex_init(&priv->shrd->mutex);
 
@@ -1092,13 +1124,12 @@ static void iwl_set_hw_params(struct iwl_priv *priv)
 			get_order(IWL_RX_BUF_SIZE_4K);
 
 	if (iwlagn_mod_params.disable_11n & IWL_DISABLE_HT_ALL)
-		cfg(priv)->sku &= ~EEPROM_SKU_CAP_11N_ENABLE;
+		hw_params(priv).sku &= ~EEPROM_SKU_CAP_11N_ENABLE;
 
 	hw_params(priv).num_ampdu_queues =
 		cfg(priv)->base_params->num_of_ampdu_queues;
 	hw_params(priv).shadow_reg_enable =
 		cfg(priv)->base_params->shadow_reg_enable;
-	hw_params(priv).sku = cfg(priv)->sku;
 	hw_params(priv).wd_timeout = cfg(priv)->base_params->wd_timeout;
 
 	/* Device-specific setup */
@@ -1198,7 +1229,7 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans)
 	 * we should init now
 	 */
 	spin_lock_init(&trans(priv)->reg_lock);
-	spin_lock_init(&priv->shrd->lock);
+	spin_lock_init(&priv->statistics.lock);
 
 	/***********************
 	 * 3. Read REV register
@@ -1225,7 +1256,7 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans)
 	if (err)
 		goto out_free_eeprom;
 
-	err = iwl_eeprom_check_sku(priv);
+	err = iwl_eeprom_init_hw_params(priv);
 	if (err)
 		goto out_free_eeprom;
 
@@ -1340,17 +1371,9 @@ static void iwl_op_mode_dvm_stop(struct iwl_op_mode *op_mode)
 {
 	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
 
-	wait_for_completion(&nic(priv)->request_firmware_complete);
-
 	IWL_DEBUG_INFO(priv, "*** UNLOAD DRIVER ***\n");
 
 	iwl_dbgfs_unregister(priv);
-
-	/* ieee80211_unregister_hw call wil cause iwlagn_mac_stop to
-	 * to be called and iwl_down since we are removing the device
-	 * we need to set STATUS_EXIT_PENDING bit.
-	 */
-	set_bit(STATUS_EXIT_PENDING, &priv->shrd->status);
 
 	iwl_testmode_cleanup(priv);
 	iwlagn_mac_unregister(priv);
@@ -1359,8 +1382,6 @@ static void iwl_op_mode_dvm_stop(struct iwl_op_mode *op_mode)
 
 	/*This will stop the queues, move the device to low power state */
 	iwl_trans_stop_device(trans(priv));
-
-	iwl_dealloc_ucode(nic(priv));
 
 	iwl_eeprom_free(priv->shrd);
 
