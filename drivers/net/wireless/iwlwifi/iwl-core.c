@@ -41,7 +41,6 @@
 #include "iwl-shared.h"
 #include "iwl-agn.h"
 #include "iwl-trans.h"
-#include "iwl-wifi.h"
 
 const u8 iwl_bcast_addr[ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
@@ -317,7 +316,7 @@ int iwl_send_rxon_timing(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 
 	conf = &priv->hw->conf;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	memset(&ctx->timing, 0, sizeof(struct iwl_rxon_time_cmd));
 
@@ -370,7 +369,7 @@ int iwl_send_rxon_timing(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 			le32_to_cpu(ctx->timing.beacon_init_val),
 			le16_to_cpu(ctx->timing.atim_window));
 
-	return iwl_trans_send_cmd_pdu(trans(priv), ctx->rxon_timing_cmd,
+	return iwl_dvm_send_cmd_pdu(priv, ctx->rxon_timing_cmd,
 				CMD_SYNC, sizeof(ctx->timing), &ctx->timing);
 }
 
@@ -846,7 +845,7 @@ static void iwlagn_fw_error(struct iwl_priv *priv, bool ondemand)
 	/* Cancel currently queued command. */
 	clear_bit(STATUS_HCMD_ACTIVE, &priv->shrd->status);
 
-	iwl_abort_notification_waits(priv->shrd);
+	iwl_abort_notification_waits(&priv->notif_wait);
 
 	/* Keep the restart process from trying to send host
 	 * commands by clearing the ready bit */
@@ -893,7 +892,7 @@ int iwl_set_tx_power(struct iwl_priv *priv, s8 tx_power, bool force)
 	bool defer;
 	struct iwl_rxon_context *ctx = &priv->contexts[IWL_RXON_CTX_BSS];
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	if (priv->tx_power_user_lmt == tx_power && !force)
 		return 0;
@@ -959,7 +958,7 @@ void iwl_send_bt_config(struct iwl_priv *priv)
 	IWL_DEBUG_INFO(priv, "BT coex %s\n",
 		(bt_cmd.flags == BT_COEX_DISABLE) ? "disable" : "active");
 
-	if (iwl_trans_send_cmd_pdu(trans(priv), REPLY_BT_CONFIG,
+	if (iwl_dvm_send_cmd_pdu(priv, REPLY_BT_CONFIG,
 			     CMD_SYNC, sizeof(struct iwl_bt_cmd), &bt_cmd))
 		IWL_ERR(priv, "failed to send BT Coex Config\n");
 }
@@ -972,12 +971,12 @@ int iwl_send_statistics_request(struct iwl_priv *priv, u8 flags, bool clear)
 	};
 
 	if (flags & CMD_ASYNC)
-		return iwl_trans_send_cmd_pdu(trans(priv), REPLY_STATISTICS_CMD,
+		return iwl_dvm_send_cmd_pdu(priv, REPLY_STATISTICS_CMD,
 					      CMD_ASYNC,
 					       sizeof(struct iwl_statistics_cmd),
 					       &statistics_cmd);
 	else
-		return iwl_trans_send_cmd_pdu(trans(priv), REPLY_STATISTICS_CMD,
+		return iwl_dvm_send_cmd_pdu(priv, REPLY_STATISTICS_CMD,
 					CMD_SYNC,
 					sizeof(struct iwl_statistics_cmd),
 					&statistics_cmd);
@@ -1301,7 +1300,7 @@ int iwl_cmd_echo_test(struct iwl_priv *priv)
 		.flags = CMD_SYNC,
 	};
 
-	ret = iwl_trans_send_cmd(trans(priv), &cmd);
+	ret = iwl_dvm_send_cmd(priv, &cmd);
 	if (ret)
 		IWL_ERR(priv, "echo testing fail: 0X%x\n", ret);
 	else
@@ -1341,12 +1340,12 @@ void iwl_bg_watchdog(unsigned long data)
 	if (iwl_is_rfkill(priv->shrd))
 		return;
 
-	timeout = cfg(priv)->base_params->wd_timeout;
+	timeout = hw_params(priv).wd_timeout;
 	if (timeout == 0)
 		return;
 
 	/* monitor and check for stuck queues */
-	for (cnt = 0; cnt < hw_params(priv).max_txq_num; cnt++)
+	for (cnt = 0; cnt < cfg(priv)->base_params->num_of_queues; cnt++)
 		if (iwl_check_stuck_queue(priv, cnt))
 			return;
 
@@ -1356,7 +1355,7 @@ void iwl_bg_watchdog(unsigned long data)
 
 void iwl_setup_watchdog(struct iwl_priv *priv)
 {
-	unsigned int timeout = cfg(priv)->base_params->wd_timeout;
+	unsigned int timeout = hw_params(priv).wd_timeout;
 
 	if (!iwlagn_mod_params.wd_disable) {
 		/* use system default */
@@ -1461,12 +1460,12 @@ void iwl_set_hw_rfkill_state(struct iwl_op_mode *op_mode, bool state)
 {
 	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
 
-	wiphy_rfkill_set_hw_state(priv->hw->wiphy, state);
-}
+	if (state)
+		set_bit(STATUS_RF_KILL_HW, &priv->shrd->status);
+	else
+		clear_bit(STATUS_RF_KILL_HW, &priv->shrd->status);
 
-void iwl_nic_config(struct iwl_priv *priv)
-{
-	cfg(priv)->lib->nic_config(priv);
+	wiphy_rfkill_set_hw_state(priv->hw->wiphy, state);
 }
 
 void iwl_free_skb(struct iwl_op_mode *op_mode, struct sk_buff *skb)

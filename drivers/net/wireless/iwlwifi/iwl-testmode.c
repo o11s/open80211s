@@ -70,7 +70,6 @@
 #include <net/mac80211.h>
 #include <net/netlink.h>
 
-#include "iwl-wifi.h"
 #include "iwl-dev.h"
 #include "iwl-core.h"
 #include "iwl-debug.h"
@@ -79,6 +78,7 @@
 #include "iwl-testmode.h"
 #include "iwl-trans.h"
 #include "iwl-fh.h"
+#include "iwl-prph.h"
 
 
 /* Periphery registers absolute lower bound. This is used in order to
@@ -283,7 +283,7 @@ static int iwl_testmode_ucode(struct ieee80211_hw *hw, struct nlattr **tb)
 	IWL_DEBUG_INFO(priv, "testmode ucode command ID 0x%x, flags 0x%x,"
 				" len %d\n", cmd.id, cmd.flags, cmd.len[0]);
 
-	ret = iwl_trans_send_cmd(trans(priv), &cmd);
+	ret = iwl_dvm_send_cmd(priv, &cmd);
 	if (ret) {
 		IWL_ERR(priv, "Failed to send hcmd\n");
 		return ret;
@@ -419,23 +419,23 @@ static int iwl_testmode_cfg_init_calib(struct iwl_priv *priv)
 	struct iwl_notification_wait calib_wait;
 	int ret;
 
-	iwl_init_notification_wait(priv->shrd, &calib_wait,
-				      CALIBRATION_COMPLETE_NOTIFICATION,
-				      NULL, NULL);
-	ret = iwl_init_alive_start(trans(priv));
+	iwl_init_notification_wait(&priv->notif_wait, &calib_wait,
+				   CALIBRATION_COMPLETE_NOTIFICATION,
+				   NULL, NULL);
+	ret = iwl_init_alive_start(priv);
 	if (ret) {
 		IWL_ERR(priv, "Fail init calibration: %d\n", ret);
 		goto cfg_init_calib_error;
 	}
 
-	ret = iwl_wait_notification(priv->shrd, &calib_wait, 2 * HZ);
+	ret = iwl_wait_notification(&priv->notif_wait, &calib_wait, 2 * HZ);
 	if (ret)
 		IWL_ERR(priv, "Error detecting"
 			" CALIBRATION_COMPLETE_NOTIFICATION: %d\n", ret);
 	return ret;
 
 cfg_init_calib_error:
-	iwl_remove_notification(priv->shrd, &calib_wait);
+	iwl_remove_notification(&priv->notif_wait, &calib_wait);
 	return ret;
 }
 
@@ -484,7 +484,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 		break;
 
 	case IWL_TM_CMD_APP2DEV_LOAD_INIT_FW:
-		status = iwl_load_ucode_wait_alive(trans, IWL_UCODE_INIT);
+		status = iwl_load_ucode_wait_alive(priv, IWL_UCODE_INIT);
 		if (status)
 			IWL_ERR(priv, "Error loading init ucode: %d\n", status);
 		break;
@@ -495,7 +495,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 		break;
 
 	case IWL_TM_CMD_APP2DEV_LOAD_RUNTIME_FW:
-		status = iwl_load_ucode_wait_alive(trans, IWL_UCODE_REGULAR);
+		status = iwl_load_ucode_wait_alive(priv, IWL_UCODE_REGULAR);
 		if (status) {
 			IWL_ERR(priv,
 				"Error loading runtime ucode: %d\n", status);
@@ -510,7 +510,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 	case IWL_TM_CMD_APP2DEV_LOAD_WOWLAN_FW:
 		iwl_scan_cancel_timeout(priv, 200);
 		iwl_trans_stop_device(trans);
-		status = iwl_load_ucode_wait_alive(trans, IWL_UCODE_WOWLAN);
+		status = iwl_load_ucode_wait_alive(priv, IWL_UCODE_WOWLAN);
 		if (status) {
 			IWL_ERR(priv,
 				"Error loading WOWLAN ucode: %d\n", status);
@@ -553,7 +553,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 
 	case IWL_TM_CMD_APP2DEV_GET_FW_VERSION:
 		IWL_INFO(priv, "uCode version raw: 0x%x\n",
-			 nic(priv)->fw.ucode_ver);
+			 priv->fw->ucode_ver);
 
 		skb = cfg80211_testmode_alloc_reply_skb(hw->wiphy, 20);
 		if (!skb) {
@@ -561,7 +561,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 			return -ENOMEM;
 		}
 		NLA_PUT_U32(skb, IWL_TM_ATTR_FW_VERSION,
-			    nic(priv)->fw.ucode_ver);
+			    priv->fw->ucode_ver);
 		status = cfg80211_testmode_reply(skb);
 		if (status < 0)
 			IWL_ERR(priv, "Error sending msg : %d\n", status);
@@ -590,16 +590,16 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 		}
 		switch (priv->shrd->ucode_type) {
 		case IWL_UCODE_REGULAR:
-			inst_size = nic(priv)->fw.ucode_rt.code.len;
-			data_size = nic(priv)->fw.ucode_rt.data.len;
+			inst_size = priv->fw->ucode_rt.code.len;
+			data_size = priv->fw->ucode_rt.data.len;
 			break;
 		case IWL_UCODE_INIT:
-			inst_size = nic(priv)->fw.ucode_init.code.len;
-			data_size = nic(priv)->fw.ucode_init.data.len;
+			inst_size = priv->fw->ucode_init.code.len;
+			data_size = priv->fw->ucode_init.data.len;
 			break;
 		case IWL_UCODE_WOWLAN:
-			inst_size = nic(priv)->fw.ucode_wowlan.code.len;
-			data_size = nic(priv)->fw.ucode_wowlan.data.len;
+			inst_size = priv->fw->ucode_wowlan.code.len;
+			data_size = priv->fw->ucode_wowlan.data.len;
 			break;
 		case IWL_UCODE_NONE:
 			IWL_ERR(priv, "No uCode has not been loaded\n");
@@ -771,7 +771,7 @@ static int iwl_testmode_ownership(struct ieee80211_hw *hw, struct nlattr **tb)
 
 	owner = nla_get_u8(tb[IWL_TM_ATTR_UCODE_OWNER]);
 	if ((owner == IWL_OWNERSHIP_DRIVER) || (owner == IWL_OWNERSHIP_TM))
-		priv->shrd->ucode_owner = owner;
+		priv->ucode_owner = owner;
 	else {
 		IWL_ERR(priv, "Invalid owner\n");
 		return -EINVAL;
@@ -976,7 +976,7 @@ int iwlagn_mac_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
 		return -ENOMSG;
 	}
 	/* in case multiple accesses to the device happens */
-	mutex_lock(&priv->shrd->mutex);
+	mutex_lock(&priv->mutex);
 
 	switch (nla_get_u32(tb[IWL_TM_ATTR_COMMAND])) {
 	case IWL_TM_CMD_APP2DEV_UCODE:
@@ -1028,7 +1028,7 @@ int iwlagn_mac_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
 		break;
 	}
 
-	mutex_unlock(&priv->shrd->mutex);
+	mutex_unlock(&priv->mutex);
 	return result;
 }
 
@@ -1063,7 +1063,7 @@ int iwlagn_mac_testmode_dump(struct ieee80211_hw *hw, struct sk_buff *skb,
 	}
 
 	/* in case multiple accesses to the device happens */
-	mutex_lock(&priv->shrd->mutex);
+	mutex_lock(&priv->mutex);
 	switch (cmd) {
 	case IWL_TM_CMD_APP2DEV_READ_TRACE:
 		IWL_DEBUG_INFO(priv, "uCode trace cmd to driver\n");
@@ -1078,6 +1078,6 @@ int iwlagn_mac_testmode_dump(struct ieee80211_hw *hw, struct sk_buff *skb,
 		break;
 	}
 
-	mutex_unlock(&priv->shrd->mutex);
+	mutex_unlock(&priv->mutex);
 	return result;
 }

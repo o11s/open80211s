@@ -40,7 +40,6 @@
 #include "iwl-core.h"
 #include "iwl-io.h"
 #include "iwl-agn.h"
-#include "iwl-wifi.h"
 
 /* create and remove of files */
 #define DEBUGFS_ADD_FILE(name, parent, mode) do {			\
@@ -235,12 +234,11 @@ static ssize_t iwl_dbgfs_sram_read(struct file *file,
 
 	/* default is to dump the entire data segment */
 	if (!priv->dbgfs_sram_offset && !priv->dbgfs_sram_len) {
-		struct iwl_nic *nic = nic(priv);
 		priv->dbgfs_sram_offset = 0x800000;
-		if (nic->shrd->ucode_type == IWL_UCODE_INIT)
-			priv->dbgfs_sram_len = nic->fw.ucode_init.data.len;
+		if (priv->shrd->ucode_type == IWL_UCODE_INIT)
+			priv->dbgfs_sram_len = priv->fw->ucode_init.data.len;
 		else
-			priv->dbgfs_sram_len = nic->fw.ucode_rt.data.len;
+			priv->dbgfs_sram_len = priv->fw->ucode_rt.data.len;
 	}
 	len = priv->dbgfs_sram_len;
 
@@ -343,7 +341,7 @@ static ssize_t iwl_dbgfs_wowlan_sram_read(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 				       priv->wowlan_sram,
-				       nic(priv)->fw.ucode_wowlan.data.len);
+				       priv->fw->ucode_wowlan.data.len);
 }
 static ssize_t iwl_dbgfs_stations_read(struct file *file, char __user *user_buf,
 					size_t count, loff_t *ppos)
@@ -763,9 +761,9 @@ static ssize_t iwl_dbgfs_sleep_level_override_write(struct file *file,
 
 	priv->power_data.debug_sleep_level_override = value;
 
-	mutex_lock(&priv->shrd->mutex);
+	mutex_lock(&priv->mutex);
 	iwl_power_update_mode(priv, true);
-	mutex_unlock(&priv->shrd->mutex);
+	mutex_unlock(&priv->mutex);
 
 	return count;
 }
@@ -1710,9 +1708,9 @@ static ssize_t iwl_dbgfs_ucode_bt_stats_read(struct file *file,
 		return -EINVAL;
 
 	/* make request to uCode to retrieve statistics information */
-	mutex_lock(&priv->shrd->mutex);
+	mutex_lock(&priv->mutex);
 	ret = iwl_send_statistics_request(priv, CMD_SYNC, false);
-	mutex_unlock(&priv->shrd->mutex);
+	mutex_unlock(&priv->mutex);
 
 	if (ret) {
 		IWL_ERR(priv,
@@ -2108,9 +2106,9 @@ static ssize_t iwl_dbgfs_clear_ucode_statistics_write(struct file *file,
 		return -EFAULT;
 
 	/* make request to uCode to retrieve statistics information */
-	mutex_lock(&priv->shrd->mutex);
+	mutex_lock(&priv->mutex);
 	iwl_send_statistics_request(priv, CMD_SYNC, true);
-	mutex_unlock(&priv->shrd->mutex);
+	mutex_unlock(&priv->mutex);
 
 	return count;
 }
@@ -2243,7 +2241,7 @@ static ssize_t iwl_dbgfs_plcp_delta_read(struct file *file,
 	const size_t bufsz = sizeof(buf);
 
 	pos += scnprintf(buf + pos, bufsz - pos, "%u\n",
-			cfg(priv)->base_params->plcp_delta_threshold);
+			priv->plcp_delta_threshold);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
@@ -2265,10 +2263,10 @@ static ssize_t iwl_dbgfs_plcp_delta_write(struct file *file,
 		return -EINVAL;
 	if ((plcp < IWL_MAX_PLCP_ERR_THRESHOLD_MIN) ||
 		(plcp > IWL_MAX_PLCP_ERR_THRESHOLD_MAX))
-		cfg(priv)->base_params->plcp_delta_threshold =
+		priv->plcp_delta_threshold =
 			IWL_MAX_PLCP_ERR_THRESHOLD_DISABLE;
 	else
-		cfg(priv)->base_params->plcp_delta_threshold = plcp;
+		priv->plcp_delta_threshold = plcp;
 	return count;
 }
 
@@ -2370,7 +2368,7 @@ static ssize_t iwl_dbgfs_wd_timeout_write(struct file *file,
 	if (timeout < 0 || timeout > IWL_MAX_WD_TIMEOUT)
 		timeout = IWL_DEF_WD_TIMEOUT;
 
-	cfg(priv)->base_params->wd_timeout = timeout;
+	hw_params(priv).wd_timeout = timeout;
 	iwl_setup_watchdog(priv);
 	return count;
 }
@@ -2433,7 +2431,7 @@ static ssize_t iwl_dbgfs_protection_mode_read(struct file *file,
 	if (cfg(priv)->ht_params)
 		pos += scnprintf(buf + pos, bufsz - pos,
 			 "use %s for aggregation\n",
-			 (cfg(priv)->ht_params->use_rts_for_aggregation) ?
+			 (hw_params(priv).use_rts_for_aggregation) ?
 				"rts/cts" : "cts-to-self");
 	else
 		pos += scnprintf(buf + pos, bufsz - pos, "N/A");
@@ -2460,9 +2458,9 @@ static ssize_t iwl_dbgfs_protection_mode_write(struct file *file,
 	if (sscanf(buf, "%d", &rts) != 1)
 		return -EINVAL;
 	if (rts)
-		cfg(priv)->ht_params->use_rts_for_aggregation = true;
+		hw_params(priv).use_rts_for_aggregation = true;
 	else
-		cfg(priv)->ht_params->use_rts_for_aggregation = false;
+		hw_params(priv).use_rts_for_aggregation = false;
 	return count;
 }
 

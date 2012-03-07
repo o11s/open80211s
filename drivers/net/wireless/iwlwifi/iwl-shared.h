@@ -65,11 +65,11 @@
 
 #include <linux/types.h>
 #include <linux/spinlock.h>
-#include <linux/mutex.h>
 #include <linux/gfp.h>
 #include <net/mac80211.h>
 
 #include "iwl-commands.h"
+#include "iwl-fw.h"
 
 /**
  * DOC: shared area - role and goal
@@ -115,7 +115,6 @@ extern struct iwl_mod_params iwlagn_mod_params;
  * Holds the module parameters
  *
  * @sw_crypto: using hardware encryption, default = 0
- * @num_of_queues: number of tx queue, HW dependent
  * @disable_11n: disable 11n capabilities, default = 0,
  *	use IWL_DISABLE_HT_* constants
  * @amsdu_size_8K: enable 8K amsdu size, default = 1
@@ -137,7 +136,6 @@ extern struct iwl_mod_params iwlagn_mod_params;
  */
 struct iwl_mod_params {
 	int sw_crypto;
-	int num_of_queues;
 	unsigned int disable_11n;
 	int amsdu_size_8K;
 	int antenna;
@@ -176,6 +174,7 @@ struct iwl_mod_params {
  *	relevant for 1000, 6000 and up
  * @wd_timeout: TX queues watchdog timeout
  * @struct iwl_sensitivity_ranges: range of sensitivity values
+ * @use_rts_for_aggregation: use rts/cts protection for HT traffic
  */
 struct iwl_hw_params {
 	u8  max_txq_num;
@@ -185,7 +184,7 @@ struct iwl_hw_params {
 	u8  valid_tx_ant;
 	u8  valid_rx_ant;
 	u8  ht40_channel;
-	bool shadow_reg_enable;
+	bool use_rts_for_aggregation;
 	u16 sku;
 	u32 rx_page_order;
 	u32 ct_kill_threshold;
@@ -210,45 +209,6 @@ enum iwl_ucode_type {
 	IWL_UCODE_REGULAR,
 	IWL_UCODE_INIT,
 	IWL_UCODE_WOWLAN,
-};
-
-/**
- * struct iwl_notification_wait - notification wait entry
- * @list: list head for global list
- * @fn: function called with the notification
- * @cmd: command ID
- *
- * This structure is not used directly, to wait for a
- * notification declare it on the stack, and call
- * iwlagn_init_notification_wait() with appropriate
- * parameters. Then do whatever will cause the ucode
- * to notify the driver, and to wait for that then
- * call iwlagn_wait_notification().
- *
- * Each notification is one-shot. If at some point we
- * need to support multi-shot notifications (which
- * can't be allocated on the stack) we need to modify
- * the code for them.
- */
-struct iwl_notification_wait {
-	struct list_head list;
-
-	void (*fn)(struct iwl_trans *trans, struct iwl_rx_packet *pkt,
-		   void *data);
-	void *fn_data;
-
-	u8 cmd;
-	bool triggered, aborted;
-};
-
-/**
- * enum iwl_pa_type - Power Amplifier type
- * @IWL_PA_SYSTEM:  based on uCode configuration
- * @IWL_PA_INTERNAL: use Internal only
- */
-enum iwl_pa_type {
-	IWL_PA_SYSTEM = 0,
-	IWL_PA_INTERNAL = 1,
 };
 
 /*
@@ -331,7 +291,6 @@ struct iwl_base_params {
  * @base_params: pointer to basic parameters
  * @ht_params: point to ht patameters
  * @bt_params: pointer to bt parameters
- * @pa_type: used by 6000 series only to identify the type of Power Amplifier
  * @need_temp_offset_calib: need to perform temperature offset calibration
  * @no_xtal_calib: some devices do not need crystal calibration data,
  *	don't send it to those
@@ -367,11 +326,10 @@ struct iwl_cfg {
 	const struct iwl_lib_ops *lib;
 	void (*additional_nic_config)(struct iwl_priv *priv);
 	/* params not likely to change within a device family */
-	struct iwl_base_params *base_params;
+	const struct iwl_base_params *base_params;
 	/* params likely to change within a device family */
-	struct iwl_ht_params *ht_params;
-	struct iwl_bt_params *bt_params;
-	enum iwl_pa_type pa_type;	  /* if used set to IWL_PA_SYSTEM */
+	const struct iwl_ht_params *ht_params;
+	const struct iwl_bt_params *bt_params;
 	const bool need_temp_offset_calib; /* if used set to true */
 	const bool no_xtal_calib;
 	u8 scan_rx_antennas[IEEE80211_NUM_BANDS];
@@ -386,7 +344,6 @@ struct iwl_cfg {
 /**
  * struct iwl_shared - shared fields for all the layers of the driver
  *
- * @ucode_owner: IWL_OWNERSHIP_*
  * @cmd_queue: command queue number
  * @status: STATUS_*
  * @wowlan: are we running wowlan uCode
@@ -398,30 +355,21 @@ struct iwl_cfg {
  * @nic: pointer to the nic data
  * @hw_params: see struct iwl_hw_params
  * @lock: protect general shared data
- * @mutex:
- * @wait_command_queue: the wait_queue for SYNC host command nad uCode load
+ * @wait_command_queue: the wait_queue for SYNC host commands
  * @eeprom: pointer to the eeprom/OTP image
  * @ucode_type: indicator of loaded ucode image
- * @notif_waits: things waiting for notification
- * @notif_wait_lock: lock protecting notification
- * @notif_waitq: head of notification wait queue
  * @device_pointers: pointers to ucode event tables
  */
 struct iwl_shared {
-#define IWL_OWNERSHIP_DRIVER	0
-#define IWL_OWNERSHIP_TM	1
-	u8 ucode_owner;
 	u8 cmd_queue;
 	unsigned long status;
 	u8 valid_contexts;
 
 	const struct iwl_cfg *cfg;
-	struct iwl_priv *priv;
 	struct iwl_trans *trans;
-	struct iwl_nic *nic;
+	void *drv;
 	struct iwl_hw_params hw_params;
-
-	struct mutex mutex;
+	const struct iwl_fw *fw;
 
 	wait_queue_head_t wait_command_queue;
 
@@ -431,11 +379,6 @@ struct iwl_shared {
 	/* ucode related variables */
 	enum iwl_ucode_type ucode_type;
 
-	/* notification wait support */
-	struct list_head notif_waits;
-	spinlock_t notif_wait_lock;
-	wait_queue_head_t notif_waitq;
-
 	struct {
 		u32 error_event_table;
 		u32 log_event_table;
@@ -444,9 +387,7 @@ struct iwl_shared {
 };
 
 /*Whatever _m is (iwl_trans, iwl_priv, these macros will work */
-#define priv(_m)	((_m)->shrd->priv)
 #define cfg(_m)		((_m)->shrd->cfg)
-#define nic(_m)		((_m)->shrd->nic)
 #define trans(_m)	((_m)->shrd->trans)
 #define hw_params(_m)	((_m)->shrd->hw_params)
 
@@ -463,28 +404,7 @@ enum iwl_rxon_context_id {
 };
 
 int iwlagn_hw_valid_rtc_data_addr(u32 addr);
-void iwl_nic_config(struct iwl_priv *priv);
 const char *get_cmd_string(u8 cmd);
-bool iwl_check_for_ct_kill(struct iwl_priv *priv);
-
-
-/* notification wait support */
-void iwl_abort_notification_waits(struct iwl_shared *shrd);
-void __acquires(wait_entry)
-iwl_init_notification_wait(struct iwl_shared *shrd,
-			      struct iwl_notification_wait *wait_entry,
-			      u8 cmd,
-			      void (*fn)(struct iwl_trans *trans,
-					 struct iwl_rx_packet *pkt,
-					 void *data),
-			      void *fn_data);
-int __must_check __releases(wait_entry)
-iwl_wait_notification(struct iwl_shared *shrd,
-			 struct iwl_notification_wait *wait_entry,
-			 unsigned long timeout);
-void __releases(wait_entry)
-iwl_remove_notification(struct iwl_shared *shrd,
-			   struct iwl_notification_wait *wait_entry);
 
 #define IWL_CMD(x) case x: return #x
 
@@ -511,47 +431,5 @@ iwl_remove_notification(struct iwl_shared *shrd,
 #define STATUS_DEVICE_ENABLED	18
 #define STATUS_CHANNEL_SWITCH_PENDING 19
 #define STATUS_SCAN_COMPLETE	20
-
-static inline int iwl_is_ready(struct iwl_shared *shrd)
-{
-	/* The adapter is 'ready' if READY and GEO_CONFIGURED bits are
-	 * set but EXIT_PENDING is not */
-	return test_bit(STATUS_READY, &shrd->status) &&
-	       test_bit(STATUS_GEO_CONFIGURED, &shrd->status) &&
-	       !test_bit(STATUS_EXIT_PENDING, &shrd->status);
-}
-
-static inline int iwl_is_alive(struct iwl_shared *shrd)
-{
-	return test_bit(STATUS_ALIVE, &shrd->status);
-}
-
-static inline int iwl_is_init(struct iwl_shared *shrd)
-{
-	return test_bit(STATUS_INIT, &shrd->status);
-}
-
-static inline int iwl_is_rfkill_hw(struct iwl_shared *shrd)
-{
-	return test_bit(STATUS_RF_KILL_HW, &shrd->status);
-}
-
-static inline int iwl_is_rfkill(struct iwl_shared *shrd)
-{
-	return iwl_is_rfkill_hw(shrd);
-}
-
-static inline int iwl_is_ctkill(struct iwl_shared *shrd)
-{
-	return test_bit(STATUS_CT_KILL, &shrd->status);
-}
-
-static inline int iwl_is_ready_rf(struct iwl_shared *shrd)
-{
-	if (iwl_is_rfkill(shrd))
-		return 0;
-
-	return iwl_is_ready(shrd);
-}
 
 #endif /* #__iwl_shared_h__ */

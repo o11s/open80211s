@@ -26,7 +26,7 @@
  * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
  *
  *****************************************************************************/
-
+#include <linux/etherdevice.h>
 #include <net/mac80211.h>
 
 #include "iwl-dev.h"
@@ -64,6 +64,7 @@ static int iwl_process_add_sta_resp(struct iwl_priv *priv,
 				    struct iwl_addsta_cmd *addsta,
 				    struct iwl_rx_packet *pkt)
 {
+	struct iwl_add_sta_resp *add_sta_resp = (void *)pkt->data;
 	u8 sta_id = addsta->sta.sta_id;
 	int ret = -EIO;
 
@@ -78,7 +79,7 @@ static int iwl_process_add_sta_resp(struct iwl_priv *priv,
 
 	spin_lock(&priv->sta_lock);
 
-	switch (pkt->u.add_sta.status) {
+	switch (add_sta_resp->status) {
 	case ADD_STA_SUCCESS_MSK:
 		IWL_DEBUG_INFO(priv, "REPLY_ADD_STA PASSED\n");
 		ret = iwl_sta_ucode_activate(priv, sta_id);
@@ -97,7 +98,7 @@ static int iwl_process_add_sta_resp(struct iwl_priv *priv,
 		break;
 	default:
 		IWL_DEBUG_ASSOC(priv, "Received REPLY_ADD_STA:(0x%08X)\n",
-				pkt->u.add_sta.status);
+				add_sta_resp->status);
 		break;
 	}
 
@@ -153,7 +154,7 @@ int iwl_send_add_sta(struct iwl_priv *priv,
 		might_sleep();
 	}
 
-	ret = iwl_trans_send_cmd(trans(priv), &cmd);
+	ret = iwl_dvm_send_cmd(priv, &cmd);
 
 	if (ret || (flags & CMD_ASYNC))
 		return ret;
@@ -447,7 +448,7 @@ static int iwl_send_remove_station(struct iwl_priv *priv,
 
 	cmd.flags |= CMD_WANT_SKB;
 
-	ret = iwl_trans_send_cmd(trans(priv), &cmd);
+	ret = iwl_dvm_send_cmd(priv, &cmd);
 
 	if (ret)
 		return ret;
@@ -460,7 +461,8 @@ static int iwl_send_remove_station(struct iwl_priv *priv,
 	}
 
 	if (!ret) {
-		switch (pkt->u.rem_sta.status) {
+		struct iwl_rem_sta_resp *rem_sta_resp = (void *)pkt->data;
+		switch (rem_sta_resp->status) {
 		case REM_STA_SUCCESS_MSK:
 			if (!temporary) {
 				spin_lock_bh(&priv->sta_lock);
@@ -785,7 +787,7 @@ int iwl_send_lq_cmd(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
 		return -EINVAL;
 
 	if (is_lq_table_valid(priv, ctx, lq))
-		ret = iwl_trans_send_cmd(trans(priv), &cmd);
+		ret = iwl_dvm_send_cmd(priv, &cmd);
 	else
 		ret = -EINVAL;
 
@@ -811,7 +813,7 @@ void iwl_sta_fill_lq(struct iwl_priv *priv, struct iwl_rxon_context *ctx,
 	u32 rate_flags = 0;
 	__le32 rate_n_flags;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	memset(link_cmd, 0, sizeof(*link_cmd));
 
@@ -970,7 +972,7 @@ static int iwl_send_static_wepkey_cmd(struct iwl_priv *priv,
 	cmd.len[0] = cmd_size;
 
 	if (not_empty || send_if_empty)
-		return iwl_trans_send_cmd(trans(priv), &cmd);
+		return iwl_dvm_send_cmd(priv, &cmd);
 	else
 		return 0;
 }
@@ -978,7 +980,7 @@ static int iwl_send_static_wepkey_cmd(struct iwl_priv *priv,
 int iwl_restore_default_wep_keys(struct iwl_priv *priv,
 				 struct iwl_rxon_context *ctx)
 {
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	return iwl_send_static_wepkey_cmd(priv, ctx, false);
 }
@@ -989,7 +991,7 @@ int iwl_remove_default_wep_key(struct iwl_priv *priv,
 {
 	int ret;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	IWL_DEBUG_WEP(priv, "Removing default WEP key: idx=%d\n",
 		      keyconf->keyidx);
@@ -1014,7 +1016,7 @@ int iwl_set_default_wep_key(struct iwl_priv *priv,
 {
 	int ret;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	if (keyconf->keylen != WEP_KEY_LEN_128 &&
 	    keyconf->keylen != WEP_KEY_LEN_64) {
@@ -1166,7 +1168,7 @@ int iwl_remove_dynamic_key(struct iwl_priv *priv,
 	if (sta_id == IWL_INVALID_STATION)
 		return 0;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	ctx->key_mapping_keys--;
 
@@ -1206,7 +1208,7 @@ int iwl_set_dynamic_key(struct iwl_priv *priv,
 	if (sta_id == IWL_INVALID_STATION)
 		return -EINVAL;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	keyconf->hw_key_idx = iwl_get_free_ucode_key_offset(priv);
 	if (keyconf->hw_key_idx == WEP_INVALID_OFFSET)
@@ -1340,7 +1342,7 @@ int iwl_sta_tx_modify_enable_tid(struct iwl_priv *priv, int sta_id, int tid)
 {
 	struct iwl_addsta_cmd sta_cmd;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	/* Remove "disable" flag, to enable Tx for this TID */
 	spin_lock_bh(&priv->sta_lock);
@@ -1359,7 +1361,7 @@ int iwl_sta_rx_agg_start(struct iwl_priv *priv, struct ieee80211_sta *sta,
 	int sta_id;
 	struct iwl_addsta_cmd sta_cmd;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	sta_id = iwl_sta_id(sta);
 	if (sta_id == IWL_INVALID_STATION)
@@ -1383,7 +1385,7 @@ int iwl_sta_rx_agg_stop(struct iwl_priv *priv, struct ieee80211_sta *sta,
 	int sta_id;
 	struct iwl_addsta_cmd sta_cmd;
 
-	lockdep_assert_held(&priv->shrd->mutex);
+	lockdep_assert_held(&priv->mutex);
 
 	sta_id = iwl_sta_id(sta);
 	if (sta_id == IWL_INVALID_STATION) {

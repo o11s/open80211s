@@ -32,6 +32,7 @@
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/skbuff.h>
+#include <linux/wait.h>
 #include <linux/pci.h>
 
 #include "iwl-fh.h"
@@ -230,6 +231,7 @@ struct iwl_tx_queue {
  * @rxq: all the RX queue data
  * @rx_replenish: work that will be called when buffers need to be allocated
  * @trans: pointer to the generic transport area
+ * @irq - the irq number for the device
  * @irq_requested: true when the irq has been requested
  * @scd_base_addr: scheduler sram base address in SRAM
  * @scd_bc_tbls: pointer to the byte count table of the scheduler
@@ -243,6 +245,8 @@ struct iwl_tx_queue {
  * queue_stop_count: tracks what SW queue is stopped
  * @pci_dev: basic pci-network driver stuff
  * @hw_base: pci hardware address support
+ * @ucode_write_complete: indicates that the ucode has been copied.
+ * @ucode_write_waitq: wait queue for uCode load
  */
 struct iwl_trans_pcie {
 	struct iwl_rx_queue rxq;
@@ -259,6 +263,7 @@ struct iwl_trans_pcie {
 	struct tasklet_struct irq_tasklet;
 	struct isr_statistics isr_stats;
 
+	unsigned int irq;
 	spinlock_t irq_lock;
 	u32 inta_mask;
 	u32 scd_base_addr;
@@ -279,6 +284,9 @@ struct iwl_trans_pcie {
 	/* PCI bus related data */
 	struct pci_dev *pci_dev;
 	void __iomem *hw_base;
+
+	bool ucode_write_complete;
+	wait_queue_head_t ucode_write_waitq;
 };
 
 #define IWL_TRANS_GET_PCIE_TRANS(_iwl_trans) \

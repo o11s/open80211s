@@ -118,11 +118,6 @@ static struct iwl_sensitivity_ranges iwl2000_sensitivity = {
 
 static void iwl2000_hw_set_hw_params(struct iwl_priv *priv)
 {
-	if (iwlagn_mod_params.num_of_queues >= IWL_MIN_NUM_QUEUES &&
-	    iwlagn_mod_params.num_of_queues <= IWLAGN_NUM_QUEUES)
-		cfg(priv)->base_params->num_of_queues =
-			iwlagn_mod_params.num_of_queues;
-
 	hw_params(priv).max_txq_num = cfg(priv)->base_params->num_of_queues;
 
 	hw_params(priv).ht40_channel =  BIT(IEEE80211_BAND_2GHZ);
@@ -180,7 +175,7 @@ static struct iwl_lib_ops iwl2030_lib = {
 	.temperature = iwlagn_temperature,
 };
 
-static struct iwl_base_params iwl2000_base_params = {
+static const struct iwl_base_params iwl2000_base_params = {
 	.eeprom_size = OTP_LOW_IMAGE_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -199,7 +194,7 @@ static struct iwl_base_params iwl2000_base_params = {
 };
 
 
-static struct iwl_base_params iwl2030_base_params = {
+static const struct iwl_base_params iwl2030_base_params = {
 	.eeprom_size = OTP_LOW_IMAGE_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -217,12 +212,12 @@ static struct iwl_base_params iwl2030_base_params = {
 	.hd_v2 = true,
 };
 
-static struct iwl_ht_params iwl2000_ht_params = {
+static const struct iwl_ht_params iwl2000_ht_params = {
 	.ht_greenfield_support = true,
 	.use_rts_for_aggregation = true, /* use rts/cts protection */
 };
 
-static struct iwl_bt_params iwl2030_bt_params = {
+static const struct iwl_bt_params iwl2030_bt_params = {
 	/* Due to bluetooth, we transmit 2.4 GHz probes only on antenna A */
 	.advanced_bt_coexist = true,
 	.agg_time_limit = BT_AGG_THRESHOLD_DEF,

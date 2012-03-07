@@ -68,12 +68,18 @@
 #include "iwl-agn-calib.h"
 #include "iwl-trans.h"
 #include "iwl-agn.h"
-#include "iwl-wifi.h"
-#include "iwl-ucode.h"
 
 /*****************************************************************************
  * INIT calibrations framework
  *****************************************************************************/
+
+/* Opaque calibration results */
+struct iwl_calib_result {
+	struct list_head list;
+	size_t cmd_len;
+	struct iwl_calib_hdr hdr;
+	/* data follows */
+};
 
 struct statistics_general_data {
 	u32 beacon_silence_rssi_a;
@@ -84,7 +90,7 @@ struct statistics_general_data {
 	u32 beacon_energy_c;
 };
 
-int iwl_send_calib_results(struct iwl_trans *trans)
+int iwl_send_calib_results(struct iwl_priv *priv)
 {
 	struct iwl_host_cmd hcmd = {
 		.id = REPLY_PHY_CALIBRATION_CMD,
@@ -92,15 +98,15 @@ int iwl_send_calib_results(struct iwl_trans *trans)
 	};
 	struct iwl_calib_result *res;
 
-	list_for_each_entry(res, &trans->calib_results, list) {
+	list_for_each_entry(res, &priv->calib_results, list) {
 		int ret;
 
 		hcmd.len[0] = res->cmd_len;
 		hcmd.data[0] = &res->hdr;
 		hcmd.dataflags[0] = IWL_HCMD_DFL_NOCOPY;
-		ret = iwl_trans_send_cmd(trans, &hcmd);
+		ret = iwl_dvm_send_cmd(priv, &hcmd);
 		if (ret) {
-			IWL_ERR(trans, "Error %d on calib cmd %d\n",
+			IWL_ERR(priv, "Error %d on calib cmd %d\n",
 				ret, res->hdr.op_code);
 			return ret;
 		}
@@ -109,7 +115,7 @@ int iwl_send_calib_results(struct iwl_trans *trans)
 	return 0;
 }
 
-int iwl_calib_set(struct iwl_trans *trans,
+int iwl_calib_set(struct iwl_priv *priv,
 		  const struct iwl_calib_hdr *cmd, int len)
 {
 	struct iwl_calib_result *res, *tmp;
@@ -121,7 +127,7 @@ int iwl_calib_set(struct iwl_trans *trans,
 	memcpy(&res->hdr, cmd, len);
 	res->cmd_len = len;
 
-	list_for_each_entry(tmp, &trans->calib_results, list) {
+	list_for_each_entry(tmp, &priv->calib_results, list) {
 		if (tmp->hdr.op_code == res->hdr.op_code) {
 			list_replace(&tmp->list, &res->list);
 			kfree(tmp);
@@ -130,16 +136,16 @@ int iwl_calib_set(struct iwl_trans *trans,
 	}
 
 	/* wasn't in list already */
-	list_add_tail(&res->list, &trans->calib_results);
+	list_add_tail(&res->list, &priv->calib_results);
 
 	return 0;
 }
 
-void iwl_calib_free_results(struct iwl_trans *trans)
+void iwl_calib_free_results(struct iwl_priv *priv)
 {
 	struct iwl_calib_result *res, *tmp;
 
-	list_for_each_entry_safe(res, tmp, &trans->calib_results, list) {
+	list_for_each_entry_safe(res, tmp, &priv->calib_results, list) {
 		list_del(&res->list);
 		kfree(res);
 	}
@@ -494,7 +500,7 @@ static int iwl_sensitivity_write(struct iwl_priv *priv)
 	memcpy(&(priv->sensitivity_tbl[0]), &(cmd.table[0]),
 	       sizeof(u16)*HD_TABLE_SIZE);
 
-	return iwl_trans_send_cmd(trans(priv), &cmd_out);
+	return iwl_dvm_send_cmd(priv, &cmd_out);
 }
 
 /* Prepare a SENSITIVITY_CMD, send to uCode if values have changed */
@@ -583,7 +589,7 @@ static int iwl_enhance_sensitivity_write(struct iwl_priv *priv)
 	       &(cmd.enhance_table[HD_INA_NON_SQUARE_DET_OFDM_INDEX]),
 	       sizeof(u16)*ENHANCE_HD_TABLE_ENTRIES);
 
-	return iwl_trans_send_cmd(trans(priv), &cmd_out);
+	return iwl_dvm_send_cmd(priv, &cmd_out);
 }
 
 void iwl_init_sensitivity(struct iwl_priv *priv)
@@ -636,7 +642,7 @@ void iwl_init_sensitivity(struct iwl_priv *priv)
 	data->last_bad_plcp_cnt_cck = 0;
 	data->last_fa_cnt_cck = 0;
 
-	if (nic(priv)->fw.enhance_sensitivity_table)
+	if (priv->fw->enhance_sensitivity_table)
 		ret |= iwl_enhance_sensitivity_write(priv);
 	else
 		ret |= iwl_sensitivity_write(priv);
@@ -746,7 +752,7 @@ void iwl_sensitivity_calibration(struct iwl_priv *priv)
 
 	iwl_sens_auto_corr_ofdm(priv, norm_fa_ofdm, rx_enable_time);
 	iwl_sens_energy_cck(priv, norm_fa_cck, rx_enable_time, &statis);
-	if (nic(priv)->fw.enhance_sensitivity_table)
+	if (priv->fw->enhance_sensitivity_table)
 		iwl_enhance_sensitivity_write(priv);
 	else
 		iwl_sensitivity_write(priv);
@@ -924,7 +930,7 @@ static void iwlagn_gain_computation(struct iwl_priv *priv,
 			priv->phy_calib_chain_noise_gain_cmd);
 		cmd.delta_gain_1 = data->delta_gain_code[1];
 		cmd.delta_gain_2 = data->delta_gain_code[2];
-		iwl_trans_send_cmd_pdu(trans(priv), REPLY_PHY_CALIBRATION_CMD,
+		iwl_dvm_send_cmd_pdu(priv, REPLY_PHY_CALIBRATION_CMD,
 			CMD_ASYNC, sizeof(cmd), &cmd);
 
 		data->radio_write = 1;

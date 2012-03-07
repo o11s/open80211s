@@ -96,20 +96,21 @@ static void iwl6150_additional_nic_config(struct iwl_priv *priv)
 		    CSR_GP_DRIVER_REG_BIT_6050_1x2);
 }
 
+static void iwl6000i_additional_nic_config(struct iwl_priv *priv)
+{
+	/* 2x2 IPA phy type */
+	iwl_write32(trans(priv), CSR_GP_DRIVER_REG,
+		     CSR_GP_DRIVER_REG_BIT_RADIO_SKU_2x2_IPA);
+}
+
 /* NIC configuration for 6000 series */
 static void iwl6000_nic_config(struct iwl_priv *priv)
 {
 	iwl_rf_config(priv);
 
-	/* no locking required for register write */
-	if (cfg(priv)->pa_type == IWL_PA_INTERNAL) {
-		/* 2x2 IPA phy type */
-		iwl_write32(trans(priv), CSR_GP_DRIVER_REG,
-			     CSR_GP_DRIVER_REG_BIT_RADIO_SKU_2x2_IPA);
-	}
 	/* do additional nic configuration if needed */
 	if (cfg(priv)->additional_nic_config)
-			cfg(priv)->additional_nic_config(priv);
+		cfg(priv)->additional_nic_config(priv);
 }
 
 static struct iwl_sensitivity_ranges iwl6000_sensitivity = {
@@ -139,11 +140,6 @@ static struct iwl_sensitivity_ranges iwl6000_sensitivity = {
 
 static void iwl6000_hw_set_hw_params(struct iwl_priv *priv)
 {
-	if (iwlagn_mod_params.num_of_queues >= IWL_MIN_NUM_QUEUES &&
-	    iwlagn_mod_params.num_of_queues <= IWLAGN_NUM_QUEUES)
-		cfg(priv)->base_params->num_of_queues =
-			iwlagn_mod_params.num_of_queues;
-
 	hw_params(priv).max_txq_num = cfg(priv)->base_params->num_of_queues;
 
 	hw_params(priv).ht40_channel =  BIT(IEEE80211_BAND_2GHZ) |
@@ -232,7 +228,7 @@ static int iwl6000_hw_channel_switch(struct iwl_priv *priv,
 		return -EFAULT;
 	}
 
-	return iwl_trans_send_cmd(trans(priv), &hcmd);
+	return iwl_dvm_send_cmd(priv, &hcmd);
 }
 
 static struct iwl_lib_ops iwl6000_lib = {
@@ -276,7 +272,7 @@ static struct iwl_lib_ops iwl6030_lib = {
 	.temperature = iwlagn_temperature,
 };
 
-static struct iwl_base_params iwl6000_base_params = {
+static const struct iwl_base_params iwl6000_base_params = {
 	.eeprom_size = OTP_LOW_IMAGE_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -293,7 +289,7 @@ static struct iwl_base_params iwl6000_base_params = {
 	.shadow_reg_enable = true,
 };
 
-static struct iwl_base_params iwl6050_base_params = {
+static const struct iwl_base_params iwl6050_base_params = {
 	.eeprom_size = OTP_LOW_IMAGE_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -309,7 +305,8 @@ static struct iwl_base_params iwl6050_base_params = {
 	.max_event_log_size = 1024,
 	.shadow_reg_enable = true,
 };
-static struct iwl_base_params iwl6000_g2_base_params = {
+
+static const struct iwl_base_params iwl6000_g2_base_params = {
 	.eeprom_size = OTP_LOW_IMAGE_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -326,12 +323,12 @@ static struct iwl_base_params iwl6000_g2_base_params = {
 	.shadow_reg_enable = true,
 };
 
-static struct iwl_ht_params iwl6000_ht_params = {
+static const struct iwl_ht_params iwl6000_ht_params = {
 	.ht_greenfield_support = true,
 	.use_rts_for_aggregation = true, /* use rts/cts protection */
 };
 
-static struct iwl_bt_params iwl6000_bt_params = {
+static const struct iwl_bt_params iwl6000_bt_params = {
 	/* Due to bluetooth, we transmit 2.4 GHz probes only on antenna A */
 	.advanced_bt_coexist = true,
 	.agg_time_limit = BT_AGG_THRESHOLD_DEF,
@@ -477,8 +474,8 @@ const struct iwl_cfg iwl130_bg_cfg = {
 	.eeprom_ver = EEPROM_6000_EEPROM_VERSION,		\
 	.eeprom_calib_ver = EEPROM_6000_TX_POWER_VERSION,	\
 	.lib = &iwl6000_lib,					\
+	.additional_nic_config = iwl6000i_additional_nic_config,\
 	.base_params = &iwl6000_base_params,			\
-	.pa_type = IWL_PA_INTERNAL,				\
 	.led_mode = IWL_LED_BLINK
 
 const struct iwl_cfg iwl6000i_2agn_cfg = {

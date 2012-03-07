@@ -45,6 +45,7 @@
 #include "iwl-trans.h"
 #include "iwl-shared.h"
 #include "iwl-cfg.h"
+#include "iwl-prph.h"
 
 /* Highest firmware API version supported */
 #define IWL5000_UCODE_API_MAX 5
@@ -157,11 +158,6 @@ static void iwl5000_set_ct_threshold(struct iwl_priv *priv)
 
 static void iwl5000_hw_set_hw_params(struct iwl_priv *priv)
 {
-	if (iwlagn_mod_params.num_of_queues >= IWL_MIN_NUM_QUEUES &&
-	    iwlagn_mod_params.num_of_queues <= IWLAGN_NUM_QUEUES)
-		cfg(priv)->base_params->num_of_queues =
-			iwlagn_mod_params.num_of_queues;
-
 	hw_params(priv).max_txq_num = cfg(priv)->base_params->num_of_queues;
 
 	hw_params(priv).ht40_channel =  BIT(IEEE80211_BAND_2GHZ) |
@@ -180,11 +176,6 @@ static void iwl5000_hw_set_hw_params(struct iwl_priv *priv)
 
 static void iwl5150_hw_set_hw_params(struct iwl_priv *priv)
 {
-	if (iwlagn_mod_params.num_of_queues >= IWL_MIN_NUM_QUEUES &&
-	    iwlagn_mod_params.num_of_queues <= IWLAGN_NUM_QUEUES)
-		cfg(priv)->base_params->num_of_queues =
-			iwlagn_mod_params.num_of_queues;
-
 	hw_params(priv).max_txq_num = cfg(priv)->base_params->num_of_queues;
 
 	hw_params(priv).ht40_channel =  BIT(IEEE80211_BAND_2GHZ) |
@@ -281,7 +272,7 @@ static int iwl5000_hw_channel_switch(struct iwl_priv *priv,
 		return -EFAULT;
 	}
 
-	return iwl_trans_send_cmd(trans(priv), &hcmd);
+	return iwl_dvm_send_cmd(priv, &hcmd);
 }
 
 static struct iwl_lib_ops iwl5000_lib = {
@@ -320,7 +311,7 @@ static struct iwl_lib_ops iwl5150_lib = {
 	.temperature = iwl5150_temperature,
 };
 
-static struct iwl_base_params iwl5000_base_params = {
+static const struct iwl_base_params iwl5000_base_params = {
 	.eeprom_size = IWLAGN_EEPROM_IMG_SIZE,
 	.num_of_queues = IWLAGN_NUM_QUEUES,
 	.num_of_ampdu_queues = IWLAGN_NUM_AMPDU_QUEUES,
@@ -333,7 +324,8 @@ static struct iwl_base_params iwl5000_base_params = {
 	.no_idle_support = true,
 	.wd_disable = true,
 };
-static struct iwl_ht_params iwl5000_ht_params = {
+
+static const struct iwl_ht_params iwl5000_ht_params = {
 	.ht_greenfield_support = true,
 };
 

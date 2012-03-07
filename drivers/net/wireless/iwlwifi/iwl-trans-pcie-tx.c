@@ -136,7 +136,7 @@ void iwl_txq_update_write_ptr(struct iwl_trans *trans, struct iwl_tx_queue *txq)
 	if (txq->need_update == 0)
 		return;
 
-	if (hw_params(trans).shadow_reg_enable) {
+	if (cfg(trans)->base_params->shadow_reg_enable) {
 		/* shadow register enabled */
 		iwl_write32(trans, HBUS_TARG_WRPTR,
 			    txq->q.write_ptr | (txq_id << 8));
@@ -671,7 +671,6 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	dma_addr_t phys_addr;
 	u32 idx;
 	u16 copy_size, cmd_size;
-	bool is_ct_kill = false;
 	bool had_nocopy = false;
 	int i;
 	u8 *cmd_dest;
@@ -683,12 +682,6 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 
 	if (test_bit(STATUS_FW_ERROR, &trans->shrd->status)) {
 		IWL_WARN(trans, "fw recovery, no hcmd send\n");
-		return -EIO;
-	}
-
-	if ((trans->shrd->ucode_owner == IWL_OWNERSHIP_TM) &&
-	    !(cmd->flags & CMD_ON_DEMAND)) {
-		IWL_DEBUG_HC(trans, "tm own the uCode, no regular hcmd send\n");
 		return -EIO;
 	}
 
@@ -721,23 +714,13 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	if (WARN_ON(copy_size > TFD_MAX_PAYLOAD_SIZE))
 		return -EINVAL;
 
-	if (iwl_is_rfkill(trans->shrd) || iwl_is_ctkill(trans->shrd)) {
-		IWL_WARN(trans, "Not sending command - %s KILL\n",
-			 iwl_is_rfkill(trans->shrd) ? "RF" : "CT");
-		return -EIO;
-	}
-
 	spin_lock_bh(&txq->lock);
 
 	if (iwl_queue_space(q) < ((cmd->flags & CMD_ASYNC) ? 2 : 1)) {
 		spin_unlock_bh(&txq->lock);
 
 		IWL_ERR(trans, "No space in command queue\n");
-		is_ct_kill = iwl_check_for_ct_kill(priv(trans));
-		if (!is_ct_kill) {
-			IWL_ERR(trans, "Restarting adapter queue is full\n");
-			iwl_op_mode_nic_error(trans->op_mode);
-		}
+		iwl_op_mode_cmd_queue_full(trans->op_mode);
 		return -ENOSPC;
 	}
 
@@ -826,7 +809,7 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	/* check that tracing gets all possible blocks */
 	BUILD_BUG_ON(IWL_MAX_CMD_TFDS + 1 != 3);
 #ifdef CONFIG_IWLWIFI_DEVICE_TRACING
-	trace_iwlwifi_dev_hcmd(priv(trans), cmd->flags,
+	trace_iwlwifi_dev_hcmd(trans->dev, cmd->flags,
 			       trace_bufs[0], trace_lens[0],
 			       trace_bufs[1], trace_lens[1],
 			       trace_bufs[2], trace_lens[2]);
@@ -965,7 +948,7 @@ static int iwl_send_cmd_async(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 
 	ret = iwl_enqueue_hcmd(trans, cmd);
 	if (ret < 0) {
-		IWL_DEBUG_QUIET_RFKILL(trans,
+		IWL_ERR(trans,
 			"Error sending %s: enqueue_hcmd failed: %d\n",
 			  get_cmd_string(cmd->id), ret);
 		return ret;
@@ -979,22 +962,22 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	int cmd_idx;
 	int ret;
 
-	lockdep_assert_held(&trans->shrd->mutex);
-
 	IWL_DEBUG_INFO(trans, "Attempting to send sync command %s\n",
 			get_cmd_string(cmd->id));
 
-	if (test_bit(STATUS_RF_KILL_HW, &trans->shrd->status)) {
-		IWL_ERR(trans, "Command %s aborted: RF KILL Switch\n",
-			       get_cmd_string(cmd->id));
-		return -ECANCELED;
-	}
 	if (test_bit(STATUS_FW_ERROR, &trans->shrd->status)) {
 		IWL_ERR(trans, "Command %s failed: FW Error\n",
 			       get_cmd_string(cmd->id));
 		return -EIO;
 	}
-	set_bit(STATUS_HCMD_ACTIVE, &trans->shrd->status);
+
+	if (WARN_ON(test_and_set_bit(STATUS_HCMD_ACTIVE,
+				     &trans->shrd->status))) {
+		IWL_ERR(trans, "Command %s: a command is already active!\n",
+			get_cmd_string(cmd->id));
+		return -EIO;
+	}
+
 	IWL_DEBUG_INFO(trans, "Setting HCMD_ACTIVE for command %s\n",
 			get_cmd_string(cmd->id));
 
@@ -1002,7 +985,7 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	if (cmd_idx < 0) {
 		ret = cmd_idx;
 		clear_bit(STATUS_HCMD_ACTIVE, &trans->shrd->status);
-		IWL_DEBUG_QUIET_RFKILL(trans,
+		IWL_ERR(trans,
 			"Error sending %s: enqueue_hcmd failed: %d\n",
 			  get_cmd_string(cmd->id), ret);
 		return ret;
@@ -1017,12 +1000,12 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 				&trans_pcie->txq[trans->shrd->cmd_queue];
 			struct iwl_queue *q = &txq->q;
 
-			IWL_DEBUG_QUIET_RFKILL(trans,
+			IWL_ERR(trans,
 				"Error sending %s: time out after %dms.\n",
 				get_cmd_string(cmd->id),
 				jiffies_to_msecs(HOST_COMPLETE_TIMEOUT));
 
-			IWL_DEBUG_QUIET_RFKILL(trans,
+			IWL_ERR(trans,
 				"Current CMD queue read_ptr %d write_ptr %d\n",
 				q->read_ptr, q->write_ptr);
 

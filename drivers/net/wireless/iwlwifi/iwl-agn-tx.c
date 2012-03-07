@@ -594,8 +594,7 @@ int iwlagn_tx_agg_oper(struct iwl_priv *priv, struct ieee80211_vif *vif,
 	sta_priv->max_agg_bufsize =
 		min(sta_priv->max_agg_bufsize, buf_size);
 
-	if (cfg(priv)->ht_params &&
-	    cfg(priv)->ht_params->use_rts_for_aggregation) {
+	if (hw_params(priv).use_rts_for_aggregation) {
 		/*
 		 * switch to RTS/CTS if it is the prefer protection
 		 * method for HT traffic
@@ -984,7 +983,7 @@ int iwlagn_rx_reply_tx(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb,
 	u16 sequence = le16_to_cpu(pkt->hdr.sequence);
 	int txq_id = SEQ_TO_QUEUE(sequence);
 	int cmd_index __maybe_unused = SEQ_TO_INDEX(sequence);
-	struct iwlagn_tx_resp *tx_resp = (void *)&pkt->u.raw[0];
+	struct iwlagn_tx_resp *tx_resp = (void *)pkt->data;
 	struct ieee80211_hdr *hdr;
 	u32 status = le16_to_cpu(tx_resp->status.status);
 	u16 ssn = iwlagn_get_scd_ssn(tx_resp);
@@ -1112,7 +1111,7 @@ int iwlagn_rx_reply_compressed_ba(struct iwl_priv *priv,
 				   struct iwl_device_cmd *cmd)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
-	struct iwl_compressed_ba_resp *ba_resp = &pkt->u.compressed_ba;
+	struct iwl_compressed_ba_resp *ba_resp = (void *)pkt->data;
 	struct iwl_ht_agg *agg;
 	struct sk_buff_head reclaimed_skbs;
 	struct ieee80211_tx_info *info;
