@@ -244,11 +244,11 @@ static void iwl_bg_bt_runtime_config(struct work_struct *work)
 	struct iwl_priv *priv =
 		container_of(work, struct iwl_priv, bt_runtime_config);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	/* dont send host command if rf-kill is on */
-	if (!iwl_is_ready_rf(priv->shrd))
+	if (!iwl_is_ready_rf(priv))
 		return;
 	iwlagn_send_advance_bt_config(priv);
 }
@@ -261,11 +261,11 @@ static void iwl_bg_bt_full_concurrency(struct work_struct *work)
 
 	mutex_lock(&priv->mutex);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		goto out;
 
 	/* dont send host command if rf-kill is on */
-	if (!iwl_is_ready_rf(priv->shrd))
+	if (!iwl_is_ready_rf(priv))
 		goto out;
 
 	IWL_DEBUG_INFO(priv, "BT coex in %s mode\n",
@@ -300,11 +300,11 @@ static void iwl_bg_statistics_periodic(unsigned long data)
 {
 	struct iwl_priv *priv = (struct iwl_priv *)data;
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	/* dont send host command if rf-kill is on */
-	if (!iwl_is_ready_rf(priv->shrd))
+	if (!iwl_is_ready_rf(priv))
 		return;
 
 	iwl_send_statistics_request(priv, CMD_ASYNC, false);
@@ -327,14 +327,13 @@ static void iwl_print_cont_event_trace(struct iwl_priv *priv, u32 base,
 
 	/* Make sure device is powered up for SRAM reads */
 	spin_lock_irqsave(&trans(priv)->reg_lock, reg_flags);
-	if (iwl_grab_nic_access(trans(priv))) {
+	if (unlikely(!iwl_grab_nic_access(trans(priv)))) {
 		spin_unlock_irqrestore(&trans(priv)->reg_lock, reg_flags);
 		return;
 	}
 
 	/* Set starting address; reads will auto-increment */
 	iwl_write32(trans(priv), HBUS_TARG_MEM_RADDR, ptr);
-	rmb();
 
 	/*
 	 * Refuse to read more than would have fit into the log from
@@ -462,7 +461,7 @@ static void iwl_bg_ucode_trace(unsigned long data)
 {
 	struct iwl_priv *priv = (struct iwl_priv *)data;
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	if (priv->event_log.ucode_trace) {
@@ -478,18 +477,18 @@ static void iwl_bg_tx_flush(struct work_struct *work)
 	struct iwl_priv *priv =
 		container_of(work, struct iwl_priv, tx_flush);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	/* do nothing if rf-kill is on */
-	if (!iwl_is_ready_rf(priv->shrd))
+	if (!iwl_is_ready_rf(priv))
 		return;
 
 	IWL_DEBUG_INFO(priv, "device request: flush all tx frames\n");
 	iwlagn_dev_txfifo_flush(priv, IWL_DROP_ALL);
 }
 
-void iwl_init_context(struct iwl_priv *priv, u32 ucode_flags)
+static void iwl_init_context(struct iwl_priv *priv, u32 ucode_flags)
 {
 	int i;
 
@@ -641,12 +640,12 @@ int iwl_alive_start(struct iwl_priv *priv)
 	IWL_DEBUG_INFO(priv, "Runtime Alive received.\n");
 
 	/* After the ALIVE response, we can send host commands to the uCode */
-	set_bit(STATUS_ALIVE, &priv->shrd->status);
+	set_bit(STATUS_ALIVE, &priv->status);
 
 	/* Enable watchdog to monitor the driver tx queues */
 	iwl_setup_watchdog(priv);
 
-	if (iwl_is_rfkill(priv->shrd))
+	if (iwl_is_rfkill(priv))
 		return -ERFKILL;
 
 	if (priv->event_log.ucode_trace) {
@@ -720,7 +719,7 @@ int iwl_alive_start(struct iwl_priv *priv)
 		iwl_reset_run_time_calib(priv);
 	}
 
-	set_bit(STATUS_READY, &priv->shrd->status);
+	set_bit(STATUS_READY, &priv->status);
 
 	/* Configure the adapter for unassociated operation */
 	ret = iwlagn_commit_rxon(priv, ctx);
@@ -787,7 +786,7 @@ void iwl_down(struct iwl_priv *priv)
 	ieee80211_remain_on_channel_expired(priv->hw);
 
 	exit_pending =
-		test_and_set_bit(STATUS_EXIT_PENDING, &priv->shrd->status);
+		test_and_set_bit(STATUS_EXIT_PENDING, &priv->status);
 
 	/* Stop TX queues watchdog. We need to have STATUS_EXIT_PENDING bit set
 	 * to prevent rearm timer */
@@ -812,7 +811,7 @@ void iwl_down(struct iwl_priv *priv)
 	/* Wipe out the EXIT_PENDING status bit if we are not actually
 	 * exiting the module */
 	if (!exit_pending)
-		clear_bit(STATUS_EXIT_PENDING, &priv->shrd->status);
+		clear_bit(STATUS_EXIT_PENDING, &priv->status);
 
 	if (priv->mac80211_registered)
 		ieee80211_stop_queues(priv->hw);
@@ -820,15 +819,15 @@ void iwl_down(struct iwl_priv *priv)
 	iwl_trans_stop_device(trans(priv));
 
 	/* Clear out all status bits but a few that are stable across reset */
-	priv->shrd->status &=
-			test_bit(STATUS_RF_KILL_HW, &priv->shrd->status) <<
+	priv->status &= test_bit(STATUS_RF_KILL_HW, &priv->status) <<
 				STATUS_RF_KILL_HW |
-			test_bit(STATUS_GEO_CONFIGURED, &priv->shrd->status) <<
+			test_bit(STATUS_GEO_CONFIGURED, &priv->status) <<
 				STATUS_GEO_CONFIGURED |
-			test_bit(STATUS_FW_ERROR, &priv->shrd->status) <<
-				STATUS_FW_ERROR |
-			test_bit(STATUS_EXIT_PENDING, &priv->shrd->status) <<
+			test_bit(STATUS_EXIT_PENDING, &priv->status) <<
 				STATUS_EXIT_PENDING;
+	priv->shrd->status &=
+			test_bit(STATUS_FW_ERROR, &priv->shrd->status) <<
+				STATUS_FW_ERROR;
 
 	dev_kfree_skb(priv->beacon_skb);
 	priv->beacon_skb = NULL;
@@ -847,8 +846,8 @@ static void iwl_bg_run_time_calib_work(struct work_struct *work)
 
 	mutex_lock(&priv->mutex);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status) ||
-	    test_bit(STATUS_SCANNING, &priv->shrd->status)) {
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status) ||
+	    test_bit(STATUS_SCANNING, &priv->status)) {
 		mutex_unlock(&priv->mutex);
 		return;
 	}
@@ -904,7 +903,7 @@ static void iwl_bg_restart(struct work_struct *data)
 {
 	struct iwl_priv *priv = container_of(data, struct iwl_priv, restart);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	if (test_and_clear_bit(STATUS_FW_ERROR, &priv->shrd->status)) {
@@ -976,8 +975,8 @@ static void iwl_setup_deferred_work(struct iwl_priv *priv)
 
 	iwl_setup_scan_deferred_work(priv);
 
-	if (cfg(priv)->lib->bt_setup_deferred_work)
-		cfg(priv)->lib->bt_setup_deferred_work(priv);
+	if (cfg(priv)->bt_params)
+		iwlagn_bt_setup_deferred_work(priv);
 
 	init_timer(&priv->statistics_periodic);
 	priv->statistics_periodic.data = (unsigned long)priv;
@@ -994,8 +993,8 @@ static void iwl_setup_deferred_work(struct iwl_priv *priv)
 
 void iwl_cancel_deferred_work(struct iwl_priv *priv)
 {
-	if (cfg(priv)->lib->cancel_deferred_work)
-		cfg(priv)->lib->cancel_deferred_work(priv);
+	if (cfg(priv)->bt_params)
+		iwlagn_bt_cancel_deferred_work(priv);
 
 	cancel_work_sync(&priv->run_time_calib_work);
 	cancel_work_sync(&priv->beacon_update);
@@ -1010,8 +1009,7 @@ void iwl_cancel_deferred_work(struct iwl_priv *priv)
 	del_timer_sync(&priv->ucode_trace);
 }
 
-static void iwl_init_hw_rates(struct iwl_priv *priv,
-			      struct ieee80211_rate *rates)
+static void iwl_init_hw_rates(struct ieee80211_rate *rates)
 {
 	int i;
 
@@ -1090,7 +1088,7 @@ static int iwl_init_drv(struct iwl_priv *priv)
 		IWL_ERR(priv, "initializing geos failed: %d\n", ret);
 		goto err_free_channel_map;
 	}
-	iwl_init_hw_rates(priv, priv->ieee_rates);
+	iwl_init_hw_rates(priv->ieee_rates);
 
 	return 0;
 
@@ -1104,8 +1102,6 @@ static void iwl_uninit_drv(struct iwl_priv *priv)
 {
 	iwl_free_geos(priv);
 	iwl_free_channel_map(priv);
-	if (priv->tx_cmd_pool)
-		kmem_cache_destroy(priv->tx_cmd_pool);
 	kfree(priv->scan_cmd);
 	kfree(priv->beacon_cmd);
 	kfree(rcu_dereference_raw(priv->noa_data));
@@ -1189,6 +1185,7 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	struct iwl_op_mode *op_mode;
 	u16 num_mac;
 	u32 ucode_flags;
+	struct iwl_trans_config trans_cfg;
 
 	/************************
 	 * 1. Allocating HW data
@@ -1209,7 +1206,38 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	/* TODO: remove fw from shared data later */
 	priv->shrd->fw = fw;
 
-	iwl_trans_configure(trans(priv), op_mode);
+	/************************
+	 * 2. Setup HW constants
+	 ************************/
+	iwl_set_hw_params(priv);
+
+	ucode_flags = fw->ucode_capa.flags;
+
+#ifndef CONFIG_IWLWIFI_P2P
+	ucode_flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
+#endif
+	if (!(hw_params(priv).sku & EEPROM_SKU_CAP_IPAN_ENABLE))
+		ucode_flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
+
+	/*
+	 * if not PAN, then don't support P2P -- might be a uCode
+	 * packaging bug or due to the eeprom check above
+	 */
+	if (!(ucode_flags & IWL_UCODE_TLV_FLAGS_PAN))
+		ucode_flags &= ~IWL_UCODE_TLV_FLAGS_P2P;
+
+
+	/*****************************
+	 * Configure transport layer
+	 *****************************/
+	/*
+	 * Populate the state variables that the transport layer needs
+	 * to know about.
+	 */
+	trans_cfg.op_mode = op_mode;
+
+	/* Configure transport layer */
+	iwl_trans_configure(trans(priv), &trans_cfg);
 
 	/* At this point both hw and priv are allocated. */
 
@@ -1281,27 +1309,6 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 		priv->addresses[1].addr[5]++;
 		priv->hw->wiphy->n_addresses++;
 	}
-
-	/************************
-	 * 5. Setup HW constants
-	 ************************/
-	iwl_set_hw_params(priv);
-
-	ucode_flags = fw->ucode_capa.flags;
-
-#ifndef CONFIG_IWLWIFI_P2P
-	ucode_flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
-#endif
-	if (!(hw_params(priv).sku & EEPROM_SKU_CAP_IPAN_ENABLE))
-		ucode_flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
-
-	/*
-	 * if not PAN, then don't support P2P -- might be a uCode
-	 * packaging bug or due to the eeprom check above
-	 */
-	if (!(ucode_flags & IWL_UCODE_TLV_FLAGS_PAN))
-		ucode_flags &= ~IWL_UCODE_TLV_FLAGS_P2P;
-
 
 	/*******************
 	 * 6. Setup priv
@@ -1428,6 +1435,43 @@ static void iwl_nic_config(struct iwl_op_mode *op_mode)
 	cfg(priv)->lib->nic_config(priv);
 }
 
+static void iwl_stop_sw_queue(struct iwl_op_mode *op_mode, u8 ac)
+{
+	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
+
+	set_bit(ac, &priv->transport_queue_stop);
+	ieee80211_stop_queue(priv->hw, ac);
+}
+
+static void iwl_wake_sw_queue(struct iwl_op_mode *op_mode, u8 ac)
+{
+	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
+
+	clear_bit(ac, &priv->transport_queue_stop);
+
+	if (!priv->passive_no_rx)
+		ieee80211_wake_queue(priv->hw, ac);
+}
+
+void iwlagn_lift_passive_no_rx(struct iwl_priv *priv)
+{
+	int ac;
+
+	if (!priv->passive_no_rx)
+		return;
+
+	for (ac = IEEE80211_AC_VO; ac < IEEE80211_NUM_ACS; ac++) {
+		if (!test_bit(ac, &priv->transport_queue_stop)) {
+			IWL_DEBUG_TX_QUEUES(priv, "Wake queue %d");
+			ieee80211_wake_queue(priv->hw, ac);
+		} else {
+			IWL_DEBUG_TX_QUEUES(priv, "Don't wake queue %d");
+		}
+	}
+
+	priv->passive_no_rx = false;
+}
+
 const struct iwl_op_mode_ops iwl_dvm_ops = {
 	.start = iwl_op_mode_dvm_start,
 	.stop = iwl_op_mode_dvm_stop,
@@ -1446,6 +1490,9 @@ const struct iwl_op_mode_ops iwl_dvm_ops = {
  * driver and module entry point
  *
  *****************************************************************************/
+
+struct kmem_cache *iwl_tx_cmd_pool;
+
 static int __init iwl_init(void)
 {
 
@@ -1453,20 +1500,27 @@ static int __init iwl_init(void)
 	pr_info(DRV_DESCRIPTION ", " DRV_VERSION "\n");
 	pr_info(DRV_COPYRIGHT "\n");
 
+	iwl_tx_cmd_pool = kmem_cache_create("iwl_dev_cmd",
+					    sizeof(struct iwl_device_cmd),
+					    sizeof(void *), 0, NULL);
+	if (!iwl_tx_cmd_pool)
+		return -ENOMEM;
+
 	ret = iwlagn_rate_control_register();
 	if (ret) {
 		pr_err("Unable to register rate control algorithm: %d\n", ret);
-		return ret;
+		goto error_rc_register;
 	}
 
 	ret = iwl_pci_register_driver();
-
 	if (ret)
-		goto error_register;
+		goto error_pci_register;
 	return ret;
 
-error_register:
+error_pci_register:
 	iwlagn_rate_control_unregister();
+error_rc_register:
+	kmem_cache_destroy(iwl_tx_cmd_pool);
 	return ret;
 }
 
@@ -1474,6 +1528,7 @@ static void __exit iwl_exit(void)
 {
 	iwl_pci_unregister_driver();
 	iwlagn_rate_control_unregister();
+	kmem_cache_destroy(iwl_tx_cmd_pool);
 }
 
 module_exit(iwl_exit);

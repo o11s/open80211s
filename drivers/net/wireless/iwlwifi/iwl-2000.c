@@ -91,9 +91,8 @@ static void iwl2000_nic_config(struct iwl_priv *priv)
 			    CSR_GP_DRIVER_REG_BIT_RADIO_IQ_INVER);
 }
 
-static struct iwl_sensitivity_ranges iwl2000_sensitivity = {
+static const struct iwl_sensitivity_ranges iwl2000_sensitivity = {
 	.min_nrg_cck = 97,
-	.max_nrg_cck = 0, /* not used, set to 0 */
 	.auto_corr_min_ofdm = 80,
 	.auto_corr_min_ofdm_mrc = 128,
 	.auto_corr_min_ofdm_x1 = 105,
@@ -149,16 +148,13 @@ static struct iwl_lib_ops iwl2000_lib = {
 			EEPROM_6000_REG_BAND_24_HT40_CHANNELS,
 			EEPROM_REGULATORY_BAND_NO_HT40,
 		},
-		.update_enhanced_txpower = iwl_eeprom_enhanced_txpower,
+		.enhanced_txpower = true,
 	},
 	.temperature = iwlagn_temperature,
 };
 
 static struct iwl_lib_ops iwl2030_lib = {
 	.set_hw_params = iwl2000_hw_set_hw_params,
-	.bt_rx_handler_setup = iwlagn_bt_rx_handler_setup,
-	.bt_setup_deferred_work = iwlagn_bt_setup_deferred_work,
-	.cancel_deferred_work = iwlagn_bt_cancel_deferred_work,
 	.nic_config = iwl2000_nic_config,
 	.eeprom_ops = {
 		.regulatory_bands = {
@@ -170,7 +166,7 @@ static struct iwl_lib_ops iwl2030_lib = {
 			EEPROM_6000_REG_BAND_24_HT40_CHANNELS,
 			EEPROM_REGULATORY_BAND_NO_HT40,
 		},
-		.update_enhanced_txpower = iwl_eeprom_enhanced_txpower,
+		.enhanced_txpower = true,
 	},
 	.temperature = iwlagn_temperature,
 };

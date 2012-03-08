@@ -159,7 +159,7 @@ static int iwlagn_rx_csa(struct iwl_priv *priv, struct iwl_rx_cmd_buffer *rxb,
 	struct iwl_rxon_context *ctx = &priv->contexts[IWL_RXON_CTX_BSS];
 	struct iwl_rxon_cmd *rxon = (void *)&ctx->active;
 
-	if (!test_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->shrd->status))
+	if (!test_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status))
 		return 0;
 
 	if (!le32_to_cpu(csa->status) && csa->channel == priv->switch_channel) {
@@ -355,7 +355,7 @@ static void iwlagn_recover_from_statistics(struct iwl_priv *priv,
 {
 	unsigned int msecs;
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return;
 
 	msecs = jiffies_to_msecs(stamp - priv->rx_statistics_jiffies);
@@ -575,7 +575,7 @@ static int iwlagn_rx_statistics(struct iwl_priv *priv,
 
 	priv->rx_statistics_jiffies = stamp;
 
-	set_bit(STATUS_STATISTICS, &priv->shrd->status);
+	set_bit(STATUS_STATISTICS, &priv->status);
 
 	/* Reschedule the statistics timer to occur in
 	 * reg_recalib_period seconds to ensure we get a
@@ -584,7 +584,7 @@ static int iwlagn_rx_statistics(struct iwl_priv *priv,
 	mod_timer(&priv->statistics_periodic, jiffies +
 		  msecs_to_jiffies(reg_recalib_period * 1000));
 
-	if (unlikely(!test_bit(STATUS_SCANNING, &priv->shrd->status)) &&
+	if (unlikely(!test_bit(STATUS_SCANNING, &priv->status)) &&
 	    (pkt->hdr.cmd == STATISTICS_NOTIFICATION)) {
 		iwlagn_rx_calc_noise(priv);
 		queue_work(priv->workqueue, &priv->run_time_calib_work);
@@ -628,7 +628,7 @@ static int iwlagn_rx_card_state_notif(struct iwl_priv *priv,
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
 	struct iwl_card_state_notif *card_state_notif = (void *)pkt->data;
 	u32 flags = le32_to_cpu(card_state_notif->flags);
-	unsigned long status = priv->shrd->status;
+	unsigned long status = priv->status;
 
 	IWL_DEBUG_RF_KILL(priv, "Card state received: HW:%s SW:%s CT:%s\n",
 			  (flags & HW_CARD_DISABLED) ? "Kill" : "On",
@@ -658,18 +658,18 @@ static int iwlagn_rx_card_state_notif(struct iwl_priv *priv,
 		iwl_tt_exit_ct_kill(priv);
 
 	if (flags & HW_CARD_DISABLED)
-		set_bit(STATUS_RF_KILL_HW, &priv->shrd->status);
+		set_bit(STATUS_RF_KILL_HW, &priv->status);
 	else
-		clear_bit(STATUS_RF_KILL_HW, &priv->shrd->status);
+		clear_bit(STATUS_RF_KILL_HW, &priv->status);
 
 
 	if (!(flags & RXON_CARD_DISABLED))
 		iwl_scan_cancel(priv);
 
 	if ((test_bit(STATUS_RF_KILL_HW, &status) !=
-	     test_bit(STATUS_RF_KILL_HW, &priv->shrd->status)))
+	     test_bit(STATUS_RF_KILL_HW, &priv->status)))
 		wiphy_rfkill_set_hw_state(priv->hw->wiphy,
-			test_bit(STATUS_RF_KILL_HW, &priv->shrd->status));
+			test_bit(STATUS_RF_KILL_HW, &priv->status));
 	else
 		wake_up(&priv->shrd->wait_command_queue);
 	return 0;
@@ -691,7 +691,7 @@ static int iwlagn_rx_missed_beacon_notif(struct iwl_priv *priv,
 		    le32_to_cpu(missed_beacon->total_missed_becons),
 		    le32_to_cpu(missed_beacon->num_recvd_beacons),
 		    le32_to_cpu(missed_beacon->num_expected_beacons));
-		if (!test_bit(STATUS_SCANNING, &priv->shrd->status))
+		if (!test_bit(STATUS_SCANNING, &priv->status))
 			iwl_init_sensitivity(priv);
 	}
 	return 0;
@@ -807,16 +807,12 @@ static void iwlagn_pass_packet_to_mac80211(struct iwl_priv *priv,
 	* sometimes even after already having transmitted frames for the
 	* association because the new RXON may reset the information.
 	*/
-	if (unlikely(ieee80211_is_beacon(fc))) {
+	if (unlikely(ieee80211_is_beacon(fc) && priv->passive_no_rx)) {
 		for_each_context(priv, ctx) {
-			if (!ctx->last_tx_rejected)
-				continue;
 			if (compare_ether_addr(hdr->addr3,
 					       ctx->active.bssid_addr))
 				continue;
-			ctx->last_tx_rejected = false;
-			iwl_trans_wake_any_queue(trans(priv), ctx->ctxid,
-				"channel got active");
+			iwlagn_lift_passive_no_rx(priv);
 		}
 	}
 
@@ -1147,9 +1143,8 @@ void iwl_setup_rx_handlers(struct iwl_priv *priv)
 	iwl_notification_wait_init(&priv->notif_wait);
 
 	/* Set up BT Rx handlers */
-	if (cfg(priv)->lib->bt_rx_handler_setup)
-		cfg(priv)->lib->bt_rx_handler_setup(priv);
-
+	if (cfg(priv)->bt_params)
+		iwlagn_bt_rx_handler_setup(priv);
 }
 
 int iwl_rx_dispatch(struct iwl_op_mode *op_mode, struct iwl_rx_cmd_buffer *rxb,
@@ -1157,6 +1152,8 @@ int iwl_rx_dispatch(struct iwl_op_mode *op_mode, struct iwl_rx_cmd_buffer *rxb,
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
 	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
+	void (*pre_rx_handler)(struct iwl_priv *,
+			       struct iwl_rx_cmd_buffer *);
 	int err = 0;
 
 	/*
@@ -1166,10 +1163,20 @@ int iwl_rx_dispatch(struct iwl_op_mode *op_mode, struct iwl_rx_cmd_buffer *rxb,
 	 */
 	iwl_notification_wait_notify(&priv->notif_wait, pkt);
 
-	if (priv->pre_rx_handler &&
-	    priv->ucode_owner == IWL_OWNERSHIP_TM)
-		priv->pre_rx_handler(priv, rxb);
-	else {
+	/* RX data may be forwarded to userspace (using pre_rx_handler) in one
+	 * of two cases: the first, that the user owns the uCode through
+	 * testmode - in such case the pre_rx_handler is set and no further
+	 * processing takes place. The other case is when the user want to
+	 * monitor the rx w/o affecting the regular flow - the pre_rx_handler
+	 * will be set but the ownership flag != IWL_OWNERSHIP_TM and the flow
+	 * continues.
+	 * We need to use ACCESS_ONCE to prevent a case where the handler
+	 * changes between the check and the call.
+	 */
+	pre_rx_handler = ACCESS_ONCE(priv->pre_rx_handler);
+	if (pre_rx_handler)
+		pre_rx_handler(priv, rxb);
+	if (priv->ucode_owner != IWL_OWNERSHIP_TM) {
 		/* Based on type of command response or notification,
 		 *   handle those that need handling via function in
 		 *   rx_handlers table.  See iwl_setup_rx_handlers() */

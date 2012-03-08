@@ -316,21 +316,12 @@ int iwl_send_bt_env(struct iwl_priv *priv, u8 action, u8 type)
 
 static int iwl_alive_notify(struct iwl_priv *priv)
 {
-	struct iwl_rxon_context *ctx;
 	int ret;
 
-	if (!priv->tx_cmd_pool)
-		priv->tx_cmd_pool =
-			kmem_cache_create("iwl_dev_cmd",
-					  sizeof(struct iwl_device_cmd),
-					  sizeof(void *), 0, NULL);
-
-	if (!priv->tx_cmd_pool)
-		return -ENOMEM;
-
 	iwl_trans_fw_alive(trans(priv));
-	for_each_context(priv, ctx)
-		ctx->last_tx_rejected = false;
+
+	priv->passive_no_rx = false;
+	priv->transport_queue_stop = 0;
 
 	ret = iwl_send_wimax_coex(priv);
 	if (ret)

@@ -77,12 +77,6 @@ struct iwl_cmd;
 struct iwl_lib_ops {
 	/* set hw dependent parameters */
 	void (*set_hw_params)(struct iwl_priv *priv);
-	/* setup BT Rx handler */
-	void (*bt_rx_handler_setup)(struct iwl_priv *priv);
-	/* setup BT related deferred work */
-	void (*bt_setup_deferred_work)(struct iwl_priv *priv);
-	/* cancel deferred work */
-	void (*cancel_deferred_work)(struct iwl_priv *priv);
 	int (*set_channel_switch)(struct iwl_priv *priv,
 				  struct ieee80211_channel_switch *ch_switch);
 	/* device specific configuration */
@@ -93,30 +87,6 @@ struct iwl_lib_ops {
 
 	/* temperature */
 	void (*temperature)(struct iwl_priv *priv);
-};
-
-/*
- * @advanced_bt_coexist: support advanced bt coexist
- * @bt_init_traffic_load: specify initial bt traffic load
- * @bt_prio_boost: default bt priority boost value
- * @agg_time_limit: maximum number of uSec in aggregation
- * @bt_sco_disable: uCode should not response to BT in SCO/ESCO mode
- */
-struct iwl_bt_params {
-	bool advanced_bt_coexist;
-	u8 bt_init_traffic_load;
-	u8 bt_prio_boost;
-	u16 agg_time_limit;
-	bool bt_sco_disable;
-	bool bt_session_2;
-};
-/*
- * @use_rts_for_aggregation: use rts/cts protection for HT traffic
- */
-struct iwl_ht_params {
-	const bool ht_greenfield_support; /* if used set to true */
-	bool use_rts_for_aggregation;
-	enum ieee80211_smps_mode smps_mode;
 };
 
 /***************************

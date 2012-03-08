@@ -294,7 +294,6 @@ struct iwl_vif_priv {
 
 struct iwl_sensitivity_ranges {
 	u16 min_nrg_cck;
-	u16 max_nrg_cck;
 
 	u16 nrg_th_cck;
 	u16 nrg_th_ofdm;
@@ -670,8 +669,6 @@ struct iwl_rxon_context {
 		bool enabled, is_40mhz;
 		u8 extension_chan_offset;
 	} ht;
-
-	bool last_tx_rejected;
 };
 
 enum iwl_scan_type {
@@ -716,15 +713,18 @@ struct iwl_priv {
 	/*data shared among all the driver's layers */
 	struct iwl_shared *shrd;
 	const struct iwl_fw *fw;
+	unsigned long status;
 
 	spinlock_t sta_lock;
 	struct mutex mutex;
+
+	unsigned long transport_queue_stop;
+	bool passive_no_rx;
 
 	/* ieee device used by generic ieee processing code */
 	struct ieee80211_hw *hw;
 	struct ieee80211_channel *ieee_channels;
 	struct ieee80211_rate *ieee_rates;
-	struct kmem_cache *tx_cmd_pool;
 
 	struct list_head calib_results;
 
@@ -982,6 +982,7 @@ struct iwl_priv {
 	bool have_rekey_data;
 }; /*iwl_priv */
 
+extern struct kmem_cache *iwl_tx_cmd_pool;
 extern struct iwl_mod_params iwlagn_mod_params;
 
 static inline struct iwl_rxon_context *

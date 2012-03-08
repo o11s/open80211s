@@ -247,6 +247,7 @@ struct iwl_tx_queue {
  * @hw_base: pci hardware address support
  * @ucode_write_complete: indicates that the ucode has been copied.
  * @ucode_write_waitq: wait queue for uCode load
+ * @status - transport specific status flags
  */
 struct iwl_trans_pcie {
 	struct iwl_rx_queue rxq;
@@ -287,6 +288,7 @@ struct iwl_trans_pcie {
 
 	bool ucode_write_complete;
 	wait_queue_head_t ucode_write_waitq;
+	unsigned long status;
 };
 
 #define IWL_TRANS_GET_PCIE_TRANS(_iwl_trans) \
@@ -354,7 +356,8 @@ void iwl_dump_csr(struct iwl_trans *trans);
 ******************************************************/
 static inline void iwl_disable_interrupts(struct iwl_trans *trans)
 {
-	clear_bit(STATUS_INT_ENABLED, &trans->shrd->status);
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+	clear_bit(STATUS_INT_ENABLED, &trans_pcie->status);
 
 	/* disable interrupts from uCode/NIC to host */
 	iwl_write32(trans, CSR_INT_MASK, 0x00000000);
@@ -368,12 +371,17 @@ static inline void iwl_disable_interrupts(struct iwl_trans *trans)
 
 static inline void iwl_enable_interrupts(struct iwl_trans *trans)
 {
-	struct iwl_trans_pcie *trans_pcie =
-		IWL_TRANS_GET_PCIE_TRANS(trans);
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 
 	IWL_DEBUG_ISR(trans, "Enabling interrupts\n");
-	set_bit(STATUS_INT_ENABLED, &trans->shrd->status);
+	set_bit(STATUS_INT_ENABLED, &trans_pcie->status);
 	iwl_write32(trans, CSR_INT_MASK, trans_pcie->inta_mask);
+}
+
+static inline void iwl_enable_rfkill_int(struct iwl_trans *trans)
+{
+	IWL_DEBUG_ISR(trans, "Enabling rfkill interrupt\n");
+	iwl_write32(trans, CSR_INT_MASK, CSR_INT_BIT_RF_KILL);
 }
 
 /*
@@ -401,7 +409,7 @@ static inline u8 iwl_get_queue_ac(struct iwl_tx_queue *txq)
 }
 
 static inline void iwl_wake_queue(struct iwl_trans *trans,
-				  struct iwl_tx_queue *txq, const char *msg)
+				  struct iwl_tx_queue *txq)
 {
 	u8 queue = txq->swq_id;
 	u8 ac = queue & 3;
@@ -412,19 +420,19 @@ static inline void iwl_wake_queue(struct iwl_trans *trans,
 	if (test_and_clear_bit(hwq, trans_pcie->queue_stopped)) {
 		if (atomic_dec_return(&trans_pcie->queue_stop_count[ac]) <= 0) {
 			iwl_op_mode_queue_not_full(trans->op_mode, ac);
-			IWL_DEBUG_TX_QUEUES(trans, "Wake hwq %d ac %d. %s",
-					    hwq, ac, msg);
+			IWL_DEBUG_TX_QUEUES(trans, "Wake hwq %d ac %d",
+					    hwq, ac);
 		} else {
-			IWL_DEBUG_TX_QUEUES(trans, "Don't wake hwq %d ac %d"
-					    " stop count %d. %s",
-					    hwq, ac, atomic_read(&trans_pcie->
-					    queue_stop_count[ac]), msg);
+			IWL_DEBUG_TX_QUEUES(trans,
+				"Don't wake hwq %d ac %d stop count %d",
+				hwq, ac,
+				atomic_read(&trans_pcie->queue_stop_count[ac]));
 		}
 	}
 }
 
 static inline void iwl_stop_queue(struct iwl_trans *trans,
-				  struct iwl_tx_queue *txq, const char *msg)
+				  struct iwl_tx_queue *txq)
 {
 	u8 queue = txq->swq_id;
 	u8 ac = queue & 3;
@@ -435,33 +443,21 @@ static inline void iwl_stop_queue(struct iwl_trans *trans,
 	if (!test_and_set_bit(hwq, trans_pcie->queue_stopped)) {
 		if (atomic_inc_return(&trans_pcie->queue_stop_count[ac]) > 0) {
 			iwl_op_mode_queue_full(trans->op_mode, ac);
-			IWL_DEBUG_TX_QUEUES(trans, "Stop hwq %d ac %d"
-					    " stop count %d. %s",
-					    hwq, ac, atomic_read(&trans_pcie->
-					    queue_stop_count[ac]), msg);
+			IWL_DEBUG_TX_QUEUES(trans,
+				"Stop hwq %d ac %d stop count %d",
+				hwq, ac,
+				atomic_read(&trans_pcie->queue_stop_count[ac]));
 		} else {
-			IWL_DEBUG_TX_QUEUES(trans, "Don't stop hwq %d ac %d"
-					    " stop count %d. %s",
-					    hwq, ac, atomic_read(&trans_pcie->
-					    queue_stop_count[ac]), msg);
+			IWL_DEBUG_TX_QUEUES(trans,
+				"Don't stop hwq %d ac %d stop count %d",
+				hwq, ac,
+				atomic_read(&trans_pcie->queue_stop_count[ac]));
 		}
 	} else {
-		IWL_DEBUG_TX_QUEUES(trans, "stop hwq %d, but it is stopped/ %s",
-				    hwq, msg);
+		IWL_DEBUG_TX_QUEUES(trans, "stop hwq %d, but it is stopped",
+				    hwq);
 	}
 }
-
-#ifdef ieee80211_stop_queue
-#undef ieee80211_stop_queue
-#endif
-
-#define ieee80211_stop_queue DO_NOT_USE_ieee80211_stop_queue
-
-#ifdef ieee80211_wake_queue
-#undef ieee80211_wake_queue
-#endif
-
-#define ieee80211_wake_queue DO_NOT_USE_ieee80211_wake_queue
 
 static inline void iwl_txq_ctx_activate(struct iwl_trans_pcie *trans_pcie,
 					int txq_id)

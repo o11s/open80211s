@@ -163,7 +163,10 @@ int iwlagn_mac_setup_register(struct iwl_priv *priv,
 		hw->flags |= IEEE80211_HW_SUPPORTS_DYNAMIC_SMPS |
 			     IEEE80211_HW_SUPPORTS_STATIC_SMPS;
 
+#ifndef CONFIG_IWLWIFI_EXPERIMENTAL_MFP
+	/* enable 11w if the uCode advertise */
 	if (capa->flags & IWL_UCODE_TLV_FLAGS_MFP)
+#endif /* !CONFIG_IWLWIFI_EXPERIMENTAL_MFP */
 		hw->flags |= IEEE80211_HW_MFP_CAPABLE;
 
 	hw->sta_data_size = sizeof(struct iwl_station_priv);
@@ -263,7 +266,7 @@ static int __iwl_up(struct iwl_priv *priv)
 
 	lockdep_assert_held(&priv->mutex);
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status)) {
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status)) {
 		IWL_WARN(priv, "Exit pending; will not bring the NIC up\n");
 		return -EIO;
 	}
@@ -294,9 +297,9 @@ static int __iwl_up(struct iwl_priv *priv)
 	return 0;
 
  error:
-	set_bit(STATUS_EXIT_PENDING, &priv->shrd->status);
+	set_bit(STATUS_EXIT_PENDING, &priv->status);
 	iwl_down(priv);
-	clear_bit(STATUS_EXIT_PENDING, &priv->shrd->status);
+	clear_bit(STATUS_EXIT_PENDING, &priv->status);
 
 	IWL_ERR(priv, "Unable to initialize device.\n");
 	return ret;
@@ -319,7 +322,7 @@ static int iwlagn_mac_start(struct ieee80211_hw *hw)
 	IWL_DEBUG_INFO(priv, "Start UP work done.\n");
 
 	/* Now we should be done, and the READY bit should be set. */
-	if (WARN_ON(!test_bit(STATUS_READY, &priv->shrd->status)))
+	if (WARN_ON(!test_bit(STATUS_READY, &priv->status)))
 		ret = -EIO;
 
 	iwlagn_led_enable(priv);
@@ -405,7 +408,7 @@ static int iwlagn_mac_suspend(struct ieee80211_hw *hw,
 		goto out;
 	}
 
-	ret = iwlagn_suspend(priv, hw, wowlan);
+	ret = iwlagn_suspend(priv, wowlan);
 	if (ret)
 		goto error;
 
@@ -445,7 +448,7 @@ static int iwlagn_mac_resume(struct ieee80211_hw *hw)
 	if (iwlagn_hw_valid_rtc_data_addr(base)) {
 		spin_lock_irqsave(&trans(priv)->reg_lock, flags);
 		ret = iwl_grab_nic_access_silent(trans(priv));
-		if (ret == 0) {
+		if (likely(ret == 0)) {
 			iwl_write32(trans(priv), HBUS_TARG_MEM_RADDR, base);
 			status = iwl_read32(trans(priv), HBUS_TARG_MEM_RDAT);
 			iwl_release_nic_access(trans(priv));
@@ -721,12 +724,22 @@ static int iwlagn_mac_sta_remove(struct ieee80211_hw *hw,
 	struct iwl_station_priv *sta_priv = (void *)sta->drv_priv;
 	int ret;
 
-	IWL_DEBUG_INFO(priv, "proceeding to remove station %pM\n",
-			sta->addr);
-	ret = iwl_remove_station(priv, sta_priv->sta_id, sta->addr);
-	if (ret)
-		IWL_DEBUG_QUIET_RFKILL(priv, "Error removing station %pM\n",
-			sta->addr);
+	IWL_DEBUG_INFO(priv, "proceeding to remove station %pM\n", sta->addr);
+
+	if (vif->type == NL80211_IFTYPE_STATION) {
+		/*
+		 * Station will be removed from device when the RXON
+		 * is set to unassociated -- just deactivate it here
+		 * to avoid re-programming it.
+		 */
+		ret = 0;
+		iwl_deactivate_station(priv, sta_priv->sta_id, sta->addr);
+	} else {
+		ret = iwl_remove_station(priv, sta_priv->sta_id, sta->addr);
+		if (ret)
+			IWL_DEBUG_QUIET_RFKILL(priv,
+				"Error removing station %pM\n", sta->addr);
+	}
 	return ret;
 }
 
@@ -804,7 +817,7 @@ static int iwlagn_mac_sta_state(struct ieee80211_hw *hw,
 	 * mac80211 might WARN if we fail, but due the way we
 	 * (badly) handle hard rfkill, we might fail here
 	 */
-	if (iwl_is_rfkill(priv->shrd))
+	if (iwl_is_rfkill(priv))
 		ret = 0;
 
 	mutex_unlock(&priv->mutex);
@@ -836,12 +849,12 @@ static void iwlagn_mac_channel_switch(struct ieee80211_hw *hw,
 
 	mutex_lock(&priv->mutex);
 
-	if (iwl_is_rfkill(priv->shrd))
+	if (iwl_is_rfkill(priv))
 		goto out;
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status) ||
-	    test_bit(STATUS_SCANNING, &priv->shrd->status) ||
-	    test_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->shrd->status))
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status) ||
+	    test_bit(STATUS_SCANNING, &priv->status) ||
+	    test_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status))
 		goto out;
 
 	if (!iwl_is_associated_ctx(ctx))
@@ -881,10 +894,10 @@ static void iwlagn_mac_channel_switch(struct ieee80211_hw *hw,
 	 * at this point, staging_rxon has the
 	 * configuration for channel switch
 	 */
-	set_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->shrd->status);
+	set_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status);
 	priv->switch_channel = cpu_to_le16(ch);
 	if (cfg(priv)->lib->set_channel_switch(priv, ch_switch)) {
-		clear_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->shrd->status);
+		clear_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status);
 		priv->switch_channel = 0;
 		ieee80211_chswitch_done(ctx->vif, false);
 	}
@@ -951,11 +964,11 @@ static void iwlagn_mac_flush(struct ieee80211_hw *hw, bool drop)
 	mutex_lock(&priv->mutex);
 	IWL_DEBUG_MAC80211(priv, "enter\n");
 
-	if (test_bit(STATUS_EXIT_PENDING, &priv->shrd->status)) {
+	if (test_bit(STATUS_EXIT_PENDING, &priv->status)) {
 		IWL_DEBUG_TX(priv, "Aborting flush due to device shutdown\n");
 		goto done;
 	}
-	if (iwl_is_rfkill(priv->shrd)) {
+	if (iwl_is_rfkill(priv)) {
 		IWL_DEBUG_TX(priv, "Aborting flush due to RF Kill\n");
 		goto done;
 	}
@@ -996,7 +1009,7 @@ static int iwlagn_mac_remain_on_channel(struct ieee80211_hw *hw,
 	IWL_DEBUG_MAC80211(priv, "enter\n");
 	mutex_lock(&priv->mutex);
 
-	if (test_bit(STATUS_SCAN_HW, &priv->shrd->status)) {
+	if (test_bit(STATUS_SCAN_HW, &priv->status)) {
 		err = -EBUSY;
 		goto out;
 	}
@@ -1137,7 +1150,7 @@ static int iwlagn_mac_conf_tx(struct ieee80211_hw *hw,
 
 	IWL_DEBUG_MAC80211(priv, "enter\n");
 
-	if (!iwl_is_ready_rf(priv->shrd)) {
+	if (!iwl_is_ready_rf(priv)) {
 		IWL_DEBUG_MAC80211(priv, "leave - RF not ready\n");
 		return -EIO;
 	}
@@ -1238,7 +1251,7 @@ static int iwlagn_mac_add_interface(struct ieee80211_hw *hw,
 
 	iwlagn_disable_roc(priv);
 
-	if (!iwl_is_ready_rf(priv->shrd)) {
+	if (!iwl_is_ready_rf(priv)) {
 		IWL_WARN(priv, "Try to add interface when device not ready\n");
 		err = -EINVAL;
 		goto out;
@@ -1362,7 +1375,7 @@ static int iwlagn_mac_change_interface(struct ieee80211_hw *hw,
 
 	mutex_lock(&priv->mutex);
 
-	if (!ctx->vif || !iwl_is_ready_rf(priv->shrd)) {
+	if (!ctx->vif || !iwl_is_ready_rf(priv)) {
 		/*
 		 * Huh? But wait ... this can maybe happen when
 		 * we're in the middle of a firmware restart!
