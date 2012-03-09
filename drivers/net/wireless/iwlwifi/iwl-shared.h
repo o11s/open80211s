@@ -160,7 +160,6 @@ struct iwl_mod_params {
  *
  * Holds the module parameters
  *
- * @max_txq_num: Max # Tx queues supported
  * @num_ampdu_queues: num of ampdu queues
  * @tx_chains_num: Number of TX chains
  * @rx_chains_num: Number of RX chains
@@ -177,7 +176,6 @@ struct iwl_mod_params {
  * @use_rts_for_aggregation: use rts/cts protection for HT traffic
  */
 struct iwl_hw_params {
-	u8  max_txq_num;
 	u8  num_ampdu_queues;
 	u8  tx_chains_num;
 	u8  rx_chains_num;
@@ -368,7 +366,6 @@ struct iwl_cfg {
 /**
  * struct iwl_shared - shared fields for all the layers of the driver
  *
- * @cmd_queue: command queue number
  * @status: STATUS_*
  * @wowlan: are we running wowlan uCode
  * @valid_contexts: microcode/device supports multiple contexts
@@ -385,7 +382,6 @@ struct iwl_cfg {
  * @device_pointers: pointers to ucode event tables
  */
 struct iwl_shared {
-	u8 cmd_queue;
 	unsigned long status;
 	u8 valid_contexts;
 
