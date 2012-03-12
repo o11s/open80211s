@@ -388,7 +388,6 @@ struct ieee80211_mgd_auth_data {
 
 	u8 key[WLAN_KEY_LEN_WEP104];
 	u8 key_len, key_idx;
-	bool synced;
 	bool done;
 
 	size_t ie_len;
@@ -408,7 +407,7 @@ struct ieee80211_mgd_assoc_data {
 	u8 ssid[IEEE80211_MAX_SSID_LEN];
 	u8 ssid_len;
 	u8 supp_rates_len;
-	bool wmm_used, uapsd_used;
+	bool wmm, uapsd;
 	bool have_beacon;
 	bool sent_assoc;
 	bool synced;

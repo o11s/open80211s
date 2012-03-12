@@ -118,13 +118,15 @@ void ath9k_ps_restore(struct ath_softc *sc)
 	if (--sc->ps_usecount != 0)
 		goto unlock;
 
-	if (sc->ps_idle && (sc->ps_flags & PS_WAIT_FOR_TX_ACK))
+	if (sc->ps_flags & PS_WAIT_FOR_TX_ACK)
+		goto unlock;
+
+	if (sc->ps_idle)
 		mode = ATH9K_PM_FULL_SLEEP;
 	else if (sc->ps_enabled &&
 		 !(sc->ps_flags & (PS_WAIT_FOR_BEACON |
 			      PS_WAIT_FOR_CAB |
-			      PS_WAIT_FOR_PSPOLL_DATA |
-			      PS_WAIT_FOR_TX_ACK)))
+			      PS_WAIT_FOR_PSPOLL_DATA)))
 		mode = ATH9K_PM_NETWORK_SLEEP;
 	else
 		goto unlock;
@@ -1973,7 +1975,7 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 	ath9k_ps_wakeup(sc);
 	mutex_lock(&sc->mutex);
 
-	if (changed & BSS_CHANGED_BSSID) {
+	if (changed & BSS_CHANGED_ASSOC) {
 		ath9k_config_bss(sc, vif);
 
 		ath_dbg(common, CONFIG, "BSSID: %pM aid: 0x%x\n",
