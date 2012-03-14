@@ -274,12 +274,14 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
-void mesh_neighbour_update(u8 *hw_addr, u32 rates,
+void mesh_neighbour_update(struct ieee80211_mgmt *mgmt, u32 rates,
 		struct ieee80211_sub_if_data *sdata,
-		struct ieee802_11_elems *elems)
+		struct ieee802_11_elems *elems,
+		struct ieee80211_rx_status *rx_status)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct sta_info *sta;
+	u8 *hw_addr = mgmt->sa;
 
 	rcu_read_lock();
 
@@ -304,6 +306,13 @@ void mesh_neighbour_update(u8 *hw_addr, u32 rates,
 
 	sta->last_rx = jiffies;
 	sta->sta.supp_rates[local->hw.conf.channel->band] = rates;
+	clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
+	if (rx_status->flag & RX_FLAG_MACTIME_MPDU) {
+		sta->t_offset = le64_to_cpu(mgmt->u.beacon.timestamp) -
+				rx_status->mactime;
+		set_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
+	}
+
 	if (mesh_peer_accepts_plinks(elems) &&
 			sta->plink_state == NL80211_PLINK_LISTEN &&
 			sdata->u.mesh.accepting_plinks &&
