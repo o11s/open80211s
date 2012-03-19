@@ -70,12 +70,15 @@ enum mesh_path_flags {
  * @MESH_WORK_GROW_MPP_TABLE: the mesh portals table is full and needs to
  * grow
  * @MESH_WORK_ROOT: the mesh root station needs to send a frame
+ * @MESH_WORK_DRIFT_ADJUST: time to compensate for clock drift relative to other
+ * mesh nodes
  */
 enum mesh_deferred_task_flags {
 	MESH_WORK_HOUSEKEEPING,
 	MESH_WORK_GROW_MPATH_TABLE,
 	MESH_WORK_GROW_MPP_TABLE,
 	MESH_WORK_ROOT,
+	MESH_WORK_DRIFT_ADJUST,
 };
 
 /**
@@ -341,6 +344,7 @@ void ieee80211_mesh_quiesce(struct ieee80211_sub_if_data *sdata);
 void ieee80211_mesh_restart(struct ieee80211_sub_if_data *sdata);
 void mesh_plink_quiesce(struct sta_info *sta);
 void mesh_plink_restart(struct sta_info *sta);
+void mesh_sync_adjust_tbtt (struct ieee80211_sub_if_data *sdata);
 #else
 #define mesh_allocated	0
 static inline void
