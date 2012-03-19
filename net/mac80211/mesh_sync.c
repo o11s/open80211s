@@ -114,10 +114,10 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	if (test_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN)) { /* 11C.12.2.2.3 b) */
 		s64 t_clockdrift = sta->t_offset - t_offset; /* 11C.12.2.2.3 c) */
 
-		spin_lock(&ifmsh->sync_offset_lock);
+		spin_lock_bh(&ifmsh->sync_offset_lock);
 		if (t_clockdrift > ifmsh->sync_offset_clockdrift_max) /* 11C.12.2.2.3 d) */
 			ifmsh->sync_offset_clockdrift_max = t_clockdrift;
-		spin_unlock(&ifmsh->sync_offset_lock);
+		spin_unlock_bh(&ifmsh->sync_offset_lock);
 
 		printk(KERN_DEBUG "STA %pM : t_r=%lld, t_t=%llu, t_offset=%lld, sta->t_offset=%lld, t_clockdrift=%lld",
 			sta->sta.addr,
@@ -156,13 +156,13 @@ void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
 
-	spin_lock(&ifmsh->sync_offset_lock);
+	spin_lock_bh(&ifmsh->sync_offset_lock);
 
 	if (ifmsh->sync_offset_clockdrift_max <= 0) {
 		printk(KERN_DEBUG "TBTT : max clockdrift=%lld; no need to adjust",
 			(long long) ifmsh->sync_offset_clockdrift_max);
 		ifmsh->sync_offset_clockdrift_max = 0;
-		spin_unlock(&ifmsh->sync_offset_lock);
+		spin_unlock_bh(&ifmsh->sync_offset_lock);
 		ifmsh->adjusting_tbtt = false;
 		return;
 	}
@@ -184,7 +184,7 @@ void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 
 	drv_set_tsf(local, sdata, tsf);
 	ifmsh->adjusting_tbtt = true;
-	spin_unlock(&ifmsh->sync_offset_lock);
+	spin_unlock_bh(&ifmsh->sync_offset_lock);
 }
 
 void mesh_sync_offset_add_vendor_ie(struct sk_buff *skb, struct ieee80211_sub_if_data *sdata)
