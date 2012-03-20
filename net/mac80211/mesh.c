@@ -578,6 +578,8 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	ifmsh->mesh_auth_id = 0;	/* Disabled */
 	/* register sync ops from extensible synchronization framework */
 	ifmsh->sync_ops = ieee80211_mesh_sync_ops_get(ifmsh->mesh_sp_id);
+	ifmsh->adjusting_tbtt = false;
+	ifmsh->sync_offset_clockdrift_max = 0;
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
