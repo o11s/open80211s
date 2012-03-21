@@ -98,7 +98,7 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	 * entering the rcu-read section.*/
 	t_r = drv_get_tsf(local, sdata);
 
-	rcu_read_lock(); 
+	rcu_read_lock();
 	sta = sta_info_get(sdata, mgmt->sa);
 	if (!sta)
 		goto no_sync;
@@ -129,12 +129,30 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		 * 11.1.2)
 		 *
 		 * T_r, in 13.13.2.2.2, is just defined as "the frame reception
-		 * time", so we will assume using mactime (the time the first
-		 * data symbol is received) is acceptable. Given that we are
-		 * only interested in correcting drift and not synchronizing
-		 * TSF, this is OK.
+		 * time" but we unless we interpret that time to be the same
+		 * time of the beacon timestamp, the offset calculation will be
+		 * off.  Below we adjust t_r to be "the time at which the first
+		 * symbol of the timestamp element in the beacon is received".
+		 * This correction depends on the rate.
+		 *
+		 * Based on similar code in ibss.c
 		 */
-		t_r = rx_status->mactime;
+		int rate;
+
+		if (rx_status->flag & RX_FLAG_HT)
+			/* TODO:
+ 			 * In principle there could be HT-beacons (Dual Beacon
+			 * HT Operation options), but for now ignore them and
+			 * just use the primary (i.e. non-HT) beacons for
+			 * synchronization.
+			 * */
+			goto no_sync;
+		else
+			rate = local->hw.wiphy->bands[rx_status->band]->
+				bitrates[rx_status->rate_idx].bitrate;
+
+		/* 24 bytes of header * 8 bits/byte * 10 Kbps/Mbps / rate in Kbps */
+		t_r = rx_status->mactime + (24 * 8 * 10 / rate);
 	}
 
 	/* Timing offset calculation (see 11C.12.2.2.2) */
