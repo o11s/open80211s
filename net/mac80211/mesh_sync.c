@@ -106,11 +106,8 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	/* check offset sync conditions (11C.12.2.2.1)
 	 *
 	 * TODO also sync to
-	 * dot11MeshNbrOffsetMaxNeighbor non-peer MBSS neighbors and
 	 * dot11MeshNbrOffsetMaxNeighbor non-peer non-MBSS neighbors
 	 */
-	if (sta_plink_state(sta) != NL80211_PLINK_ESTAB) /* neighbor peer mesh STA */
-		goto no_sync;
 
 	if (elems->mesh_config && mesh_peer_tbtt_adjusting(elems)) {
 		clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
