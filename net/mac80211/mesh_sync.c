@@ -139,15 +139,15 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		 */
 		int rate;
 
-		if (rx_status->flag & RX_FLAG_HT)
+		if (rx_status->flag & RX_FLAG_HT) {
 			/* TODO:
- 			 * In principle there could be HT-beacons (Dual Beacon
+			 * In principle there could be HT-beacons (Dual Beacon
 			 * HT Operation options), but for now ignore them and
 			 * just use the primary (i.e. non-HT) beacons for
 			 * synchronization.
 			 * */
 			goto no_sync;
-		else
+		} else
 			rate = local->hw.wiphy->bands[rx_status->band]->
 				bitrates[rx_status->rate_idx].bitrate;
 
