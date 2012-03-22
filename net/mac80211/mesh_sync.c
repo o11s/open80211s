@@ -113,8 +113,8 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		goto no_sync;
 
 	if (elems->mesh_config && mesh_peer_tbtt_adjusting(elems)) {
-		msync_dbg("STA %pM : is adjusting TBTT",
-			sta->sta.addr);
+		clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
+		msync_dbg("STA %pM : is adjusting TBTT", sta->sta.addr);
 		goto no_sync;
 	}
 
