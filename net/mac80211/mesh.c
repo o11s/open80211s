@@ -254,9 +254,6 @@ mesh_add_meshconf_ie(struct sk_buff *skb, struct ieee80211_sub_if_data *sdata)
 	    MESHCONF_CAPAB_TBTT_ADJUSTING : 0x00;
 	*pos++ = 0x00;
 
-	if(ifmsh->sync_ops)
-		ifmsh->sync_ops->add_vendor_ie(skb, sdata);
-
 	return 0;
 }
 

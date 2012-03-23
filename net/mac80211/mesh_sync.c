@@ -222,10 +222,20 @@ void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 	spin_unlock_bh(&ifmsh->sync_offset_lock);
 }
 
-void mesh_sync_offset_add_vendor_ie(struct sk_buff *skb, struct ieee80211_sub_if_data *sdata)
+static const u8 *mesh_get_vendor_oui(struct ieee80211_sub_if_data *sdata)
 {
-	//WARN_ON(sdata->u.mesh.mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
-	/* neighbor offset sync does not need an additional IE */
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+        u8 offset;
+
+        if (!ifmsh->ie || !ifmsh->ie_len)
+                return NULL;
+
+        offset = ieee80211_ie_split_vendor(ifmsh->ie, ifmsh->ie_len, 0);
+
+        if (!offset)
+		return NULL;
+
+	return (ifmsh->ie + offset + 2);
 }
 
 void mesh_sync_vendor_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
@@ -234,21 +244,22 @@ void mesh_sync_vendor_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 				   struct ieee802_11_elems *elems,
 				   struct ieee80211_rx_status *rx_status)
 {
+	const u8 *oui;
+
 	WARN_ON(sdata->u.mesh.mesh_sp_id != IEEE80211_SYNC_METHOD_VENDOR);
-	mesh_sync_offset_rx_bcn_presp(sdata, stype, mgmt, elems, rx_status);
 	msync_dbg("called mesh_sync_vendor_rx_bcn_presp");
+	oui = mesh_get_vendor_oui(sdata);
+	/*  here you would implement the vendor offset tracking for this oui */
 }
 
 void mesh_sync_vendor_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 {
-	//WARN_ON(sdata->u.mesh.mesh_sp_id != IEEE80211_SYNC_METHOD_VENDOR);
-	msync_dbg("called mesh_sync_vendor_adjust_tbtt");
-}
+	const u8 *oui;
 
-void mesh_sync_vendor_add_vendor_ie(struct sk_buff *skb, struct ieee80211_sub_if_data *sdata)
-{
-	//WARN_ON(sdata->u.mesh.mesh_sp_id != IEEE80211_SYNC_METHOD_VENDOR);
-	msync_dbg("called mesh_sync_vendor_add_vendor_ie");
+	WARN_ON(sdata->u.mesh.mesh_sp_id != IEEE80211_SYNC_METHOD_VENDOR);
+	msync_dbg("called mesh_sync_vendor_adjust_tbtt");
+	oui = mesh_get_vendor_oui(sdata);
+	/*  here you would implement the vendor tsf adjustment for this oui */
 }
 
 /* global variable */
@@ -258,7 +269,6 @@ static struct sync_method sync_methods[] = {
 		.ops = {
 			.rx_bcn_presp = &mesh_sync_offset_rx_bcn_presp,
 			.adjust_tbtt = &mesh_sync_offset_adjust_tbtt,
-			.add_vendor_ie = &mesh_sync_offset_add_vendor_ie,
 		}
 	},
 	{
@@ -266,7 +276,6 @@ static struct sync_method sync_methods[] = {
 		.ops = {
 			.rx_bcn_presp = &mesh_sync_vendor_rx_bcn_presp,
 			.adjust_tbtt = &mesh_sync_vendor_adjust_tbtt,
-			.add_vendor_ie = &mesh_sync_vendor_add_vendor_ie,
 		}
 	},
 };
