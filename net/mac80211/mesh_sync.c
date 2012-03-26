@@ -82,7 +82,7 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	u64 t_t, t_r;
 	s64 t_offset;
 
-	//WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
+	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
 
 	/* standard mentions only beacons */
 	if (stype != IEEE80211_STYPE_BEACON)
@@ -103,7 +103,7 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	if (!sta)
 		goto no_sync;
 
-	/* check offset sync conditions (11C.12.2.2.1)
+	/* check offset sync conditions (13.13.2.2.1)
 	 *
 	 * TODO also sync to
 	 * dot11MeshNbrOffsetMaxNeighbor non-peer non-MBSS neighbors
@@ -152,13 +152,13 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		t_r = rx_status->mactime + (24 * 8 * 10 / rate);
 	}
 
-	/* Timing offset calculation (see 11C.12.2.2.2) */
+	/* Timing offset calculation (see 13.13.2.2.2) */
 	t_t = le64_to_cpu(mgmt->u.beacon.timestamp);
 	t_offset = t_t - t_r;
 
 
 	if (test_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN)) {
-		s64 t_clockdrift = sta->t_offset - t_offset; /* 11C.12.2.2.3 c) */
+		s64 t_clockdrift = sta->t_offset - t_offset; /* 13.13.2.2.3 c) */
 
 		msync_dbg("STA %pM : t_offset=%lld,"
 			  " sta->t_offset=%lld, t_clockdrift=%lld",
@@ -170,7 +170,7 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		rcu_read_unlock();
 
 		spin_lock_bh(&ifmsh->sync_offset_lock);
-		if (t_clockdrift > ifmsh->sync_offset_clockdrift_max) /* 11C.12.2.2.3 d) */
+		if (t_clockdrift > ifmsh->sync_offset_clockdrift_max) /* 13.13.2.2.3 d) */
 			ifmsh->sync_offset_clockdrift_max = t_clockdrift;
 		spin_unlock_bh(&ifmsh->sync_offset_lock);
 
@@ -189,19 +189,20 @@ no_sync:
 }
 
 /**
- * see 11C.12.2.2.3
+ * see 13.13.2.2.3
  *
- * called from beacon_get interrupt -> locking of
- * ifmsh->sync_offset_clockdrift_max needed
+ * Called from beacon_get interrupt, with the rcu read lock held.
  */
 void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	struct ieee80211_local *local = sdata->local;
+	struct sta_info *sta;
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
+	BUG_ON(!rcu_read_lock_held());
 
 	spin_lock_bh(&ifmsh->sync_offset_lock);
-
 
 	if (ifmsh->sync_offset_clockdrift_max > TBTT_MINIMUM_ADJUSTMENT) {
 		/* Since ajusting the tsf here would require a possibly blocking call
@@ -212,6 +213,8 @@ void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 		msync_dbg("TBTT : kicking off TBTT adjustment with "
 			  "sync_offset_clockdrift_max=%lld",
 			  ifmsh->sync_offset_clockdrift_max);
+		list_for_each_entry_rcu(sta, &local->sta_list, list)
+			clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
 		set_bit(MESH_WORK_DRIFT_ADJUST, &ifmsh->wrkq_flags);
 	} else {
 		msync_dbg("TBTT : max clockdrift=%lld; too small to adjust",
