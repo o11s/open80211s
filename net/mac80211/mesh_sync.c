@@ -166,7 +166,8 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			  (long long) sta->t_offset, (long long) t_clockdrift);
 
 		/* moving average of t_offset to cancel jitter */
-		sta->t_offset = (8 * t_offset + 56 * sta->t_offset) / 64;
+		//sta->t_offset = (8 * t_offset + 56 * sta->t_offset) / 64;
+		sta->t_offset = t_offset;
 		rcu_read_unlock();
 
 		spin_lock_bh(&ifmsh->sync_offset_lock);
