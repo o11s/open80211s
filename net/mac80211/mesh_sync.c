@@ -79,7 +79,6 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	struct sta_info *sta;
 	u64 t_t, t_r;
-	s64 t_offset;
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
 
@@ -150,16 +149,15 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 
 	/* Timing offset calculation (see 13.13.2.2.2) */
 	t_t = le64_to_cpu(mgmt->u.beacon.timestamp);
-	t_offset = t_t - t_r;
-
+	sta->t_offset = t_t - t_r;
 
 	if (test_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN)) {
-		s64 t_clockdrift = sta->t_offset - t_offset; /* 13.13.2.2.3 c) */
+		s64 t_clockdrift = sta->t_offset_setpoint - sta->t_offset; /* 13.13.2.2.3 c) */
 
-		msync_dbg("STA %pM : t_offset=%lld,"
-			  " sta->t_offset=%lld, t_clockdrift=%lld",
-			  sta->sta.addr, (long long) t_offset,
-			  (long long) sta->t_offset, (long long) t_clockdrift);
+		msync_dbg("STA %pM : sta->t_offset=%lld,"
+			  " sta->t_offset_setpoint=%lld, t_clockdrift=%lld",
+			  sta->sta.addr, (long long) sta->t_offset,
+			  (long long) sta->t_offset_setpoint, (long long) t_clockdrift);
 		rcu_read_unlock();
 
 		spin_lock_bh(&ifmsh->sync_offset_lock);
@@ -169,10 +167,10 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 
 	} else {
 		/* store STA parameters for next beacon receipt */
-		sta->t_offset = t_offset;
+		sta->t_offset_setpoint = sta->t_offset;
 		set_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
-		msync_dbg("STA %pM : offset was invalid, t_offset=%lld",
-				sta->sta.addr, (long long) t_offset);
+		msync_dbg("STA %pM : offset was invalid, sta->t_offset=%lld",
+				sta->sta.addr, (long long) sta->t_offset);
 		rcu_read_unlock();
 	}
 	return;

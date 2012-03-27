@@ -55,7 +55,7 @@
  * @WLAN_STA_4ADDR_EVENT: 4-addr event was already sent for this frame.
  * @WLAN_STA_INSERTED: This station is inserted into the hash table.
  * @WLAN_STA_RATE_CONTROL: rate control was initialized for this station.
- * @WLAN_STA_TOFFSET_KNOWN: toffset calcuated for this station is valid.
+ * @WLAN_STA_TOFFSET_KNOWN: toffset calculated for this station is valid.
  */
 enum ieee80211_sta_info_flags {
 	WLAN_STA_AUTH,
@@ -357,6 +357,7 @@ struct sta_info {
 	u32 plink_timeout;
 	struct timer_list plink_timer;
 	s64 t_offset;
+	s64 t_offset_setpoint;
 #endif
 
 #ifdef CONFIG_MAC80211_DEBUGFS
