@@ -160,10 +160,6 @@ void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			  " sta->t_offset=%lld, t_clockdrift=%lld",
 			  sta->sta.addr, (long long) t_offset,
 			  (long long) sta->t_offset, (long long) t_clockdrift);
-
-		/* moving average of t_offset to cancel jitter */
-		//sta->t_offset = (8 * t_offset + 56 * sta->t_offset) / 64;
-		sta->t_offset = t_offset;
 		rcu_read_unlock();
 
 		spin_lock_bh(&ifmsh->sync_offset_lock);
@@ -193,8 +189,6 @@ no_sync:
 void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
-	struct ieee80211_local *local = sdata->local;
-	struct sta_info *sta;
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
 	BUG_ON(!rcu_read_lock_held());
@@ -209,8 +203,6 @@ void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 		msync_dbg("TBTT : kicking off TBTT adjustment with "
 			  "sync_offset_clockdrift_max=%lld",
 			  ifmsh->sync_offset_clockdrift_max);
-		list_for_each_entry_rcu(sta, &local->sta_list, list)
-			clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
 		set_bit(MESH_WORK_DRIFT_ADJUST, &ifmsh->wrkq_flags);
 	} else {
 		msync_dbg("TBTT : max clockdrift=%lld; too small to adjust",
