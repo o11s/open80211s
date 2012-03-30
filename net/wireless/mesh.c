@@ -151,6 +151,31 @@ int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
 		setup->channel_type = NL80211_CHAN_NO_HT;
 	}
 
+	if (!setup->basic_rates) {
+		struct ieee80211_supported_band *sband =
+			rdev->wiphy.bands[setup->channel->band];
+		struct ieee80211_rate *bitrates;
+		enum ieee80211_rate_flags mandatory_flag;
+		int i;
+
+		bitrates = sband->bitrates;
+		if (setup->channel->band == IEEE80211_BAND_5GHZ)
+			mandatory_flag = IEEE80211_RATE_MANDATORY_A;
+		else {
+			mandatory_flag = IEEE80211_RATE_MANDATORY_B;
+			for (i = 0; i < sband->n_bitrates; i++)
+				if (bitrates[i].bitrate > 110) {
+					mandatory_flag =
+						IEEE80211_RATE_MANDATORY_G;
+					break;
+				}
+		}
+
+		for (i = 0; i < sband->n_bitrates; i++)
+			if (bitrates[i].flags & mandatory_flag)
+				setup->basic_rates |= BIT(i);
+	}
+
 	if (!cfg80211_can_beacon_sec_chan(&rdev->wiphy, setup->channel,
 					  setup->channel_type))
 		return -EINVAL;
