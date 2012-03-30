@@ -849,6 +849,7 @@ struct mesh_setup {
 	bool is_authenticated;
 	bool is_secure;
 	int mcast_rate[IEEE80211_NUM_BANDS];
+	u32 basic_rates;
 };
 
 /**

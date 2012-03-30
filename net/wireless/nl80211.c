@@ -5906,6 +5906,9 @@ static int nl80211_join_mesh(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
 	struct net_device *dev = info->user_ptr[1];
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct wiphy *wiphy = &rdev->wiphy;
+	struct ieee80211_supported_band *sband;
 	struct mesh_config cfg;
 	struct mesh_setup setup;
 	int err;
@@ -5927,6 +5930,20 @@ static int nl80211_join_mesh(struct sk_buff *skb, struct genl_info *info)
 
 	setup.mesh_id = nla_data(info->attrs[NL80211_ATTR_MESH_ID]);
 	setup.mesh_id_len = nla_len(info->attrs[NL80211_ATTR_MESH_ID]);
+
+	if (info->attrs[NL80211_ATTR_BSS_BASIC_RATES] &&
+	    !WARN_ON(!wdev->channel)) {
+		sband = wiphy->bands[wdev->channel->band];
+		u8 *rates =
+			nla_data(info->attrs[NL80211_ATTR_BSS_BASIC_RATES]);
+		int n_rates =
+			nla_len(info->attrs[NL80211_ATTR_BSS_BASIC_RATES]);
+
+		err = ieee80211_get_ratemask(sband, rates, n_rates,
+					     &setup.basic_rates);
+		if (err)
+			return err;
+	}
 
 	if (info->attrs[NL80211_ATTR_MCAST_RATE] &&
 	    !nl80211_parse_mcast_rate(rdev, setup.mcast_rate,
