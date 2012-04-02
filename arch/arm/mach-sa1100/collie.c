@@ -22,16 +22,17 @@
 #include <linux/tty.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
+#include <linux/mfd/ucb1x00.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
 #include <linux/timer.h>
 #include <linux/gpio.h>
 #include <linux/pda_power.h>
-#include <linux/mfd/ucb1x00.h>
+
+#include <video/sa1100fb.h>
 
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
-#include <asm/irq.h>
 #include <asm/page.h>
 #include <asm/setup.h>
 #include <mach/collie.h>
@@ -45,15 +46,12 @@
 #include <asm/mach/sharpsl_param.h>
 #include <asm/hardware/locomo.h>
 #include <mach/mcp.h>
+#include <mach/irqs.h>
 
 #include "generic.h"
 
 static struct resource collie_scoop_resources[] = {
-	[0] = {
-		.start		= 0x40800000,
-		.end		= 0x40800fff,
-		.flags		= IORESOURCE_MEM,
-	},
+	[0] = DEFINE_RES_MEM(0x40800000, SZ_4K),
 };
 
 static struct scoop_config collie_scoop_setup = {
@@ -93,7 +91,6 @@ static struct ucb1x00_plat_data collie_ucb1x00_data = {
 static struct mcp_plat_data collie_mcp_data = {
 	.mccr0		= MCCR0_ADM | MCCR0_ExtClk,
 	.sclk_rate	= 9216000,
-	.codec		= "ucb1x00",
 	.codec_pdata	= &collie_ucb1x00_data,
 };
 
@@ -144,8 +141,6 @@ static struct pda_power_pdata collie_power_data = {
 static struct resource collie_power_resource[] = {
 	{
 		.name		= "ac",
-		.start		= gpio_to_irq(COLLIE_GPIO_AC_IN),
-		.end		= gpio_to_irq(COLLIE_GPIO_AC_IN),
 		.flags		= IORESOURCE_IRQ |
 				  IORESOURCE_IRQ_HIGHEDGE |
 				  IORESOURCE_IRQ_LOWEDGE,
@@ -229,16 +224,8 @@ device_initcall(collie_uart_init);
 
 
 static struct resource locomo_resources[] = {
-	[0] = {
-		.start		= 0x40000000,
-		.end		= 0x40001fff,
-		.flags		= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start		= IRQ_GPIO25,
-		.end		= IRQ_GPIO25,
-		.flags		= IORESOURCE_IRQ,
-	},
+	[0] = DEFINE_RES_MEM(0x40000000, SZ_8K),
+	[1] = DEFINE_RES_IRQ(IRQ_GPIO25),
 };
 
 static struct locomo_platform_data locomo_info = {
@@ -311,11 +298,21 @@ static struct flash_platform_data collie_flash_data = {
 };
 
 static struct resource collie_flash_resources[] = {
-	{
-		.start	= SA1100_CS0_PHYS,
-		.end	= SA1100_CS0_PHYS + SZ_32M - 1,
-		.flags	= IORESOURCE_MEM,
-	}
+	DEFINE_RES_MEM(SA1100_CS0_PHYS, SZ_32M),
+};
+
+static struct sa1100fb_mach_info collie_lcd_info = {
+	.pixclock	= 171521,	.bpp		= 16,
+	.xres		= 320,		.yres		= 240,
+
+	.hsync_len	= 5,		.vsync_len	= 1,
+	.left_margin	= 11,		.upper_margin	= 2,
+	.right_margin	= 30,		.lower_margin	= 0,
+
+	.sync		= FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
+
+	.lccr0		= LCCR0_Color | LCCR0_Sngl | LCCR0_Act,
+	.lccr3		= LCCR3_OutEnH | LCCR3_PixRsEdg | LCCR3_ACBsDiv(2),
 };
 
 static void __init collie_init(void)
@@ -347,6 +344,11 @@ static void __init collie_init(void)
 
 	GPSR |= _COLLIE_GPIO_UCB1x00_RESET;
 
+	collie_power_resource[0].start = gpio_to_irq(COLLIE_GPIO_AC_IN);
+	collie_power_resource[0].end = gpio_to_irq(COLLIE_GPIO_AC_IN);
+
+	sa11x0_ppc_configure_mcp();
+
 
 	platform_scoop_config = &collie_pcmcia_config;
 
@@ -355,18 +357,9 @@ static void __init collie_init(void)
 		printk(KERN_WARNING "collie: Unable to register LoCoMo device\n");
 	}
 
+	sa11x0_register_lcd(&collie_lcd_info);
 	sa11x0_register_mtd(&collie_flash_data, collie_flash_resources,
 			    ARRAY_SIZE(collie_flash_resources));
-
-	/*
-	 * Setup the PPC unit correctly.
-	 */
-	PPDR &= ~PPC_RXD4;
-	PPDR |= PPC_TXD4 | PPC_SCLK | PPC_SFRM;
-	PSDR |= PPC_RXD4;
-	PSDR &= ~(PPC_TXD4 | PPC_SCLK | PPC_SFRM);
-	PPSR &= ~(PPC_TXD4 | PPC_SCLK | PPC_SFRM);
-
 	sa11x0_register_mcp(&collie_mcp_data);
 
 	sharpsl_save_param();
@@ -400,6 +393,7 @@ static void __init collie_map_io(void)
 
 MACHINE_START(COLLIE, "Sharp-Collie")
 	.map_io		= collie_map_io,
+	.nr_irqs	= SA1100_NR_IRQS,
 	.init_irq	= sa1100_init_irq,
 	.timer		= &sa1100_timer,
 	.init_machine	= collie_init,

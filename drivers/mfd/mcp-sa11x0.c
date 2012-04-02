@@ -13,59 +13,60 @@
  */
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/io.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/spinlock.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
 #include <linux/mfd/mcp.h>
-#include <linux/io.h>
 
-#include <mach/dma.h>
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
-#include <asm/system.h>
 #include <mach/mcp.h>
 
-/* Register offsets */
-#define MCCR0	0x00
-#define MCDR0	0x08
-#define MCDR1	0x0C
-#define MCDR2	0x10
-#define MCSR	0x18
-#define MCCR1	0x00
+#define DRIVER_NAME "sa11x0-mcp"
 
 struct mcp_sa11x0 {
+	void __iomem	*base0;
+	void __iomem	*base1;
 	u32		mccr0;
 	u32		mccr1;
-	unsigned char	*mccr0_base;
-	unsigned char	*mccr1_base;
 };
+
+/* Register offsets */
+#define MCCR0(m)	((m)->base0 + 0x00)
+#define MCDR0(m)	((m)->base0 + 0x08)
+#define MCDR1(m)	((m)->base0 + 0x0c)
+#define MCDR2(m)	((m)->base0 + 0x10)
+#define MCSR(m)		((m)->base0 + 0x18)
+#define MCCR1(m)	((m)->base1 + 0x00)
 
 #define priv(mcp)	((struct mcp_sa11x0 *)mcp_priv(mcp))
 
 static void
 mcp_sa11x0_set_telecom_divisor(struct mcp *mcp, unsigned int divisor)
 {
-	struct mcp_sa11x0 *priv = priv(mcp);
+	struct mcp_sa11x0 *m = priv(mcp);
 
 	divisor /= 32;
 
-	priv->mccr0 &= ~0x00007f00;
-	priv->mccr0 |= divisor << 8;
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
+	m->mccr0 &= ~0x00007f00;
+	m->mccr0 |= divisor << 8;
+	writel_relaxed(m->mccr0, MCCR0(m));
 }
 
 static void
 mcp_sa11x0_set_audio_divisor(struct mcp *mcp, unsigned int divisor)
 {
-	struct mcp_sa11x0 *priv = priv(mcp);
+	struct mcp_sa11x0 *m = priv(mcp);
 
 	divisor /= 32;
 
-	priv->mccr0 &= ~0x0000007f;
-	priv->mccr0 |= divisor;
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
+	m->mccr0 &= ~0x0000007f;
+	m->mccr0 |= divisor;
+	writel_relaxed(m->mccr0, MCCR0(m));
 }
 
 /*
@@ -77,18 +78,15 @@ mcp_sa11x0_set_audio_divisor(struct mcp *mcp, unsigned int divisor)
 static void
 mcp_sa11x0_write(struct mcp *mcp, unsigned int reg, unsigned int val)
 {
+	struct mcp_sa11x0 *m = priv(mcp);
 	int ret = -ETIME;
 	int i;
-	u32 mcpreg;
-	struct mcp_sa11x0 *priv = priv(mcp);
 
-	mcpreg = reg << 17 | MCDR2_Wr | (val & 0xffff);
-	__raw_writel(mcpreg, priv->mccr0_base + MCDR2);
+	writel_relaxed(reg << 17 | MCDR2_Wr | (val & 0xffff), MCDR2(m));
 
 	for (i = 0; i < 2; i++) {
 		udelay(mcp->rw_timeout);
-		mcpreg = __raw_readl(priv->mccr0_base + MCSR);
-		if (mcpreg & MCSR_CWC) {
+		if (readl_relaxed(MCSR(m)) & MCSR_CWC) {
 			ret = 0;
 			break;
 		}
@@ -107,20 +105,16 @@ mcp_sa11x0_write(struct mcp *mcp, unsigned int reg, unsigned int val)
 static unsigned int
 mcp_sa11x0_read(struct mcp *mcp, unsigned int reg)
 {
+	struct mcp_sa11x0 *m = priv(mcp);
 	int ret = -ETIME;
 	int i;
-	u32 mcpreg;
-	struct mcp_sa11x0 *priv = priv(mcp);
 
-	mcpreg = reg << 17 | MCDR2_Rd;
-	__raw_writel(mcpreg, priv->mccr0_base + MCDR2);
+	writel_relaxed(reg << 17 | MCDR2_Rd, MCDR2(m));
 
 	for (i = 0; i < 2; i++) {
 		udelay(mcp->rw_timeout);
-		mcpreg = __raw_readl(priv->mccr0_base + MCSR);
-		if (mcpreg & MCSR_CRC) {
-			ret = __raw_readl(priv->mccr0_base + MCDR2)
-				& 0xffff;
+		if (readl_relaxed(MCSR(m)) & MCSR_CRC) {
+			ret = readl_relaxed(MCDR2(m)) & 0xffff;
 			break;
 		}
 	}
@@ -133,19 +127,19 @@ mcp_sa11x0_read(struct mcp *mcp, unsigned int reg)
 
 static void mcp_sa11x0_enable(struct mcp *mcp)
 {
-	struct mcp_sa11x0 *priv = priv(mcp);
+	struct mcp_sa11x0 *m = priv(mcp);
 
-	__raw_writel(-1, priv->mccr0_base + MCSR);
-	priv->mccr0 |= MCCR0_MCE;
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
+	writel(-1, MCSR(m));
+	m->mccr0 |= MCCR0_MCE;
+	writel_relaxed(m->mccr0, MCCR0(m));
 }
 
 static void mcp_sa11x0_disable(struct mcp *mcp)
 {
-	struct mcp_sa11x0 *priv = priv(mcp);
+	struct mcp_sa11x0 *m = priv(mcp);
 
-	priv->mccr0 &= ~MCCR0_MCE;
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
+	m->mccr0 &= ~MCCR0_MCE;
+	writel_relaxed(m->mccr0, MCCR0(m));
 }
 
 /*
@@ -160,74 +154,64 @@ static struct mcp_ops mcp_sa11x0 = {
 	.disable		= mcp_sa11x0_disable,
 };
 
-static int mcp_sa11x0_probe(struct platform_device *pdev)
+static int mcp_sa11x0_probe(struct platform_device *dev)
 {
-	struct mcp_plat_data *data = pdev->dev.platform_data;
+	struct mcp_plat_data *data = dev->dev.platform_data;
+	struct resource *mem0, *mem1;
+	struct mcp_sa11x0 *m;
 	struct mcp *mcp;
 	int ret;
-	struct mcp_sa11x0 *priv;
-	struct resource *res_mem0, *res_mem1;
-	u32 size0, size1;
 
 	if (!data)
 		return -ENODEV;
 
-	if (!data->codec)
-		return -ENODEV;
+	mem0 = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	mem1 = platform_get_resource(dev, IORESOURCE_MEM, 1);
+	if (!mem0 || !mem1)
+		return -ENXIO;
 
-	res_mem0 = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res_mem0)
-		return -ENODEV;
-	size0 = res_mem0->end - res_mem0->start + 1;
-
-	res_mem1 = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (!res_mem1)
-		return -ENODEV;
-	size1 = res_mem1->end - res_mem1->start + 1;
-
-	if (!request_mem_region(res_mem0->start, size0, "sa11x0-mcp"))
-		return -EBUSY;
-
-	if (!request_mem_region(res_mem1->start, size1, "sa11x0-mcp")) {
+	if (!request_mem_region(mem0->start, resource_size(mem0),
+				DRIVER_NAME)) {
 		ret = -EBUSY;
-		goto release;
+		goto err_mem0;
 	}
 
-	mcp = mcp_host_alloc(&pdev->dev, sizeof(struct mcp_sa11x0));
+	if (!request_mem_region(mem1->start, resource_size(mem1),
+				DRIVER_NAME)) {
+		ret = -EBUSY;
+		goto err_mem1;
+	}
+
+	mcp = mcp_host_alloc(&dev->dev, sizeof(struct mcp_sa11x0));
 	if (!mcp) {
 		ret = -ENOMEM;
-		goto release2;
+		goto err_alloc;
 	}
-
-	priv = priv(mcp);
 
 	mcp->owner		= THIS_MODULE;
 	mcp->ops		= &mcp_sa11x0;
 	mcp->sclk_rate		= data->sclk_rate;
-	mcp->dma_audio_rd	= DDAR_DevAdd(res_mem0->start + MCDR0)
-				+ DDAR_DevRd + DDAR_Brst4 + DDAR_8BitDev;
-	mcp->dma_audio_wr	= DDAR_DevAdd(res_mem0->start + MCDR0)
-				+ DDAR_DevWr + DDAR_Brst4 + DDAR_8BitDev;
-	mcp->dma_telco_rd	= DDAR_DevAdd(res_mem0->start + MCDR1)
-				+ DDAR_DevRd + DDAR_Brst4 + DDAR_8BitDev;
-	mcp->dma_telco_wr	= DDAR_DevAdd(res_mem0->start + MCDR1)
-				+ DDAR_DevWr + DDAR_Brst4 + DDAR_8BitDev;
-	mcp->codec		= data->codec;
 
-	platform_set_drvdata(pdev, mcp);
+	m = priv(mcp);
+	m->mccr0 = data->mccr0 | 0x7f7f;
+	m->mccr1 = data->mccr1;
+
+	m->base0 = ioremap(mem0->start, resource_size(mem0));
+	m->base1 = ioremap(mem1->start, resource_size(mem1));
+	if (!m->base0 || !m->base1) {
+		ret = -ENOMEM;
+		goto err_ioremap;
+	}
+
+	platform_set_drvdata(dev, mcp);
 
 	/*
 	 * Initialise device.  Note that we initially
 	 * set the sampling rate to minimum.
 	 */
-	priv->mccr0_base = ioremap(res_mem0->start, size0);
-	priv->mccr1_base = ioremap(res_mem1->start, size1);
-
-	__raw_writel(-1, priv->mccr0_base + MCSR);
-	priv->mccr1 = data->mccr1;
-	priv->mccr0 = data->mccr0 | 0x7f7f;
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
-	__raw_writel(priv->mccr1, priv->mccr1_base + MCCR1);
+	writel_relaxed(-1, MCSR(m));
+	writel_relaxed(m->mccr1, MCCR1(m));
+	writel_relaxed(m->mccr0, MCCR0(m));
 
 	/*
 	 * Calculate the read/write timeout (us) from the bit clock
@@ -237,81 +221,90 @@ static int mcp_sa11x0_probe(struct platform_device *pdev)
 	mcp->rw_timeout = (64 * 3 * 1000000 + mcp->sclk_rate - 1) /
 			  mcp->sclk_rate;
 
-	ret = mcp_host_register(mcp, data->codec_pdata);
+	ret = mcp_host_add(mcp, data->codec_pdata);
 	if (ret == 0)
-		goto out;
+		return 0;
 
- release2:
-	release_mem_region(res_mem1->start, size1);
- release:
-	release_mem_region(res_mem0->start, size0);
-	platform_set_drvdata(pdev, NULL);
+	platform_set_drvdata(dev, NULL);
 
- out:
+ err_ioremap:
+	iounmap(m->base1);
+	iounmap(m->base0);
+	mcp_host_free(mcp);
+ err_alloc:
+	release_mem_region(mem1->start, resource_size(mem1));
+ err_mem1:
+	release_mem_region(mem0->start, resource_size(mem0));
+ err_mem0:
 	return ret;
 }
 
-static int mcp_sa11x0_remove(struct platform_device *pdev)
-{
-	struct mcp *mcp = platform_get_drvdata(pdev);
-	struct mcp_sa11x0 *priv = priv(mcp);
-	struct resource *res_mem;
-	u32 size;
-
-	platform_set_drvdata(pdev, NULL);
-	mcp_host_unregister(mcp);
-
-	res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res_mem) {
-		size = res_mem->end - res_mem->start + 1;
-		release_mem_region(res_mem->start, size);
-	}
-	res_mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-	if (res_mem) {
-		size = res_mem->end - res_mem->start + 1;
-		release_mem_region(res_mem->start, size);
-	}
-	iounmap(priv->mccr0_base);
-	iounmap(priv->mccr1_base);
-	return 0;
-}
-
-static int mcp_sa11x0_suspend(struct platform_device *dev, pm_message_t state)
+static int mcp_sa11x0_remove(struct platform_device *dev)
 {
 	struct mcp *mcp = platform_get_drvdata(dev);
-	struct mcp_sa11x0 *priv = priv(mcp);
-	u32 mccr0;
+	struct mcp_sa11x0 *m = priv(mcp);
+	struct resource *mem0, *mem1;
 
-	mccr0 = priv->mccr0 & ~MCCR0_MCE;
-	__raw_writel(mccr0, priv->mccr0_base + MCCR0);
+	if (m->mccr0 & MCCR0_MCE)
+		dev_warn(&dev->dev,
+			 "device left active (missing disable call?)\n");
+
+	mem0 = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	mem1 = platform_get_resource(dev, IORESOURCE_MEM, 1);
+
+	platform_set_drvdata(dev, NULL);
+	mcp_host_del(mcp);
+	iounmap(m->base1);
+	iounmap(m->base0);
+	mcp_host_free(mcp);
+	release_mem_region(mem1->start, resource_size(mem1));
+	release_mem_region(mem0->start, resource_size(mem0));
 
 	return 0;
 }
 
-static int mcp_sa11x0_resume(struct platform_device *dev)
+#ifdef CONFIG_PM_SLEEP
+static int mcp_sa11x0_suspend(struct device *dev)
 {
-	struct mcp *mcp = platform_get_drvdata(dev);
-	struct mcp_sa11x0 *priv = priv(mcp);
+	struct mcp_sa11x0 *m = priv(dev_get_drvdata(dev));
 
-	__raw_writel(priv->mccr0, priv->mccr0_base + MCCR0);
-	__raw_writel(priv->mccr1, priv->mccr1_base + MCCR1);
+	if (m->mccr0 & MCCR0_MCE)
+		dev_warn(dev, "device left active (missing disable call?)\n");
+
+	writel(m->mccr0 & ~MCCR0_MCE, MCCR0(m));
 
 	return 0;
 }
 
-/*
- * The driver for the SA11x0 MCP port.
- */
-MODULE_ALIAS("platform:sa11x0-mcp");
+static int mcp_sa11x0_resume(struct device *dev)
+{
+	struct mcp_sa11x0 *m = priv(dev_get_drvdata(dev));
+
+	writel_relaxed(m->mccr1, MCCR1(m));
+	writel_relaxed(m->mccr0, MCCR0(m));
+
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops mcp_sa11x0_pm_ops = {
+#ifdef CONFIG_PM_SLEEP
+	.suspend = mcp_sa11x0_suspend,
+	.freeze = mcp_sa11x0_suspend,
+	.poweroff = mcp_sa11x0_suspend,
+	.resume_noirq = mcp_sa11x0_resume,
+	.thaw_noirq = mcp_sa11x0_resume,
+	.restore_noirq = mcp_sa11x0_resume,
+#endif
+};
 
 static struct platform_driver mcp_sa11x0_driver = {
 	.probe		= mcp_sa11x0_probe,
 	.remove		= mcp_sa11x0_remove,
-	.suspend	= mcp_sa11x0_suspend,
-	.resume		= mcp_sa11x0_resume,
 	.driver		= {
-		.name	= "sa11x0-mcp",
-		.owner  = THIS_MODULE,
+		.name	= DRIVER_NAME,
+		.owner	= THIS_MODULE,
+		.pm	= &mcp_sa11x0_pm_ops,
 	},
 };
 
@@ -320,6 +313,7 @@ static struct platform_driver mcp_sa11x0_driver = {
  */
 module_platform_driver(mcp_sa11x0_driver);
 
+MODULE_ALIAS("platform:" DRIVER_NAME);
 MODULE_AUTHOR("Russell King <rmk@arm.linux.org.uk>");
 MODULE_DESCRIPTION("SA11x0 multimedia communications port driver");
 MODULE_LICENSE("GPL");

@@ -540,7 +540,7 @@ EXPORT_SYMBOL_GPL(debugfs_create_blob);
  * debugfs_print_regs32 - use seq_print to describe a set of registers
  * @s: the seq_file structure being used to generate output
  * @regs: an array if struct debugfs_reg32 structures
- * @mregs: the length of the above array
+ * @nregs: the length of the above array
  * @base: the base address to be used in reading the registers
  * @prefix: a string to be prefixed to every output line
  *
@@ -611,7 +611,7 @@ static const struct file_operations fops_regset32 = {
  * %NULL or !%NULL instead as to eliminate the need for #ifdef in the calling
  * code.
  */
-struct dentry *debugfs_create_regset32(const char *name, mode_t mode,
+struct dentry *debugfs_create_regset32(const char *name, umode_t mode,
 				       struct dentry *parent,
 				       struct debugfs_regset32 *regset)
 {
