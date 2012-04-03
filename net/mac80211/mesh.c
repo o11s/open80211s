@@ -99,6 +99,13 @@ bool mesh_matches_local(struct ieee802_11_elems *ie,
 	if (sdata->vif.bss_conf.basic_rates != basic_rates)
 		goto mismatch;
 
+	if (ie->ht_operation &&
+	    local->_oper_channel_type != NL80211_CHAN_NO_HT &&
+	    memcmp(ie->ht_operation->basic_set,
+	           sdata->vif.bss_conf.basic_mcs_set,
+		   IEEE80211_BASIC_MCS_SET_LEN))
+		goto mismatch;
+
 	/* disallow peering with mismatched channel types for now */
 	if (ie->ht_operation &&
 	    (local->_oper_channel_type !=
