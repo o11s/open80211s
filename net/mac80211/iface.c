@@ -1138,6 +1138,7 @@ int ieee80211_if_change_type(struct ieee80211_sub_if_data *sdata,
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 			sdata->local->hw.conf.channel->band);
+	sdata->vif.bss_conf.basic_mcs_set[0] = IEEE80211_DEFAULT_BASIC_MCS_SET;
 	sdata->drop_unencrypted = 0;
 	if (type == NL80211_IFTYPE_STATION)
 		sdata->u.mgd.use_4addr = false;

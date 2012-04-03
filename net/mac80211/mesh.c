@@ -396,7 +396,8 @@ int mesh_add_ht_oper_ie(struct sk_buff *skb,
 		return -ENOMEM;
 
 	pos = skb_put(skb, 2 + sizeof(struct ieee80211_ht_operation));
-	ieee80211_ie_build_ht_oper(pos, ht_cap, channel, channel_type);
+	ieee80211_ie_build_ht_oper(pos, ht_cap, &sdata->vif.bss_conf,
+				   channel, channel_type);
 
 	return 0;
 }
@@ -592,6 +593,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 					  sdata->local->hw.conf.channel->band);
+	sdata->vif.bss_conf.basic_mcs_set[0] = IEEE80211_DEFAULT_BASIC_MCS_SET;
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
 						BSS_CHANGED_BASIC_RATES |
