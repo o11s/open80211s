@@ -240,6 +240,8 @@ enum ieee80211_rssi_event {
  * @basic_rates: bitmap of basic rates, each bit stands for an
  *	index into the rate table configured by the driver in
  *	the current band.
+ * @basic_mcs_set: Indicates the MCS values that are supported by all HT STAs
+ *	in the BSS. Each bit stands for an MCS rate index.
  * @mcast_rate: per-band multicast rate index + 1 (0: disabled)
  * @bssid: The BSSID for this BSS
  * @enable_beacon: whether beaconing should be enabled or not
@@ -283,6 +285,7 @@ struct ieee80211_bss_conf {
 	u16 assoc_capability;
 	u64 last_tsf;
 	u32 basic_rates;
+	u8 basic_mcs_set[IEEE80211_BASIC_MCS_SET_LEN];
 	int mcast_rate[IEEE80211_NUM_BANDS];
 	u16 ht_operation_mode;
 	s32 cqm_rssi_thold;

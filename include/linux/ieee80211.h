@@ -1006,6 +1006,10 @@ enum ieee80211_min_mpdu_spacing {
 	IEEE80211_HT_MPDU_DENSITY_16 = 7	/* 16 usec */
 };
 
+/* Basic MCS Set */
+#define IEEE80211_BASIC_MCS_SET_LEN	0x10
+#define IEEE80211_DEFAULT_BASIC_MCS_SET	0xff /* mandatory HT PHY rates */
+
 /**
  * struct ieee80211_ht_operation - HT operation IE
  *
@@ -1017,7 +1021,7 @@ struct ieee80211_ht_operation {
 	u8 ht_param;
 	__le16 operation_mode;
 	__le16 stbc_param;
-	u8 basic_set[16];
+	u8 basic_set[IEEE80211_BASIC_MCS_SET_LEN];
 } __attribute__ ((packed));
 
 /* for ht_param */

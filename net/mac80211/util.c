@@ -1666,6 +1666,7 @@ u8 *ieee80211_ie_build_ht_cap(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 }
 
 u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
+			       struct ieee80211_bss_conf *bss_conf,
 			       struct ieee80211_channel *channel,
 			       enum nl80211_channel_type channel_type)
 {
@@ -1698,10 +1699,9 @@ u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 	ht_oper->operation_mode = 0x0000;
 	ht_oper->stbc_param = 0x0000;
 
-	/* It seems that Basic MCS set and Supported MCS set
-	   are identical for the first 10 bytes */
-	memset(&ht_oper->basic_set, 0, 16);
-	memcpy(&ht_oper->basic_set, &ht_cap->mcs, 10);
+	memset(&ht_oper->basic_set, 0, IEEE80211_BASIC_MCS_SET_LEN);
+	memcpy(&ht_oper->basic_set, bss_conf->basic_mcs_set,
+				    IEEE80211_BASIC_MCS_SET_LEN);
 
 	return pos + sizeof(struct ieee80211_ht_operation);
 }

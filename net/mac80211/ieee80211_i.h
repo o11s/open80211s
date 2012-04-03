@@ -1495,6 +1495,7 @@ size_t ieee80211_ie_split_vendor(const u8 *ies, size_t ielen, size_t offset);
 u8 *ieee80211_ie_build_ht_cap(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 			      u16 cap);
 u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
+			       struct ieee80211_bss_conf *conf,
 			       struct ieee80211_channel *channel,
 			       enum nl80211_channel_type channel_type);
 

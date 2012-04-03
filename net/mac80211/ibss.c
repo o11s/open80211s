@@ -163,8 +163,11 @@ static void __ieee80211_sta_join_ibss(struct ieee80211_sub_if_data *sdata,
 				   sizeof(struct ieee80211_ht_operation));
 		pos = ieee80211_ie_build_ht_cap(pos, &sband->ht_cap,
 						sband->ht_cap.cap);
-		pos = ieee80211_ie_build_ht_oper(pos, &sband->ht_cap,
-						 chan, channel_type);
+		pos = ieee80211_ie_build_ht_oper(pos,
+						 &sband->ht_cap,
+						 &sdata->vif.bss_conf,
+						 chan,
+						 channel_type);
 	}
 
 	if (local->hw.queues >= IEEE80211_NUM_ACS) {
