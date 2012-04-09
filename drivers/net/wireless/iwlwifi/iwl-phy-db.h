@@ -41,6 +41,7 @@
  *    notice, this list of conditions and the following disclaimer.
  *  * Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
  *    distribution.
  *  * Neither the name Intel Corporation nor the names of its
  *    contributors may be used to endorse or promote products derived
@@ -59,80 +60,64 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *****************************************************************************/
-#ifndef __iwl_notif_wait_h__
-#define __iwl_notif_wait_h__
 
-#include <linux/wait.h>
+#ifndef __IWL_PHYDB_H__
+#define __IWL_PHYDB_H__
 
-#include "iwl-trans.h"
+#include <linux/types.h>
 
-struct iwl_notif_wait_data {
-	struct list_head notif_waits;
-	spinlock_t notif_wait_lock;
-	wait_queue_head_t notif_waitq;
+#define IWL_NUM_PAPD_CH_GROUPS	4
+#define IWL_NUM_TXP_CH_GROUPS	8
+
+struct iwl_phy_db_entry {
+	u16	size;
+	u8	*data;
 };
 
-#define MAX_NOTIF_CMDS	5
+struct iwl_shared;
 
 /**
- * struct iwl_notification_wait - notification wait entry
- * @list: list head for global list
- * @fn: Function called with the notification. If the function
- *	returns true, the wait is over, if it returns false then
- *	the waiter stays blocked. If no function is given, any
- *	of the listed commands will unblock the waiter.
- * @cmds: command IDs
- * @n_cmds: number of command IDs
- * @triggered: waiter should be woken up
- * @aborted: wait was aborted
+ * struct iwl_phy_db - stores phy configuration and calibration data.
  *
- * This structure is not used directly, to wait for a
- * notification declare it on the stack, and call
- * iwlagn_init_notification_wait() with appropriate
- * parameters. Then do whatever will cause the ucode
- * to notify the driver, and to wait for that then
- * call iwlagn_wait_notification().
- *
- * Each notification is one-shot. If at some point we
- * need to support multi-shot notifications (which
- * can't be allocated on the stack) we need to modify
- * the code for them.
+ * @cfg: phy configuration.
+ * @calib_nch: non channel specific calibration data.
+ * @calib_ch: channel specific calibration data.
+ * @calib_ch_group_papd: calibration data related to papd channel group.
+ * @calib_ch_group_txp: calibration data related to tx power chanel group.
  */
-struct iwl_notification_wait {
-	struct list_head list;
+struct iwl_phy_db {
+	struct iwl_phy_db_entry	cfg;
+	struct iwl_phy_db_entry	calib_nch;
+	struct iwl_phy_db_entry	calib_ch;
+	struct iwl_phy_db_entry	calib_ch_group_papd[IWL_NUM_PAPD_CH_GROUPS];
+	struct iwl_phy_db_entry	calib_ch_group_txp[IWL_NUM_TXP_CH_GROUPS];
 
-	bool (*fn)(struct iwl_notif_wait_data *notif_data,
-		   struct iwl_rx_packet *pkt, void *data);
-	void *fn_data;
+	u32 channel_num;
+	u32 channel_size;
 
-	u8 cmds[MAX_NOTIF_CMDS];
-	u8 n_cmds;
-	bool triggered, aborted;
+	/* for an access to the logger */
+	const struct iwl_shared *shrd;
 };
 
+enum iwl_phy_db_section_type {
+	IWL_PHY_DB_CFG = 1,
+	IWL_PHY_DB_CALIB_NCH,
+	IWL_PHY_DB_CALIB_CH,
+	IWL_PHY_DB_CALIB_CHG_PAPD,
+	IWL_PHY_DB_CALIB_CHG_TXP,
+	IWL_PHY_DB_MAX
+};
 
-/* caller functions */
-void iwl_notification_wait_init(struct iwl_notif_wait_data *notif_data);
-void iwl_notification_wait_notify(struct iwl_notif_wait_data *notif_data,
-				  struct iwl_rx_packet *pkt);
-void iwl_abort_notification_waits(struct iwl_notif_wait_data *notif_data);
+struct iwl_phy_db *iwl_phy_db_init(struct iwl_shared *shrd);
 
-/* user functions */
-void __acquires(wait_entry)
-iwl_init_notification_wait(struct iwl_notif_wait_data *notif_data,
-			   struct iwl_notification_wait *wait_entry,
-			   const u8 *cmds, int n_cmds,
-			   bool (*fn)(struct iwl_notif_wait_data *notif_data,
-				      struct iwl_rx_packet *pkt, void *data),
-			   void *fn_data);
+void iwl_phy_db_free(struct iwl_phy_db *phy_db);
 
-int __must_check __releases(wait_entry)
-iwl_wait_notification(struct iwl_notif_wait_data *notif_data,
-		      struct iwl_notification_wait *wait_entry,
-		      unsigned long timeout);
+int iwl_phy_db_set_section(struct iwl_phy_db *phy_db,
+			   enum iwl_phy_db_section_type type, u8 *data,
+			   u16 size, gfp_t alloc_ctx);
 
-void __releases(wait_entry)
-iwl_remove_notification(struct iwl_notif_wait_data *notif_data,
-			struct iwl_notification_wait *wait_entry);
+int iwl_phy_db_get_section_data(struct iwl_phy_db *phy_db,
+				enum iwl_phy_db_section_type type, u8 **data,
+				u16 *size, u16 ch_id);
 
-#endif /* __iwl_notif_wait_h__ */
+#endif /* __IWL_PHYDB_H__ */

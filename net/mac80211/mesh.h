@@ -86,6 +86,7 @@ enum mesh_deferred_task_flags {
  * mpath itself.  No need to take this lock when adding or removing
  * an mpath to a hash bucket on a path table.
  * @rann_snd_addr: the RANN sender address
+ * @rann_metric: the aggregated path metric towards the root node
  * @is_root: the destination station of this path is a root node
  * @is_gate: the destination station of this path is a mesh gate
  *
@@ -112,6 +113,7 @@ struct mesh_path {
 	enum mesh_path_flags flags;
 	spinlock_t state_lock;
 	u8 rann_snd_addr[ETH_ALEN];
+	u32 rann_metric;
 	bool is_root;
 	bool is_gate;
 };
@@ -220,7 +222,7 @@ int mesh_add_ds_params_ie(struct sk_buff *skb,
 			  struct ieee80211_sub_if_data *sdata);
 int mesh_add_ht_cap_ie(struct sk_buff *skb,
 		       struct ieee80211_sub_if_data *sdata);
-int mesh_add_ht_info_ie(struct sk_buff *skb,
+int mesh_add_ht_oper_ie(struct sk_buff *skb,
 			struct ieee80211_sub_if_data *sdata);
 void mesh_rmc_free(struct ieee80211_sub_if_data *sdata);
 int mesh_rmc_init(struct ieee80211_sub_if_data *sdata);
