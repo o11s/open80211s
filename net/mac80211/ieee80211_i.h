@@ -379,6 +379,7 @@ enum ieee80211_sta_flags {
 	IEEE80211_STA_UAPSD_ENABLED	= BIT(7),
 	IEEE80211_STA_NULLFUNC_ACKED	= BIT(8),
 	IEEE80211_STA_RESET_SIGNAL_AVE	= BIT(9),
+	IEEE80211_STA_DISABLE_40MHZ	= BIT(10),
 };
 
 struct ieee80211_mgd_auth_data {
@@ -553,6 +554,24 @@ struct ieee80211_if_ibss {
 	} state;
 };
 
+/**
+ * struct ieee80211_mesh_sync_ops - Extensible synchronization framework interface
+ *
+ * these declarations define the interface, which enables
+ * vendor-specific mesh synchronization
+ *
+ */
+struct ieee802_11_elems;
+struct ieee80211_mesh_sync_ops {
+	void (*rx_bcn_presp)(struct ieee80211_sub_if_data *sdata,
+			     u16 stype,
+			     struct ieee80211_mgmt *mgmt,
+			     struct ieee802_11_elems *elems,
+			     struct ieee80211_rx_status *rx_status);
+	void (*adjust_tbtt)(struct ieee80211_sub_if_data *sdata);
+	/* add other framework functions here */
+};
+
 struct ieee80211_if_mesh {
 	struct timer_list housekeeping_timer;
 	struct timer_list mesh_path_timer;
@@ -601,6 +620,11 @@ struct ieee80211_if_mesh {
 		IEEE80211_MESH_SEC_AUTHED = 0x1,
 		IEEE80211_MESH_SEC_SECURED = 0x2,
 	} security;
+	/* Extensible Synchronization Framework */
+	struct ieee80211_mesh_sync_ops *sync_ops;
+	s64 sync_offset_clockdrift_max;
+	spinlock_t sync_offset_lock;
+	bool adjusting_tbtt;
 };
 
 #ifdef CONFIG_MAC80211_MESH
@@ -667,12 +691,6 @@ struct ieee80211_sub_if_data {
 
 	char name[IFNAMSIZ];
 
-	/*
-	 * keep track of whether the HT opmode (stored in
-	 * vif.bss_info.ht_operation_mode) is valid.
-	 */
-	bool ht_opmode_valid;
-
 	/* to detect idle changes */
 	bool old_idle;
 
@@ -692,7 +710,7 @@ struct ieee80211_sub_if_data {
 	__be16 control_port_protocol;
 	bool control_port_no_encrypt;
 
-	struct ieee80211_tx_queue_params tx_conf[IEEE80211_MAX_QUEUES];
+	struct ieee80211_tx_queue_params tx_conf[IEEE80211_NUM_ACS];
 
 	struct work_struct work;
 	struct sk_buff_head skb_queue;
@@ -762,7 +780,6 @@ enum queue_stop_reason {
 	IEEE80211_QUEUE_STOP_REASON_AGGREGATION,
 	IEEE80211_QUEUE_STOP_REASON_SUSPEND,
 	IEEE80211_QUEUE_STOP_REASON_SKB_ADD,
-	IEEE80211_QUEUE_STOP_REASON_CHTYPE_CHANGE,
 };
 
 #ifdef CONFIG_MAC80211_LEDS
@@ -1300,7 +1317,6 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 				       struct net_device *dev);
 
 /* HT */
-bool ieee80111_cfg_override_disables_ht40(struct ieee80211_sub_if_data *sdata);
 void ieee80211_apply_htcap_overrides(struct ieee80211_sub_if_data *sdata,
 				     struct ieee80211_sta_ht_cap *ht_cap);
 void ieee80211_ht_cap_ie_to_sta_ht_cap(struct ieee80211_sub_if_data *sdata,
@@ -1432,11 +1448,14 @@ void ieee80211_stop_queue_by_reason(struct ieee80211_hw *hw, int queue,
 				    enum queue_stop_reason reason);
 void ieee80211_add_pending_skb(struct ieee80211_local *local,
 			       struct sk_buff *skb);
-void ieee80211_add_pending_skbs(struct ieee80211_local *local,
-				struct sk_buff_head *skbs);
 void ieee80211_add_pending_skbs_fn(struct ieee80211_local *local,
 				   struct sk_buff_head *skbs,
 				   void (*fn)(void *data), void *data);
+static inline void ieee80211_add_pending_skbs(struct ieee80211_local *local,
+					      struct sk_buff_head *skbs)
+{
+	ieee80211_add_pending_skbs_fn(local, skbs, NULL, NULL);
+}
 
 void ieee80211_send_auth(struct ieee80211_sub_if_data *sdata,
 			 u16 transaction, u16 auth_alg,
@@ -1502,9 +1521,6 @@ bool ieee80211_set_channel_type(struct ieee80211_local *local,
 				enum nl80211_channel_type chantype);
 enum nl80211_channel_type
 ieee80211_ht_oper_to_channel_type(struct ieee80211_ht_operation *ht_oper);
-enum nl80211_channel_type ieee80211_get_tx_channel_type(
-					struct ieee80211_local *local,
-					enum nl80211_channel_type channel_type);
 
 #ifdef CONFIG_MAC80211_NOINLINE
 #define debug_noinline noinline
