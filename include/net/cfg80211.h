@@ -1344,6 +1344,9 @@ struct cfg80211_gtk_rekey_data {
  *	be %NULL or contain the enabled Wake-on-Wireless triggers that are
  *	configured for the device.
  * @resume: wiphy device needs to be resumed
+ * @set_wakeup: Called when WoWLAN is enabled/disabled, use this callback
+ *	to call device_set_wakeup_enable() to enable/disable wakeup from
+ *	the device.
  *
  * @add_virtual_intf: create a new virtual interface with the given name,
  *	must set the struct wireless_dev's iftype. Beware: You must create
@@ -1515,6 +1518,7 @@ struct cfg80211_gtk_rekey_data {
 struct cfg80211_ops {
 	int	(*suspend)(struct wiphy *wiphy, struct cfg80211_wowlan *wow);
 	int	(*resume)(struct wiphy *wiphy);
+	void	(*set_wakeup)(struct wiphy *wiphy, bool enabled);
 
 	struct net_device * (*add_virtual_intf)(struct wiphy *wiphy,
 						char *name,
@@ -3349,6 +3353,17 @@ void cfg80211_report_obss_beacon(struct wiphy *wiphy,
 int cfg80211_can_beacon_sec_chan(struct wiphy *wiphy,
 				 struct ieee80211_channel *chan,
 				 enum nl80211_channel_type channel_type);
+
+/*
+ * cfg80211_ch_switch_notify - update wdev channel and notify userspace
+ * @dev: the device which switched channels
+ * @freq: new channel frequency (in MHz)
+ * @type: channel type
+ *
+ * Acquires wdev_lock, so must only be called from sleepable driver context!
+ */
+void cfg80211_ch_switch_notify(struct net_device *dev, int freq,
+			       enum nl80211_channel_type type);
 
 /*
  * cfg80211_calculate_bitrate - calculate actual bitrate (in 100Kbps units)

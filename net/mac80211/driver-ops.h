@@ -91,6 +91,19 @@ static inline int drv_resume(struct ieee80211_local *local)
 	trace_drv_return_int(local, ret);
 	return ret;
 }
+
+static inline void drv_set_wakeup(struct ieee80211_local *local,
+				  bool enabled)
+{
+	might_sleep();
+
+	if (!local->ops->set_wakeup)
+		return;
+
+	trace_drv_set_wakeup(local, enabled);
+	local->ops->set_wakeup(&local->hw, enabled);
+	trace_drv_return_void(local);
+}
 #endif
 
 static inline int drv_add_interface(struct ieee80211_local *local,
@@ -101,7 +114,8 @@ static inline int drv_add_interface(struct ieee80211_local *local,
 	might_sleep();
 
 	if (WARN_ON(sdata->vif.type == NL80211_IFTYPE_AP_VLAN ||
-		    sdata->vif.type == NL80211_IFTYPE_MONITOR))
+		    (sdata->vif.type == NL80211_IFTYPE_MONITOR &&
+		     !(local->hw.flags & IEEE80211_HW_WANT_MONITOR_VIF))))
 		return -EINVAL;
 
 	trace_drv_add_interface(local, sdata);

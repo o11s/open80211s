@@ -1100,6 +1100,9 @@ struct ieee80211_local {
 	struct net_device napi_dev;
 
 	struct napi_struct napi;
+
+	/* virtual monitor interface */
+	struct ieee80211_sub_if_data __rcu *monitor_sdata;
 };
 
 static inline struct ieee80211_sub_if_data *
@@ -1446,6 +1449,7 @@ void ieee80211_wake_queue_by_reason(struct ieee80211_hw *hw, int queue,
 				    enum queue_stop_reason reason);
 void ieee80211_stop_queue_by_reason(struct ieee80211_hw *hw, int queue,
 				    enum queue_stop_reason reason);
+void ieee80211_propagate_queue_wake(struct ieee80211_local *local, int queue);
 void ieee80211_add_pending_skb(struct ieee80211_local *local,
 			       struct sk_buff *skb);
 void ieee80211_add_pending_skbs_fn(struct ieee80211_local *local,
@@ -1480,7 +1484,7 @@ void ieee80211_sta_def_wmm_params(struct ieee80211_sub_if_data *sdata,
 				  const u8 *supp_rates);
 u32 ieee80211_sta_get_rates(struct ieee80211_local *local,
 			    struct ieee802_11_elems *elems,
-			    enum ieee80211_band band);
+			    enum ieee80211_band band, u32 *basic_rates);
 int __ieee80211_request_smps(struct ieee80211_sub_if_data *sdata,
 			     enum ieee80211_smps_mode smps_mode);
 void ieee80211_recalc_smps(struct ieee80211_local *local);

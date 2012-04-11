@@ -66,11 +66,13 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
  *
  * @ie: information elements of a management frame from the mesh peer
  * @sdata: local mesh subif
+ * @basic_rates: BSSBasicRateSet of the peer candidate
  *
  * This function checks if the mesh configuration of a mesh point matches the
  * local mesh configuration, i.e. if both nodes belong to the same mesh network.
  */
-bool mesh_matches_local(struct ieee802_11_elems *ie, struct ieee80211_sub_if_data *sdata)
+bool mesh_matches_local(struct ieee802_11_elems *ie,
+			struct ieee80211_sub_if_data *sdata, u32 basic_rates)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee80211_local *local = sdata->local;
@@ -92,6 +94,9 @@ bool mesh_matches_local(struct ieee802_11_elems *ie, struct ieee80211_sub_if_dat
 	     (ifmsh->mesh_cc_id == ie->mesh_config->meshconf_congest) &&
 	     (ifmsh->mesh_sp_id == ie->mesh_config->meshconf_synch) &&
 	     (ifmsh->mesh_auth_id == ie->mesh_config->meshconf_auth)))
+		goto mismatch;
+
+	if (sdata->vif.bss_conf.basic_rates != basic_rates)
 		goto mismatch;
 
 	/* disallow peering with mismatched channel types for now */
@@ -581,8 +586,12 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
 	sdata->vif.bss_conf.beacon_int = MESH_DEFAULT_BEACON_INTERVAL;
+	sdata->vif.bss_conf.basic_rates =
+		ieee80211_mandatory_rates(sdata->local,
+					  sdata->local->hw.conf.channel->band);
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
+						BSS_CHANGED_BASIC_RATES |
 						BSS_CHANGED_BEACON_INT);
 }
 
@@ -621,7 +630,7 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee802_11_elems elems;
 	struct ieee80211_channel *channel;
-	u32 supp_rates = 0;
+	u32 supp_rates = 0, basic_rates = 0;
 	size_t baselen;
 	int freq;
 	enum ieee80211_band band = rx_status->band;
@@ -652,11 +661,12 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 	if (!channel || channel->flags & IEEE80211_CHAN_DISABLED)
 		return;
 
+	supp_rates = ieee80211_sta_get_rates(local, &elems,
+					     band, &basic_rates);
+
 	if (elems.mesh_id && elems.mesh_config &&
-	    mesh_matches_local(&elems, sdata)) {
-		supp_rates = ieee80211_sta_get_rates(local, &elems, band);
+	    mesh_matches_local(&elems, sdata, basic_rates))
 		mesh_neighbour_update(mgmt->sa, supp_rates, sdata, &elems);
-	}
 
 	if (ifmsh->sync_ops)
 		ifmsh->sync_ops->rx_bcn_presp(sdata,

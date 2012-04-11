@@ -265,11 +265,36 @@ __le16 ieee80211_ctstoself_duration(struct ieee80211_hw *hw,
 }
 EXPORT_SYMBOL(ieee80211_ctstoself_duration);
 
+void ieee80211_propagate_queue_wake(struct ieee80211_local *local, int queue)
+{
+	struct ieee80211_sub_if_data *sdata;
+
+	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+		int ac;
+
+		if (test_bit(SDATA_STATE_OFFCHANNEL, &sdata->state))
+			continue;
+
+		if (sdata->vif.cab_queue != IEEE80211_INVAL_HW_QUEUE &&
+		    local->queue_stop_reasons[sdata->vif.cab_queue] != 0)
+			continue;
+
+		for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+			int ac_queue = sdata->vif.hw_queue[ac];
+
+			if (ac_queue == queue ||
+			    (sdata->vif.cab_queue == queue &&
+			     local->queue_stop_reasons[ac_queue] == 0 &&
+			     skb_queue_empty(&local->pending[ac_queue])))
+				netif_wake_subqueue(sdata->dev, ac);
+		}
+	}
+}
+
 static void __ieee80211_wake_queue(struct ieee80211_hw *hw, int queue,
 				   enum queue_stop_reason reason)
 {
 	struct ieee80211_local *local = hw_to_local(hw);
-	struct ieee80211_sub_if_data *sdata;
 
 	trace_wake_queue(local, queue, reason);
 
@@ -287,11 +312,7 @@ static void __ieee80211_wake_queue(struct ieee80211_hw *hw, int queue,
 
 	if (skb_queue_empty(&local->pending[queue])) {
 		rcu_read_lock();
-		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-			if (test_bit(SDATA_STATE_OFFCHANNEL, &sdata->state))
-				continue;
-			netif_wake_subqueue(sdata->dev, queue);
-		}
+		ieee80211_propagate_queue_wake(local, queue);
 		rcu_read_unlock();
 	} else
 		tasklet_schedule(&local->tx_pending_tasklet);
@@ -332,8 +353,15 @@ static void __ieee80211_stop_queue(struct ieee80211_hw *hw, int queue,
 	__set_bit(reason, &local->queue_stop_reasons[queue]);
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(sdata, &local->interfaces, list)
-		netif_stop_subqueue(sdata->dev, queue);
+	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+		int ac;
+
+		for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+			if (sdata->vif.hw_queue[ac] == queue ||
+			    sdata->vif.cab_queue == queue)
+				netif_stop_subqueue(sdata->dev, ac);
+		}
+	}
 	rcu_read_unlock();
 }
 
@@ -360,8 +388,8 @@ void ieee80211_add_pending_skb(struct ieee80211_local *local,
 {
 	struct ieee80211_hw *hw = &local->hw;
 	unsigned long flags;
-	int queue = skb_get_queue_mapping(skb);
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	int queue = info->hw_queue;
 
 	if (WARN_ON(!info->control.vif)) {
 		kfree_skb(skb);
@@ -393,7 +421,7 @@ void ieee80211_add_pending_skbs_fn(struct ieee80211_local *local,
 			continue;
 		}
 
-		queue = skb_get_queue_mapping(skb);
+		queue = info->hw_queue;
 
 		__ieee80211_stop_queue(hw, queue,
 				IEEE80211_QUEUE_STOP_REASON_SKB_ADD);
@@ -1109,7 +1137,7 @@ void ieee80211_send_probe_req(struct ieee80211_sub_if_data *sdata, u8 *dst,
 
 u32 ieee80211_sta_get_rates(struct ieee80211_local *local,
 			    struct ieee802_11_elems *elems,
-			    enum ieee80211_band band)
+			    enum ieee80211_band band, u32 *basic_rates)
 {
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_rate *bitrates;
@@ -1130,15 +1158,25 @@ u32 ieee80211_sta_get_rates(struct ieee80211_local *local,
 		     elems->ext_supp_rates_len; i++) {
 		u8 rate = 0;
 		int own_rate;
+		bool is_basic;
 		if (i < elems->supp_rates_len)
 			rate = elems->supp_rates[i];
 		else if (elems->ext_supp_rates)
 			rate = elems->ext_supp_rates
 				[i - elems->supp_rates_len];
 		own_rate = 5 * (rate & 0x7f);
-		for (j = 0; j < num_rates; j++)
-			if (bitrates[j].bitrate == own_rate)
+		is_basic = !!(rate & 0x80);
+
+		if (is_basic && (rate & 0x7f) == BSS_MEMBERSHIP_SELECTOR_HT_PHY)
+			continue;
+
+		for (j = 0; j < num_rates; j++) {
+			if (bitrates[j].bitrate == own_rate) {
 				supp_rates |= BIT(j);
+				if (basic_rates && is_basic)
+					*basic_rates |= BIT(j);
+			}
+		}
 	}
 	return supp_rates;
 }
@@ -1213,6 +1251,16 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 				   IEEE80211_TPT_LEDTRIG_FL_RADIO, 0);
 
 	/* add interfaces */
+	sdata = rtnl_dereference(local->monitor_sdata);
+	if (sdata) {
+		res = drv_add_interface(local, sdata);
+		if (WARN_ON(res)) {
+			rcu_assign_pointer(local->monitor_sdata, NULL);
+			synchronize_net();
+			kfree(sdata);
+		}
+	}
+
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (sdata->vif.type != NL80211_IFTYPE_AP_VLAN &&
 		    sdata->vif.type != NL80211_IFTYPE_MONITOR &&
@@ -1683,13 +1731,15 @@ ieee80211_ht_oper_to_channel_type(struct ieee80211_ht_operation *ht_oper)
 	return channel_type;
 }
 
-int ieee80211_add_srates_ie(struct ieee80211_vif *vif, struct sk_buff *skb)
+int ieee80211_add_srates_ie(struct ieee80211_vif *vif,
+			    struct sk_buff *skb, bool need_basic)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	int rate;
 	u8 i, rates, *pos;
+	u32 basic_rates = vif->bss_conf.basic_rates;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	rates = sband->n_bitrates;
@@ -1703,20 +1753,25 @@ int ieee80211_add_srates_ie(struct ieee80211_vif *vif, struct sk_buff *skb)
 	*pos++ = WLAN_EID_SUPP_RATES;
 	*pos++ = rates;
 	for (i = 0; i < rates; i++) {
+		u8 basic = 0;
+		if (need_basic && basic_rates & BIT(i))
+			basic = 0x80;
 		rate = sband->bitrates[i].bitrate;
-		*pos++ = (u8) (rate / 5);
+		*pos++ = basic | (u8) (rate / 5);
 	}
 
 	return 0;
 }
 
-int ieee80211_add_ext_srates_ie(struct ieee80211_vif *vif, struct sk_buff *skb)
+int ieee80211_add_ext_srates_ie(struct ieee80211_vif *vif,
+				struct sk_buff *skb, bool need_basic)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	int rate;
 	u8 i, exrates, *pos;
+	u32 basic_rates = vif->bss_conf.basic_rates;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	exrates = sband->n_bitrates;
@@ -1733,8 +1788,11 @@ int ieee80211_add_ext_srates_ie(struct ieee80211_vif *vif, struct sk_buff *skb)
 		*pos++ = WLAN_EID_EXT_SUPP_RATES;
 		*pos++ = exrates;
 		for (i = 8; i < sband->n_bitrates; i++) {
+			u8 basic = 0;
+			if (need_basic && basic_rates & BIT(i))
+				basic = 0x80;
 			rate = sband->bitrates[i].bitrate;
-			*pos++ = (u8) (rate / 5);
+			*pos++ = basic | (u8) (rate / 5);
 		}
 	}
 	return 0;
