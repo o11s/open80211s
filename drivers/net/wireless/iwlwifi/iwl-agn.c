@@ -180,7 +180,7 @@ int iwlagn_send_beacon_cmd(struct iwl_priv *priv)
 		rate = info->control.rates[0].idx;
 
 	priv->mgmt_tx_ant = iwl_toggle_tx_ant(priv, priv->mgmt_tx_ant,
-					      hw_params(priv).valid_tx_ant);
+					      priv->hw_params.valid_tx_ant);
 	rate_flags = iwl_ant_idx_to_flags(priv->mgmt_tx_ant);
 
 	/* In mac80211, rates for 5 GHz start at 0 */
@@ -658,9 +658,9 @@ static void iwl_rf_kill_ct_config(struct iwl_priv *priv)
 
 	if (cfg(priv)->base_params->support_ct_kill_exit) {
 		adv_cmd.critical_temperature_enter =
-			cpu_to_le32(hw_params(priv).ct_kill_threshold);
+			cpu_to_le32(priv->hw_params.ct_kill_threshold);
 		adv_cmd.critical_temperature_exit =
-			cpu_to_le32(hw_params(priv).ct_kill_exit_threshold);
+			cpu_to_le32(priv->hw_params.ct_kill_exit_threshold);
 
 		ret = iwl_dvm_send_cmd_pdu(priv,
 				       REPLY_CT_KILL_CONFIG_CMD,
@@ -671,11 +671,11 @@ static void iwl_rf_kill_ct_config(struct iwl_priv *priv)
 			IWL_DEBUG_INFO(priv, "REPLY_CT_KILL_CONFIG_CMD "
 				"succeeded, critical temperature enter is %d,"
 				"exit is %d\n",
-				hw_params(priv).ct_kill_threshold,
-				hw_params(priv).ct_kill_exit_threshold);
+				priv->hw_params.ct_kill_threshold,
+				priv->hw_params.ct_kill_exit_threshold);
 	} else {
 		cmd.critical_temperature_R =
-			cpu_to_le32(hw_params(priv).ct_kill_threshold);
+			cpu_to_le32(priv->hw_params.ct_kill_threshold);
 
 		ret = iwl_dvm_send_cmd_pdu(priv,
 				       REPLY_CT_KILL_CONFIG_CMD,
@@ -686,7 +686,7 @@ static void iwl_rf_kill_ct_config(struct iwl_priv *priv)
 			IWL_DEBUG_INFO(priv, "REPLY_CT_KILL_CONFIG_CMD "
 				"succeeded, "
 				"critical temperature is %d\n",
-				hw_params(priv).ct_kill_threshold);
+				priv->hw_params.ct_kill_threshold);
 	}
 }
 
@@ -741,9 +741,6 @@ int iwl_alive_start(struct iwl_priv *priv)
 	/* After the ALIVE response, we can send host commands to the uCode */
 	set_bit(STATUS_ALIVE, &priv->status);
 
-	/* Enable watchdog to monitor the driver tx queues */
-	iwl_setup_watchdog(priv);
-
 	if (iwl_is_rfkill(priv))
 		return -ERFKILL;
 
@@ -796,7 +793,7 @@ int iwl_alive_start(struct iwl_priv *priv)
 	priv->active_rate = IWL_RATES_MASK;
 
 	/* Configure Tx antenna selection based on H/W config */
-	iwlagn_send_tx_ant_config(priv, hw_params(priv).valid_tx_ant);
+	iwlagn_send_tx_ant_config(priv, priv->hw_params.valid_tx_ant);
 
 	if (iwl_is_associated_ctx(ctx) && !priv->wowlan) {
 		struct iwl_rxon_cmd *active_rxon =
@@ -886,10 +883,6 @@ void iwl_down(struct iwl_priv *priv)
 
 	exit_pending =
 		test_and_set_bit(STATUS_EXIT_PENDING, &priv->status);
-
-	/* Stop TX queues watchdog. We need to have STATUS_EXIT_PENDING bit set
-	 * to prevent rearm timer */
-	del_timer_sync(&priv->watchdog);
 
 	iwl_clear_ucode_stations(priv, NULL);
 	iwl_dealloc_bcast_stations(priv);
@@ -1092,10 +1085,6 @@ static void iwl_setup_deferred_work(struct iwl_priv *priv)
 	init_timer(&priv->ucode_trace);
 	priv->ucode_trace.data = (unsigned long)priv;
 	priv->ucode_trace.function = iwl_bg_ucode_trace;
-
-	init_timer(&priv->watchdog);
-	priv->watchdog.data = (unsigned long)priv;
-	priv->watchdog.function = iwl_bg_watchdog;
 }
 
 void iwl_cancel_deferred_work(struct iwl_priv *priv)
@@ -1143,8 +1132,8 @@ static void iwl_init_ht_hw_capab(const struct iwl_priv *priv,
 			      enum ieee80211_band band)
 {
 	u16 max_bit_rate = 0;
-	u8 rx_chains_num = hw_params(priv).rx_chains_num;
-	u8 tx_chains_num = hw_params(priv).tx_chains_num;
+	u8 rx_chains_num = priv->hw_params.rx_chains_num;
+	u8 tx_chains_num = priv->hw_params.tx_chains_num;
 
 	ht_info->cap = 0;
 	memset(&ht_info->mcs, 0, sizeof(ht_info->mcs));
@@ -1156,7 +1145,7 @@ static void iwl_init_ht_hw_capab(const struct iwl_priv *priv,
 		ht_info->cap |= IEEE80211_HT_CAP_GRN_FLD;
 	ht_info->cap |= IEEE80211_HT_CAP_SGI_20;
 	max_bit_rate = MAX_BIT_RATE_20_MHZ;
-	if (hw_params(priv).ht40_channel & BIT(band)) {
+	if (priv->hw_params.ht40_channel & BIT(band)) {
 		ht_info->cap |= IEEE80211_HT_CAP_SUP_WIDTH_20_40;
 		ht_info->cap |= IEEE80211_HT_CAP_SGI_40;
 		ht_info->mcs.rx_mask[4] = 0x01;
@@ -1228,7 +1217,7 @@ static int iwl_init_geos(struct iwl_priv *priv)
 	sband->bitrates = &rates[IWL_FIRST_OFDM_RATE];
 	sband->n_bitrates = IWL_RATE_COUNT_LEGACY - IWL_FIRST_OFDM_RATE;
 
-	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (priv->hw_params.sku & EEPROM_SKU_CAP_11N_ENABLE)
 		iwl_init_ht_hw_capab(priv, &sband->ht_cap,
 					 IEEE80211_BAND_5GHZ);
 
@@ -1238,7 +1227,7 @@ static int iwl_init_geos(struct iwl_priv *priv)
 	sband->bitrates = rates;
 	sband->n_bitrates = IWL_RATE_COUNT_LEGACY;
 
-	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (priv->hw_params.sku & EEPROM_SKU_CAP_11N_ENABLE)
 		iwl_init_ht_hw_capab(priv, &sband->ht_cap,
 					 IEEE80211_BAND_2GHZ);
 
@@ -1293,11 +1282,11 @@ static int iwl_init_geos(struct iwl_priv *priv)
 	priv->tx_power_next = max_tx_power;
 
 	if ((priv->bands[IEEE80211_BAND_5GHZ].n_channels == 0) &&
-	     hw_params(priv).sku & EEPROM_SKU_CAP_BAND_52GHZ) {
+	     priv->hw_params.sku & EEPROM_SKU_CAP_BAND_52GHZ) {
 		IWL_INFO(priv, "Incorrectly detected BG card as ABG. "
 			"Please send your %s to maintainer.\n",
 			trans(priv)->hw_id_str);
-		hw_params(priv).sku &= ~EEPROM_SKU_CAP_BAND_52GHZ;
+		priv->hw_params.sku &= ~EEPROM_SKU_CAP_BAND_52GHZ;
 	}
 
 	IWL_INFO(priv, "Tunable channels: %d 802.11bg, %d 802.11a channels\n",
@@ -1342,12 +1331,6 @@ static int iwl_init_drv(struct iwl_priv *priv)
 	priv->agg_tids_count = 0;
 
 	priv->ucode_owner = IWL_OWNERSHIP_DRIVER;
-
-	/* initialize force reset */
-	priv->force_reset[IWL_RF_RESET].reset_duration =
-		IWL_DELAY_NEXT_FORCE_RF_RESET;
-	priv->force_reset[IWL_FW_RESET].reset_duration =
-		IWL_DELAY_NEXT_FORCE_FW_RELOAD;
 
 	priv->rx_statistics_jiffies = jiffies;
 
@@ -1401,30 +1384,17 @@ static void iwl_uninit_drv(struct iwl_priv *priv)
 #endif
 }
 
-/* Size of one Rx buffer in host DRAM */
-#define IWL_RX_BUF_SIZE_4K (4 * 1024)
-#define IWL_RX_BUF_SIZE_8K (8 * 1024)
-
 static void iwl_set_hw_params(struct iwl_priv *priv)
 {
 	if (cfg(priv)->ht_params)
-		hw_params(priv).use_rts_for_aggregation =
+		priv->hw_params.use_rts_for_aggregation =
 			cfg(priv)->ht_params->use_rts_for_aggregation;
 
-	if (iwlagn_mod_params.amsdu_size_8K)
-		hw_params(priv).rx_page_order =
-			get_order(IWL_RX_BUF_SIZE_8K);
-	else
-		hw_params(priv).rx_page_order =
-			get_order(IWL_RX_BUF_SIZE_4K);
-
 	if (iwlagn_mod_params.disable_11n & IWL_DISABLE_HT_ALL)
-		hw_params(priv).sku &= ~EEPROM_SKU_CAP_11N_ENABLE;
-
-	hw_params(priv).wd_timeout = cfg(priv)->base_params->wd_timeout;
+		priv->hw_params.sku &= ~EEPROM_SKU_CAP_11N_ENABLE;
 
 	/* Device-specific setup */
-	cfg(priv)->lib->set_hw_params(priv);
+	priv->lib->set_hw_params(priv);
 }
 
 
@@ -1501,6 +1471,42 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	priv->shrd = trans->shrd;
 	priv->fw = fw;
 
+	switch (cfg(priv)->device_family) {
+	case IWL_DEVICE_FAMILY_1000:
+	case IWL_DEVICE_FAMILY_100:
+		priv->lib = &iwl1000_lib;
+		break;
+	case IWL_DEVICE_FAMILY_2000:
+	case IWL_DEVICE_FAMILY_105:
+		priv->lib = &iwl2000_lib;
+		break;
+	case IWL_DEVICE_FAMILY_2030:
+	case IWL_DEVICE_FAMILY_135:
+		priv->lib = &iwl2030_lib;
+		break;
+	case IWL_DEVICE_FAMILY_5000:
+		priv->lib = &iwl5000_lib;
+		break;
+	case IWL_DEVICE_FAMILY_5150:
+		priv->lib = &iwl5150_lib;
+		break;
+	case IWL_DEVICE_FAMILY_6000:
+	case IWL_DEVICE_FAMILY_6005:
+	case IWL_DEVICE_FAMILY_6000i:
+	case IWL_DEVICE_FAMILY_6050:
+	case IWL_DEVICE_FAMILY_6150:
+		priv->lib = &iwl6000_lib;
+		break;
+	case IWL_DEVICE_FAMILY_6030:
+		priv->lib = &iwl6030_lib;
+		break;
+	default:
+		break;
+	}
+
+	if (WARN_ON(!priv->lib))
+		goto out_free_traffic_mem;
+
 	/*
 	 * Populate the state variables that the transport layer needs
 	 * to know about.
@@ -1508,6 +1514,12 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	trans_cfg.op_mode = op_mode;
 	trans_cfg.no_reclaim_cmds = no_reclaim_cmds;
 	trans_cfg.n_no_reclaim_cmds = ARRAY_SIZE(no_reclaim_cmds);
+	trans_cfg.rx_buf_size_8k = iwlagn_mod_params.amsdu_size_8K;
+	if (!iwlagn_mod_params.wd_disable)
+		trans_cfg.queue_watchdog_timeout =
+			cfg(priv)->base_params->wd_timeout;
+	else
+		trans_cfg.queue_watchdog_timeout = IWL_WATCHHDOG_DISABLED;
 
 	ucode_flags = fw->ucode_capa.flags;
 
@@ -1574,11 +1586,8 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	if (iwl_trans_start_hw(trans(priv)))
 		goto out_free_traffic_mem;
 
-	/*****************
-	 * 3. Read EEPROM
-	 *****************/
 	/* Read the EEPROM */
-	if (iwl_eeprom_init(trans(priv), trans(priv)->hw_rev)) {
+	if (iwl_eeprom_init(priv, trans(priv)->hw_rev)) {
 		IWL_ERR(priv, "Unable to init EEPROM\n");
 		goto out_free_traffic_mem;
 	}
@@ -1592,11 +1601,11 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 		goto out_free_eeprom;
 
 	/* extract MAC Address */
-	iwl_eeprom_get_mac(priv->shrd, priv->addresses[0].addr);
+	iwl_eeprom_get_mac(priv, priv->addresses[0].addr);
 	IWL_DEBUG_INFO(priv, "MAC address: %pM\n", priv->addresses[0].addr);
 	priv->hw->wiphy->addresses = priv->addresses;
 	priv->hw->wiphy->n_addresses = 1;
-	num_mac = iwl_eeprom_query16(priv->shrd, EEPROM_NUM_MAC_ADDRESS);
+	num_mac = iwl_eeprom_query16(priv, EEPROM_NUM_MAC_ADDRESS);
 	if (num_mac > 1) {
 		memcpy(priv->addresses[1].addr, priv->addresses[0].addr,
 		       ETH_ALEN);
@@ -1609,7 +1618,7 @@ static struct iwl_op_mode *iwl_op_mode_dvm_start(struct iwl_trans *trans,
 	 ************************/
 	iwl_set_hw_params(priv);
 
-	if (!(hw_params(priv).sku & EEPROM_SKU_CAP_IPAN_ENABLE)) {
+	if (!(priv->hw_params.sku & EEPROM_SKU_CAP_IPAN_ENABLE)) {
 		IWL_DEBUG_INFO(priv, "Your EEPROM disabled PAN");
 		ucode_flags &= ~IWL_UCODE_TLV_FLAGS_PAN;
 		/*
@@ -1694,7 +1703,7 @@ out_destroy_workqueue:
 	priv->workqueue = NULL;
 	iwl_uninit_drv(priv);
 out_free_eeprom:
-	iwl_eeprom_free(priv->shrd);
+	iwl_eeprom_free(priv);
 out_free_traffic_mem:
 	iwl_free_traffic_mem(priv);
 	ieee80211_free_hw(priv->hw);
@@ -1720,7 +1729,7 @@ static void iwl_op_mode_dvm_stop(struct iwl_op_mode *op_mode)
 	priv->ucode_loaded = false;
 	iwl_trans_stop_device(trans(priv));
 
-	iwl_eeprom_free(priv->shrd);
+	iwl_eeprom_free(priv);
 
 	/*netif_stop_queue(dev); */
 	flush_workqueue(priv->workqueue);
@@ -2139,7 +2148,7 @@ static void iwl_nic_config(struct iwl_op_mode *op_mode)
 {
 	struct iwl_priv *priv = IWL_OP_MODE_GET_DVM(op_mode);
 
-	cfg(priv)->lib->nic_config(priv);
+	priv->lib->nic_config(priv);
 }
 
 static void iwl_stop_sw_queue(struct iwl_op_mode *op_mode, int queue)
@@ -2298,9 +2307,6 @@ MODULE_PARM_DESC(bt_ch_inhibition,
 
 module_param_named(plcp_check, iwlagn_mod_params.plcp_check, bool, S_IRUGO);
 MODULE_PARM_DESC(plcp_check, "Check plcp health (default: 1 [enabled])");
-
-module_param_named(ack_check, iwlagn_mod_params.ack_check, bool, S_IRUGO);
-MODULE_PARM_DESC(ack_check, "Check ack health (default: 0 [disabled])");
 
 module_param_named(wd_disable, iwlagn_mod_params.wd_disable, int, S_IRUGO);
 MODULE_PARM_DESC(wd_disable,

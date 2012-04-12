@@ -468,7 +468,8 @@ int mwifiex_get_bss_info(struct mwifiex_private *priv,
 
 	info->bss_chan = bss_desc->channel;
 
-	info->region_code = adapter->region_code;
+	memcpy(info->country_code, priv->country_code,
+	       IEEE80211_COUNTRY_STRING_LEN);
 
 	info->media_connected = priv->media_connected;
 
@@ -996,6 +997,39 @@ static int mwifiex_set_wapi_ie(struct mwifiex_private *priv,
 }
 
 /*
+ * IOCTL request handler to set/reset WPS IE.
+ *
+ * The supplied WPS IE is treated as a opaque buffer. Only the first field
+ * is checked to internally enable WPS. If buffer length is zero, the existing
+ * WPS IE is reset.
+ */
+static int mwifiex_set_wps_ie(struct mwifiex_private *priv,
+			       u8 *ie_data_ptr, u16 ie_len)
+{
+	if (ie_len) {
+		priv->wps_ie = kzalloc(MWIFIEX_MAX_VSIE_LEN, GFP_KERNEL);
+		if (!priv->wps_ie)
+			return -ENOMEM;
+		if (ie_len > sizeof(priv->wps_ie)) {
+			dev_dbg(priv->adapter->dev,
+				"info: failed to copy WPS IE, too big\n");
+			kfree(priv->wps_ie);
+			return -1;
+		}
+		memcpy(priv->wps_ie, ie_data_ptr, ie_len);
+		priv->wps_ie_len = ie_len;
+		dev_dbg(priv->adapter->dev, "cmd: Set wps_ie_len=%d IE=%#x\n",
+			priv->wps_ie_len, priv->wps_ie[0]);
+	} else {
+		kfree(priv->wps_ie);
+		priv->wps_ie_len = ie_len;
+		dev_dbg(priv->adapter->dev,
+			"info: Reset wps_ie_len=%d\n", priv->wps_ie_len);
+	}
+	return 0;
+}
+
+/*
  * IOCTL request handler to set WAPI key.
  *
  * This function prepares the correct firmware command and
@@ -1408,6 +1442,7 @@ mwifiex_set_gen_ie_helper(struct mwifiex_private *priv, u8 *ie_data_ptr,
 			priv->wps.session_enable = true;
 			dev_dbg(priv->adapter->dev,
 				"info: WPS Session Enabled.\n");
+			ret = mwifiex_set_wps_ie(priv, ie_data_ptr, ie_len);
 		}
 
 		/* Append the passed data to the end of the

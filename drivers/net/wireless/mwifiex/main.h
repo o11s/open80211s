@@ -407,6 +407,8 @@ struct mwifiex_private {
 	struct host_cmd_ds_802_11_key_material aes_key;
 	u8 wapi_ie[256];
 	u8 wapi_ie_len;
+	u8 *wps_ie;
+	u8 wps_ie_len;
 	u8 wmm_required;
 	u8 wmm_enabled;
 	u8 wmm_qosinfo;
@@ -653,6 +655,7 @@ struct mwifiex_adapter {
 	u8 scan_wait_q_woken;
 	struct cmd_ctrl_node *cmd_queued;
 	spinlock_t queue_lock;		/* lock for tx queues */
+	struct completion fw_load;
 };
 
 int mwifiex_init_lock_list(struct mwifiex_adapter *adapter);
@@ -965,6 +968,7 @@ struct net_device *mwifiex_add_virtual_intf(struct wiphy *wiphy,
 					u32 *flags, struct vif_params *params);
 int mwifiex_del_virtual_intf(struct wiphy *wiphy, struct net_device *dev);
 
+u8 *mwifiex_11d_code_2_region(u8 code);
 
 #ifdef CONFIG_DEBUG_FS
 void mwifiex_debugfs_init(void);

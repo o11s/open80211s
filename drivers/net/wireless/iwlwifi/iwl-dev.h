@@ -582,9 +582,9 @@ struct iwl_event_log {
 #define IWL_MAX_PLCP_ERR_THRESHOLD_DISABLE	(0)
 
 #define IWL_DELAY_NEXT_FORCE_RF_RESET  (HZ*3)
-#define IWL_DELAY_NEXT_FORCE_FW_RELOAD (HZ*5)
 
 /* TX queue watchdog timeouts in mSecs */
+#define IWL_WATCHHDOG_DISABLED	(0)
 #define IWL_DEF_WD_TIMEOUT	(2000)
 #define IWL_LONG_WD_TIMEOUT	(10000)
 #define IWL_MAX_WD_TIMEOUT	(120000)
@@ -597,18 +597,11 @@ struct iwl_event_log {
 #define IWL_MAX_CONTINUE_RELOAD_CNT	4
 
 
-enum iwl_reset {
-	IWL_RF_RESET = 0,
-	IWL_FW_RESET,
-	IWL_MAX_FORCE_RESET,
-};
-
-struct iwl_force_reset {
+struct iwl_rf_reset {
 	int reset_request_count;
 	int reset_success_count;
 	int reset_reject_count;
-	unsigned long reset_duration;
-	unsigned long last_force_reset_jiffies;
+	unsigned long last_reset_jiffies;
 };
 
 /* extend beacon time format bit shifting  */
@@ -680,6 +673,52 @@ enum iwl_scan_type {
 	IWL_SCAN_ROC,
 };
 
+/**
+ * struct iwl_hw_params
+ *
+ * Holds the module parameters
+ *
+ * @tx_chains_num: Number of TX chains
+ * @rx_chains_num: Number of RX chains
+ * @valid_tx_ant: usable antennas for TX
+ * @valid_rx_ant: usable antennas for RX
+ * @ht40_channel: is 40MHz width possible: BIT(IEEE80211_BAND_XXX)
+ * @sku: sku read from EEPROM
+ * @ct_kill_threshold: temperature threshold - in hw dependent unit
+ * @ct_kill_exit_threshold: when to reeable the device - in hw dependent unit
+ *	relevant for 1000, 6000 and up
+ * @struct iwl_sensitivity_ranges: range of sensitivity values
+ * @use_rts_for_aggregation: use rts/cts protection for HT traffic
+ */
+struct iwl_hw_params {
+	u8  tx_chains_num;
+	u8  rx_chains_num;
+	u8  valid_tx_ant;
+	u8  valid_rx_ant;
+	u8  ht40_channel;
+	bool use_rts_for_aggregation;
+	u16 sku;
+	u32 ct_kill_threshold;
+	u32 ct_kill_exit_threshold;
+
+	const struct iwl_sensitivity_ranges *sens;
+};
+
+struct iwl_lib_ops {
+	/* set hw dependent parameters */
+	void (*set_hw_params)(struct iwl_priv *priv);
+	int (*set_channel_switch)(struct iwl_priv *priv,
+				  struct ieee80211_channel_switch *ch_switch);
+	/* device specific configuration */
+	void (*nic_config)(struct iwl_priv *priv);
+
+	/* eeprom operations (as defined in iwl-eeprom.h) */
+	struct iwl_eeprom_ops eeprom_ops;
+
+	/* temperature */
+	void (*temperature)(struct iwl_priv *priv);
+};
+
 #ifdef CONFIG_IWLWIFI_DEVICE_TESTMODE
 struct iwl_testmode_trace {
 	u32 buff_size;
@@ -716,6 +755,7 @@ struct iwl_priv {
 	/*data shared among all the driver's layers */
 	struct iwl_shared *shrd;
 	const struct iwl_fw *fw;
+	const struct iwl_lib_ops *lib;
 	unsigned long status;
 
 	spinlock_t sta_lock;
@@ -737,6 +777,8 @@ struct iwl_priv {
 	struct list_head calib_results;
 
 	struct workqueue_struct *workqueue;
+
+	struct iwl_hw_params hw_params;
 
 	enum ieee80211_band band;
 	u8 valid_contexts;
@@ -772,8 +814,8 @@ struct iwl_priv {
 	/*counters */
 	u32 rx_handlers_stats[REPLY_MAX];
 
-	/* force reset */
-	struct iwl_force_reset force_reset[IWL_MAX_FORCE_RESET];
+	/* rf reset */
+	struct iwl_rf_reset rf_reset;
 
 	/* firmware reload counter and timestamp */
 	unsigned long reload_jiffies;
@@ -967,13 +1009,16 @@ struct iwl_priv {
 	void *wowlan_sram;
 #endif /* CONFIG_IWLWIFI_DEBUGFS */
 
+	/* eeprom -- this is in the card's little endian byte order */
+	u8 *eeprom;
+	enum iwl_nvm_type nvm_device_type;
+
 	struct work_struct txpower_work;
 	u32 disable_sens_cal;
 	u32 disable_chain_noise_cal;
 	struct work_struct run_time_calib_work;
 	struct timer_list statistics_periodic;
 	struct timer_list ucode_trace;
-	struct timer_list watchdog;
 
 	struct iwl_event_log event_log;
 

@@ -94,68 +94,6 @@ void iwlagn_temperature(struct iwl_priv *priv)
 	iwl_tt_handler(priv);
 }
 
-u16 iwl_eeprom_calib_version(struct iwl_shared *shrd)
-{
-	struct iwl_eeprom_calib_hdr *hdr;
-
-	hdr = (struct iwl_eeprom_calib_hdr *)iwl_eeprom_query_addr(shrd,
-							EEPROM_CALIB_ALL);
-	return hdr->version;
-
-}
-
-/*
- * EEPROM
- */
-static u32 eeprom_indirect_address(const struct iwl_shared *shrd, u32 address)
-{
-	u16 offset = 0;
-
-	if ((address & INDIRECT_ADDRESS) == 0)
-		return address;
-
-	switch (address & INDIRECT_TYPE_MSK) {
-	case INDIRECT_HOST:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_HOST);
-		break;
-	case INDIRECT_GENERAL:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_GENERAL);
-		break;
-	case INDIRECT_REGULATORY:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_REGULATORY);
-		break;
-	case INDIRECT_TXP_LIMIT:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_TXP_LIMIT);
-		break;
-	case INDIRECT_TXP_LIMIT_SIZE:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_TXP_LIMIT_SIZE);
-		break;
-	case INDIRECT_CALIBRATION:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_CALIBRATION);
-		break;
-	case INDIRECT_PROCESS_ADJST:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_PROCESS_ADJST);
-		break;
-	case INDIRECT_OTHERS:
-		offset = iwl_eeprom_query16(shrd, EEPROM_LINK_OTHERS);
-		break;
-	default:
-		IWL_ERR(shrd->trans, "illegal indirect type: 0x%X\n",
-		address & INDIRECT_TYPE_MSK);
-		break;
-	}
-
-	/* translate the offset from words to byte */
-	return (address & ADDRESS_MSK) + (offset << 1);
-}
-
-const u8 *iwl_eeprom_query_addr(const struct iwl_shared *shrd, size_t offset)
-{
-	u32 address = eeprom_indirect_address(shrd, offset);
-	BUG_ON(address >= shrd->cfg->base_params->eeprom_size);
-	return &shrd->eeprom[address];
-}
-
 struct iwl_mod_params iwlagn_mod_params = {
 	.amsdu_size_8K = 1,
 	.restart_fw = 1,
@@ -234,7 +172,7 @@ int iwlagn_txfifo_flush(struct iwl_priv *priv, u16 flush_control)
 				IWL_PAN_SCD_BK_MSK | IWL_PAN_SCD_MGMT_MSK |
 				IWL_PAN_SCD_MULTICAST_MSK;
 
-	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (priv->hw_params.sku & EEPROM_SKU_CAP_11N_ENABLE)
 		flush_cmd.fifo_control |= IWL_AGG_TX_QUEUE_MSK;
 
 	IWL_DEBUG_INFO(priv, "fifo queue control: 0X%x\n",
@@ -868,7 +806,7 @@ void iwlagn_set_rxon_chain(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 	if (priv->chain_noise_data.active_chains)
 		active_chains = priv->chain_noise_data.active_chains;
 	else
-		active_chains = hw_params(priv).valid_rx_ant;
+		active_chains = priv->hw_params.valid_rx_ant;
 
 	if (cfg(priv)->bt_params &&
 	    cfg(priv)->bt_params->advanced_bt_coexist &&

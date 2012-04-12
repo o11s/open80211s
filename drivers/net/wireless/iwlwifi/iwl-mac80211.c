@@ -160,7 +160,7 @@ int iwlagn_mac_setup_register(struct iwl_priv *priv,
 		     IEEE80211_HW_SUPPORTS_DYNAMIC_PS |
 		     IEEE80211_HW_SCAN_WHILE_IDLE;
 
-	if (hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE)
+	if (priv->hw_params.sku & EEPROM_SKU_CAP_11N_ENABLE)
 		hw->flags |= IEEE80211_HW_SUPPORTS_DYNAMIC_SMPS |
 			     IEEE80211_HW_SUPPORTS_STATIC_SMPS;
 
@@ -637,7 +637,7 @@ static int iwlagn_mac_ampdu_action(struct ieee80211_hw *hw,
 	IWL_DEBUG_HT(priv, "A-MPDU action on addr %pM tid %d\n",
 		     sta->addr, tid);
 
-	if (!(hw_params(priv).sku & EEPROM_SKU_CAP_11N_ENABLE))
+	if (!(priv->hw_params.sku & EEPROM_SKU_CAP_11N_ENABLE))
 		return -EACCES;
 
 	IWL_DEBUG_MAC80211(priv, "enter\n");
@@ -671,7 +671,7 @@ static int iwlagn_mac_ampdu_action(struct ieee80211_hw *hw,
 				     priv->agg_tids_count);
 		}
 		if (!priv->agg_tids_count &&
-		    hw_params(priv).use_rts_for_aggregation) {
+		    priv->hw_params.use_rts_for_aggregation) {
 			/*
 			 * switch off RTS/CTS if it was previously enabled
 			 */
@@ -867,7 +867,7 @@ static void iwlagn_mac_channel_switch(struct ieee80211_hw *hw,
 	if (!iwl_is_associated_ctx(ctx))
 		goto out;
 
-	if (!cfg(priv)->lib->set_channel_switch)
+	if (!priv->lib->set_channel_switch)
 		goto out;
 
 	ch = channel->hw_value;
@@ -903,7 +903,7 @@ static void iwlagn_mac_channel_switch(struct ieee80211_hw *hw,
 	 */
 	set_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status);
 	priv->switch_channel = cpu_to_le16(ch);
-	if (cfg(priv)->lib->set_channel_switch(priv, ch_switch)) {
+	if (priv->lib->set_channel_switch(priv, ch_switch)) {
 		clear_bit(STATUS_CHANNEL_SWITCH_PENDING, &priv->status);
 		priv->switch_channel = 0;
 		ieee80211_chswitch_done(ctx->vif, false);

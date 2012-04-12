@@ -746,15 +746,30 @@ void iwl_update_stats(struct iwl_priv *priv, bool is_tx, __le16 fc, u16 len)
 }
 #endif
 
-static void iwl_force_rf_reset(struct iwl_priv *priv)
+int iwl_force_rf_reset(struct iwl_priv *priv, bool external)
 {
+	struct iwl_rf_reset *rf_reset;
+
 	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
-		return;
+		return -EAGAIN;
 
 	if (!iwl_is_any_associated(priv)) {
 		IWL_DEBUG_SCAN(priv, "force reset rejected: not associated\n");
-		return;
+		return -ENOLINK;
 	}
+
+	rf_reset = &priv->rf_reset;
+	rf_reset->reset_request_count++;
+	if (!external && rf_reset->last_reset_jiffies &&
+	    time_after(rf_reset->last_reset_jiffies +
+		       IWL_DELAY_NEXT_FORCE_RF_RESET, jiffies)) {
+		IWL_DEBUG_INFO(priv, "RF reset rejected\n");
+		rf_reset->reset_reject_count++;
+		return -EAGAIN;
+	}
+	rf_reset->reset_success_count++;
+	rf_reset->last_reset_jiffies = jiffies;
+
 	/*
 	 * There is no easy and better way to force reset the radio,
 	 * the only known method is switching channel which will force to
@@ -766,56 +781,6 @@ static void iwl_force_rf_reset(struct iwl_priv *priv)
 	 */
 	IWL_DEBUG_INFO(priv, "perform radio reset.\n");
 	iwl_internal_short_hw_scan(priv);
-}
-
-
-int iwl_force_reset(struct iwl_priv *priv, int mode, bool external)
-{
-	struct iwl_force_reset *force_reset;
-
-	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
-		return -EINVAL;
-
-	if (mode >= IWL_MAX_FORCE_RESET) {
-		IWL_DEBUG_INFO(priv, "invalid reset request.\n");
-		return -EINVAL;
-	}
-	force_reset = &priv->force_reset[mode];
-	force_reset->reset_request_count++;
-	if (!external) {
-		if (force_reset->last_force_reset_jiffies &&
-		    time_after(force_reset->last_force_reset_jiffies +
-		    force_reset->reset_duration, jiffies)) {
-			IWL_DEBUG_INFO(priv, "force reset rejected\n");
-			force_reset->reset_reject_count++;
-			return -EAGAIN;
-		}
-	}
-	force_reset->reset_success_count++;
-	force_reset->last_force_reset_jiffies = jiffies;
-	IWL_DEBUG_INFO(priv, "perform force reset (%d)\n", mode);
-	switch (mode) {
-	case IWL_RF_RESET:
-		iwl_force_rf_reset(priv);
-		break;
-	case IWL_FW_RESET:
-		/*
-		 * if the request is from external(ex: debugfs),
-		 * then always perform the request in regardless the module
-		 * parameter setting
-		 * if the request is from internal (uCode error or driver
-		 * detect failure), then fw_restart module parameter
-		 * need to be check before performing firmware reload
-		 */
-		if (!external && !iwlagn_mod_params.restart_fw) {
-			IWL_DEBUG_INFO(priv, "Cancel firmware reload based on "
-				       "module parameter setting\n");
-			break;
-		}
-		IWL_ERR(priv, "On demand firmware reload\n");
-		iwlagn_fw_error(priv, true);
-		break;
-	}
 	return 0;
 }
 
@@ -835,74 +800,6 @@ int iwl_cmd_echo_test(struct iwl_priv *priv)
 	else
 		IWL_DEBUG_INFO(priv, "echo testing pass\n");
 	return ret;
-}
-
-static inline int iwl_check_stuck_queue(struct iwl_priv *priv, int txq)
-{
-	if (iwl_trans_check_stuck_queue(trans(priv), txq)) {
-		int ret;
-		ret = iwl_force_reset(priv, IWL_FW_RESET, false);
-		return (ret == -EAGAIN) ? 0 : 1;
-	}
-	return 0;
-}
-
-/*
- * Making watchdog tick be a quarter of timeout assure we will
- * discover the queue hung between timeout and 1.25*timeout
- */
-#define IWL_WD_TICK(timeout) ((timeout) / 4)
-
-/*
- * Watchdog timer callback, we check each tx queue for stuck, if if hung
- * we reset the firmware. If everything is fine just rearm the timer.
- */
-void iwl_bg_watchdog(unsigned long data)
-{
-	struct iwl_priv *priv = (struct iwl_priv *)data;
-	int cnt;
-	unsigned long timeout;
-
-	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
-		return;
-
-	if (iwl_is_rfkill(priv))
-		return;
-
-	timeout = hw_params(priv).wd_timeout;
-	if (timeout == 0)
-		return;
-
-	/* monitor and check for stuck queues */
-	for (cnt = 0; cnt < cfg(priv)->base_params->num_of_queues; cnt++)
-		if (iwl_check_stuck_queue(priv, cnt))
-			return;
-
-	mod_timer(&priv->watchdog, jiffies +
-		  msecs_to_jiffies(IWL_WD_TICK(timeout)));
-}
-
-void iwl_setup_watchdog(struct iwl_priv *priv)
-{
-	unsigned int timeout = hw_params(priv).wd_timeout;
-
-	if (!iwlagn_mod_params.wd_disable) {
-		/* use system default */
-		if (timeout && !cfg(priv)->base_params->wd_disable)
-			mod_timer(&priv->watchdog,
-				jiffies +
-				msecs_to_jiffies(IWL_WD_TICK(timeout)));
-		else
-			del_timer(&priv->watchdog);
-	} else {
-		/* module parameter overwrite default configuration */
-		if (timeout && iwlagn_mod_params.wd_disable == 2)
-			mod_timer(&priv->watchdog,
-				jiffies +
-				msecs_to_jiffies(IWL_WD_TICK(timeout)));
-		else
-			del_timer(&priv->watchdog);
-	}
 }
 
 /**
