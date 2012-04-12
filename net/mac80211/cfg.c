@@ -1259,6 +1259,8 @@ static int copy_mesh_setup(struct ieee80211_if_mesh *ifmsh,
 	/* mcast rate setting in Mesh Node */
 	memcpy(sdata->vif.bss_conf.mcast_rate, setup->mcast_rate,
 						sizeof(setup->mcast_rate));
+	memcpy(sdata->vif.bss_conf.basic_mcs_set, setup->basic_mcs,
+						sizeof(setup->basic_mcs));
 
 	return 0;
 }

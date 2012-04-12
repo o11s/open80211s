@@ -835,6 +835,7 @@ struct mesh_config {
  * @is_authenticated: this mesh requires authentication
  * @is_secure: this mesh uses security
  * @mcast_rate: multicat rate for Mesh Node [6Mbps is the default for 802.11a]
+ * @basic_mcs: BSSBasicMCSSet for this mesh.
  *
  * These parameters are fixed when the mesh is created.
  */
@@ -849,6 +850,7 @@ struct mesh_setup {
 	bool is_authenticated;
 	bool is_secure;
 	int mcast_rate[IEEE80211_NUM_BANDS];
+	u8 basic_mcs[IEEE80211_BASIC_MCS_SET_LEN];
 };
 
 /**
@@ -1176,6 +1178,7 @@ struct cfg80211_disassoc_request {
  *	required to assume that the port is unauthorized until authorized by
  *	user space. Otherwise, port is marked authorized by default.
  * @basic_rates: bitmap of basic rates to use when creating the IBSS
+ * @basic_mcs: bitmap of basic MCS rates to use when creating the IBSS.
  * @mcast_rate: per-band multicast rate index + 1 (0: disabled)
  */
 struct cfg80211_ibss_params {
@@ -1187,6 +1190,7 @@ struct cfg80211_ibss_params {
 	u8 ssid_len, ie_len;
 	u16 beacon_interval;
 	u32 basic_rates;
+	u8 basic_mcs[IEEE80211_BASIC_MCS_SET_LEN];
 	bool channel_fixed;
 	bool privacy;
 	bool control_port;

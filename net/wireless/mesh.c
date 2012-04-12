@@ -70,6 +70,7 @@ const struct mesh_setup default_mesh_setup = {
 	.ie = NULL,
 	.ie_len = 0,
 	.is_secure = false,
+	.basic_mcs = { IEEE80211_DEFAULT_BASIC_MCS_SET, },
 };
 
 int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,

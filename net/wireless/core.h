@@ -450,6 +450,9 @@ u16 cfg80211_calculate_bitrate(struct rate_info *rate);
 int ieee80211_get_ratemask(struct ieee80211_supported_band *sband,
 			   const u8 *rates, unsigned int n_rates,
 			   u32 *mask);
+int ieee80211_get_ht_ratemask(struct ieee80211_supported_band *sband,
+			      const u8 *rates, unsigned int len,
+			      u8 mask[IEEE80211_BASIC_MCS_SET_LEN]);
 
 int cfg80211_validate_beacon_int(struct cfg80211_registered_device *rdev,
 				 u32 beacon_int);

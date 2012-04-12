@@ -1006,6 +1006,32 @@ int cfg80211_can_change_interface(struct cfg80211_registered_device *rdev,
 	return -EBUSY;
 }
 
+/* XXX: UNFINISHED, only allow supported rates */
+int ieee80211_get_ht_ratemask(struct ieee80211_supported_band *sband,
+			      const u8 *rates, unsigned int len,
+			      u8 mask[IEEE80211_BASIC_MCS_SET_LEN])
+{
+	int i;
+
+	if (!sband)
+		return -EINVAL;
+
+	if (!rates || len > IEEE80211_BASIC_MCS_SET_LEN)
+		return -EINVAL;
+
+	memset(mask, 0, sizeof(mask));
+
+	/* only process IEEE80211_HT_MCS_MASK_LEN since this is what ht_cap
+	 * supports */
+	for (i = 0; i < IEEE80211_HT_MCS_MASK_LEN; i++) {
+
+		mask[i] = sband->ht_cap.mcs.rx_mask[i] & rates[i];
+
+	}
+
+	/* did the best we could */
+	return true;
+}
 int ieee80211_get_ratemask(struct ieee80211_supported_band *sband,
 			   const u8 *rates, unsigned int n_rates,
 			   u32 *mask)

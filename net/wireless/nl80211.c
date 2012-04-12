@@ -4764,12 +4764,17 @@ nl80211_parse_mcast_rate(struct cfg80211_registered_device *rdev,
 	return found;
 }
 
+static bool ht_rateset_to_mask(struct ieee80211_supported_band *sband,
+			       u8 *rates, u8 rates_len,
+			       u8 mcs[IEEE80211_HT_MCS_MASK_LEN]);
+
 static int nl80211_join_ibss(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
 	struct net_device *dev = info->user_ptr[1];
 	struct cfg80211_ibss_params ibss;
 	struct wiphy *wiphy;
+	struct ieee80211_supported_band *sband;
 	struct cfg80211_cached_keys *connkeys = NULL;
 	int err;
 
@@ -4851,14 +4856,13 @@ static int nl80211_join_ibss(struct sk_buff *skb, struct genl_info *info)
 
 	ibss.channel_fixed = !!info->attrs[NL80211_ATTR_FREQ_FIXED];
 	ibss.privacy = !!info->attrs[NL80211_ATTR_PRIVACY];
+	sband = wiphy->bands[ibss.channel->band];
 
 	if (info->attrs[NL80211_ATTR_BSS_BASIC_RATES]) {
 		u8 *rates =
 			nla_data(info->attrs[NL80211_ATTR_BSS_BASIC_RATES]);
 		int n_rates =
 			nla_len(info->attrs[NL80211_ATTR_BSS_BASIC_RATES]);
-		struct ieee80211_supported_band *sband =
-			wiphy->bands[ibss.channel->band];
 
 		err = ieee80211_get_ratemask(sband, rates, n_rates,
 					     &ibss.basic_rates);
@@ -4870,6 +4874,15 @@ static int nl80211_join_ibss(struct sk_buff *skb, struct genl_info *info)
 	    !nl80211_parse_mcast_rate(rdev, ibss.mcast_rate,
 			nla_get_u32(info->attrs[NL80211_ATTR_MCAST_RATE])))
 		return -EINVAL;
+
+	/* XXX: BROKEN! */
+	ibss.basic_mcs[0] = IEEE80211_DEFAULT_BASIC_MCS_SET;
+	if (info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET] &&
+	    !ht_rateset_to_mask(sband,
+			nla_data(info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET]),
+			nla_len(info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET]),
+			ibss.basic_mcs))
+			return -EINVAL;
 
 	if (ibss.privacy && info->attrs[NL80211_ATTR_KEYS]) {
 		connkeys = nl80211_parse_connkeys(rdev,
@@ -5891,9 +5904,15 @@ static int nl80211_join_mesh(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
 	struct net_device *dev = info->user_ptr[1];
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct wiphy *wiphy = &rdev->wiphy;
+	struct ieee80211_supported_band *sband = NULL;
 	struct mesh_config cfg;
 	struct mesh_setup setup;
 	int err;
+
+	if (wdev->channel)
+		sband = wiphy->bands[wdev->channel->band];
 
 	/* start with default */
 	memcpy(&cfg, &default_mesh_config, sizeof(cfg));
@@ -5916,6 +5935,24 @@ static int nl80211_join_mesh(struct sk_buff *skb, struct genl_info *info)
 	if (info->attrs[NL80211_ATTR_MCAST_RATE] &&
 	    !nl80211_parse_mcast_rate(rdev, setup.mcast_rate,
 			    nla_get_u32(info->attrs[NL80211_ATTR_MCAST_RATE])))
+			return -EINVAL;
+
+	WARN_ON(!sband);
+
+	/* XXX: the mesh stack seems to have problems maintaining wdev->channel!
+	 * must do:
+	 * ip link set wlan0 down
+	 * iw wlan0 set channel n
+	 * ip link set wlan0 up
+	 * iw wlan0 set channel n
+	 * for the wdev to be properly filled in! */
+	setup.basic_mcs[0] = IEEE80211_DEFAULT_BASIC_MCS_SET;
+	if (sband &&
+	    info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET] &&
+	    !ieee80211_get_ht_ratemask(sband,
+			nla_data(info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET]),
+			nla_len(info->attrs[NL80211_ATTR_BSS_BASIC_MCS_SET]),
+			setup.basic_mcs))
 			return -EINVAL;
 
 	if (info->attrs[NL80211_ATTR_MESH_SETUP]) {

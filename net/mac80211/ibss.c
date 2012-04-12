@@ -1083,6 +1083,8 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	memcpy(sdata->vif.bss_conf.mcast_rate, params->mcast_rate,
 	       sizeof(params->mcast_rate));
 
+	memcpy(sdata->vif.bss_conf.basic_mcs_set, params->basic_mcs,
+						  sizeof(params->basic_mcs));
 	sdata->vif.bss_conf.beacon_int = params->beacon_interval;
 
 	sdata->u.ibss.channel = params->channel;
