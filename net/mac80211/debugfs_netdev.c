@@ -457,6 +457,54 @@ static ssize_t ieee80211_if_parse_tsf(
 }
 __IEEE80211_IF_FILE_W(tsf);
 
+static ssize_t ieee80211_if_fmt_basic_mcs(
+	const struct ieee80211_sub_if_data *sdata, char *buf, int buflen)
+{
+	int i, len = sizeof(sdata->vif.bss_conf.basic_mcs_set);
+	char *p = buf;
+
+	for (i = 0; i < len; i++) 
+		p += scnprintf(p, buflen + buf - p, "%.2x",
+			       sdata->vif.bss_conf.basic_mcs_set[len - i - 1]);
+
+	p += scnprintf(p, buflen + buf - p, "\n");
+	return p - buf;
+}
+
+static ssize_t ieee80211_if_parse_basic_mcs(
+	struct ieee80211_sub_if_data *sdata, const char *buf, int buflen)
+{
+	struct ieee80211_local *local = sdata->local;
+	size_t len = strlen(buf) - 1; /* strip trailing null */
+	int i, ret;
+	u8 n;
+
+	/* XXX: we really should validate the read mask against our
+	 * capabilities, but wdev->channel is not always available! */
+	
+	/*
+	if (!wdev->channel)
+		return -EBUSY;
+
+	sband = wiphy->bands[wdev->channel->band];
+	*/
+
+	if (len > 32 || len < 2 || len % 2)
+		return -EINVAL;
+
+	for (i = len - 2; i >= 0; i -= 2) {
+		int idx = (len - 2 - i) / 2;
+		char *s = kstrndup(buf + i, 2, GFP_KERNEL);
+		if ((ret = kstrtou8(s, 16, &n)) < 0)
+			return -EINVAL;
+
+		sdata->vif.bss_conf.basic_mcs_set[idx] = n;
+		kfree(s);
+	}
+
+	return buflen;
+}
+__IEEE80211_IF_FILE_W(basic_mcs);
 
 /* WDS attributes */
 IEEE80211_IF_FILE(peer, u.wds.remote_addr, MAC);
@@ -562,6 +610,7 @@ static void add_wds_files(struct ieee80211_sub_if_data *sdata)
 static void add_mesh_files(struct ieee80211_sub_if_data *sdata)
 {
 	DEBUGFS_ADD_MODE(tsf, 0600);
+	DEBUGFS_ADD_MODE(basic_mcs, 0600);
 }
 
 static void add_mesh_stats(struct ieee80211_sub_if_data *sdata)
