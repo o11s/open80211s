@@ -1664,7 +1664,8 @@ u8 *ieee80211_ie_build_ht_cap(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 			       struct ieee80211_bss_conf *bss_conf,
 			       struct ieee80211_channel *channel,
-			       enum nl80211_channel_type channel_type)
+			       enum nl80211_channel_type channel_type,
+			       u16 prot_mode)
 {
 	struct ieee80211_ht_operation *ht_oper;
 	/* Build HT Information */
@@ -1694,7 +1695,7 @@ u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 	 * Note: According to 802.11n-2009 9.13.3.1, HT Protection field and
 	 * RIFS Mode are reserved in IBSS mode, therefore keep them at 0
 	 */
-	ht_oper->operation_mode = 0x0000;
+	ht_oper->operation_mode = cpu_to_le16(prot_mode);
 	ht_oper->stbc_param = 0x0000;
 
 	memset(&ht_oper->basic_set, 0, IEEE80211_BASIC_MCS_SET_LEN);

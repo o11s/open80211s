@@ -167,7 +167,7 @@ static void __ieee80211_sta_join_ibss(struct ieee80211_sub_if_data *sdata,
 						 &sband->ht_cap,
 						 &sdata->vif.bss_conf,
 						 chan,
-						 channel_type);
+						 channel_type, 0);
 	}
 
 	if (local->hw.queues >= IEEE80211_NUM_ACS) {

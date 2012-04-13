@@ -396,8 +396,9 @@ int mesh_add_ht_oper_ie(struct sk_buff *skb,
 		return -ENOMEM;
 
 	pos = skb_put(skb, 2 + sizeof(struct ieee80211_ht_operation));
-	ieee80211_ie_build_ht_oper(pos, ht_cap, &sdata->vif.bss_conf,
-				   channel, channel_type);
+	ieee80211_ie_build_ht_oper(pos, ht_cap, &sdata->vif.bss_conf, channel,
+				   channel_type,
+				   sdata->vif.bss_conf.ht_operation_mode);
 
 	return 0;
 }
@@ -589,6 +590,8 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
+	sdata->vif.bss_conf.ht_operation_mode =
+				IEEE80211_HT_OP_MODE_PROTECTION_NONHT_MIXED;
 	sdata->vif.bss_conf.beacon_int = MESH_DEFAULT_BEACON_INTERVAL;
 	if (!sdata->vif.bss_conf.basic_rates)
 		sdata->vif.bss_conf.basic_rates =
