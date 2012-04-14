@@ -506,6 +506,34 @@ static ssize_t ieee80211_if_parse_basic_mcs(
 }
 __IEEE80211_IF_FILE_W(basic_mcs);
 
+static ssize_t ieee80211_if_fmt_basic_rates(
+	const struct ieee80211_sub_if_data *sdata, char *buf, int buflen)
+{
+	u32 basic_rates;
+
+	basic_rates = sdata->vif.bss_conf.basic_rates;
+
+	return scnprintf(buf, buflen, "0x%08lx\n", (unsigned long) basic_rates);
+}
+
+static ssize_t ieee80211_if_parse_basic_rates(
+       struct ieee80211_sub_if_data *sdata, const char *buf, int buflen)
+{
+	struct ieee80211_local *local = sdata->local;
+	long unsigned int basic_set;
+	int ret;
+
+	ret = kstrtoul(buf, 10, &basic_set);
+	if (ret < 0)
+	       return -EINVAL;
+	sdata->vif.bss_conf.basic_rates = basic_set;
+	wiphy_info(local->hw.wiphy,
+		       "debugfs set BasicRateSet to %#09lx\n", basic_set);
+
+	return buflen;
+}
+__IEEE80211_IF_FILE_W(basic_rates);
+
 /* WDS attributes */
 IEEE80211_IF_FILE(peer, u.wds.remote_addr, MAC);
 
@@ -611,6 +639,7 @@ static void add_mesh_files(struct ieee80211_sub_if_data *sdata)
 {
 	DEBUGFS_ADD_MODE(tsf, 0600);
 	DEBUGFS_ADD_MODE(basic_mcs, 0600);
+	DEBUGFS_ADD_MODE(basic_rates, 0600);
 }
 
 static void add_mesh_stats(struct ieee80211_sub_if_data *sdata)
