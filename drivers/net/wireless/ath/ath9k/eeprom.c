@@ -290,6 +290,34 @@ u16 ath9k_hw_get_max_edge_power(u16 freq, struct cal_ctl_edges *pRdEdgesPower,
 	return twiceMaxEdgePower;
 }
 
+u16 ath9k_hw_get_scaled_power(struct ath_hw *ah, u16 power_limit,
+			      u8 antenna_reduction)
+{
+	u16 reduction = antenna_reduction;
+
+	/*
+	 * Reduce scaled Power by number of chains active
+	 * to get the per chain tx power level.
+	 */
+	switch (ar5416_get_ntxchains(ah->txchainmask)) {
+	case 1:
+		break;
+	case 2:
+		reduction += REDUCE_SCALED_POWER_BY_TWO_CHAIN;
+		break;
+	case 3:
+		reduction += REDUCE_SCALED_POWER_BY_THREE_CHAIN;
+		break;
+	}
+
+	if (power_limit > reduction)
+		power_limit -= reduction;
+	else
+		power_limit = 0;
+
+	return power_limit;
+}
+
 void ath9k_hw_update_regulatory_maxpower(struct ath_hw *ah)
 {
 	struct ath_common *common = ath9k_hw_common(ah);
