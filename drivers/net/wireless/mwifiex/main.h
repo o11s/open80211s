@@ -260,8 +260,8 @@ struct mwifiex_bssdescriptor {
 	 * BAND_A(0X04): 'a' band
 	 */
 	u16 bss_band;
-	u64 network_tsf;
-	u8 time_stamp[8];
+	u64 fw_tsf;
+	u64 timestamp;
 	union ieee_types_phy_param_set phy_param_set;
 	union ieee_types_ss_param_set ss_param_set;
 	u16 cap_info_bitmap;
@@ -520,6 +520,11 @@ struct cmd_ctrl_node {
 	struct sk_buff *skb;
 	u8 *condition;
 	u8 cmd_wait_q_woken;
+};
+
+struct mwifiex_bss_priv {
+	u8 band;
+	u64 fw_tsf;
 };
 
 struct mwifiex_if_ops {
@@ -953,13 +958,10 @@ int mwifiex_bss_set_channel(struct mwifiex_private *,
 int mwifiex_get_bss_info(struct mwifiex_private *,
 			 struct mwifiex_bss_info *);
 int mwifiex_fill_new_bss_desc(struct mwifiex_private *priv,
-			      u8 *bssid, s32 rssi, u8 *ie_buf,
-			      size_t ie_len, u16 beacon_period,
-			      u16 cap_info_bitmap, u8 band,
+			      struct cfg80211_bss *bss,
 			      struct mwifiex_bssdescriptor *bss_desc);
 int mwifiex_update_bss_desc_with_ie(struct mwifiex_adapter *adapter,
-				struct mwifiex_bssdescriptor *bss_entry,
-				u8 *ie_buf, u32 ie_len);
+				    struct mwifiex_bssdescriptor *bss_entry);
 int mwifiex_check_network_compatibility(struct mwifiex_private *priv,
 					struct mwifiex_bssdescriptor *bss_desc);
 

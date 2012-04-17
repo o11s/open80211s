@@ -1248,6 +1248,12 @@ static void iwl_trans_pcie_stop_device(struct iwl_trans *trans)
 
 	/* stop and reset the on-board processor */
 	iwl_write32(trans, CSR_RESET, CSR_RESET_REG_FLAG_NEVO_RESET);
+
+	/* clear all status bits */
+	clear_bit(STATUS_HCMD_ACTIVE, &trans_pcie->status);
+	clear_bit(STATUS_INT_ENABLED, &trans_pcie->status);
+	clear_bit(STATUS_DEVICE_ENABLED, &trans_pcie->status);
+	clear_bit(STATUS_TPOWER_PMI, &trans_pcie->status);
 }
 
 static void iwl_trans_pcie_wowlan_suspend(struct iwl_trans *trans)
@@ -1538,6 +1544,8 @@ static void iwl_trans_pcie_configure(struct iwl_trans *trans,
 
 	trans_pcie->wd_timeout =
 		msecs_to_jiffies(trans_cfg->queue_watchdog_timeout);
+
+	trans_pcie->command_names = trans_cfg->command_names;
 }
 
 static void iwl_trans_pcie_free(struct iwl_trans *trans)
@@ -1568,9 +1576,9 @@ static void iwl_trans_pcie_set_pmi(struct iwl_trans *trans, bool state)
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 
 	if (state)
-		set_bit(STATUS_POWER_PMI, &trans_pcie->status);
+		set_bit(STATUS_TPOWER_PMI, &trans_pcie->status);
 	else
-		clear_bit(STATUS_POWER_PMI, &trans_pcie->status);
+		clear_bit(STATUS_TPOWER_PMI, &trans_pcie->status);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1629,6 +1637,7 @@ static int iwl_trans_pcie_wait_tx_queue_empty(struct iwl_trans *trans)
 
 static const char *get_fh_string(int cmd)
 {
+#define IWL_CMD(x) case x: return #x
 	switch (cmd) {
 	IWL_CMD(FH_RSCSR_CHNL0_STTS_WPTR_REG);
 	IWL_CMD(FH_RSCSR_CHNL0_RBDCB_BASE_REG);
@@ -1642,6 +1651,7 @@ static const char *get_fh_string(int cmd)
 	default:
 		return "UNKNOWN";
 	}
+#undef IWL_CMD
 }
 
 int iwl_dump_fh(struct iwl_trans *trans, char **buf, bool display)
@@ -1690,6 +1700,7 @@ int iwl_dump_fh(struct iwl_trans *trans, char **buf, bool display)
 
 static const char *get_csr_string(int cmd)
 {
+#define IWL_CMD(x) case x: return #x
 	switch (cmd) {
 	IWL_CMD(CSR_HW_IF_CONFIG_REG);
 	IWL_CMD(CSR_INT_COALESCING);
@@ -1717,6 +1728,7 @@ static const char *get_csr_string(int cmd)
 	default:
 		return "UNKNOWN";
 	}
+#undef IWL_CMD
 }
 
 void iwl_dump_csr(struct iwl_trans *trans)

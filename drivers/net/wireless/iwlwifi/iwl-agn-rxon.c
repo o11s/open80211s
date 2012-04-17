@@ -177,8 +177,7 @@ static int iwlagn_disconn_pan(struct iwl_priv *priv,
 	return ret;
 }
 
-static void iwlagn_update_qos(struct iwl_priv *priv,
-			      struct iwl_rxon_context *ctx)
+void iwlagn_update_qos(struct iwl_priv *priv, struct iwl_rxon_context *ctx)
 {
 	int ret;
 
@@ -205,8 +204,8 @@ static void iwlagn_update_qos(struct iwl_priv *priv,
 		IWL_DEBUG_QUIET_RFKILL(priv, "Failed to update QoS\n");
 }
 
-static int iwlagn_update_beacon(struct iwl_priv *priv,
-				struct ieee80211_vif *vif)
+int iwlagn_update_beacon(struct iwl_priv *priv,
+			 struct ieee80211_vif *vif)
 {
 	lockdep_assert_held(&priv->mutex);
 
@@ -413,6 +412,9 @@ static int iwl_set_tx_power(struct iwl_priv *priv, s8 tx_power, bool force)
 	s8 prev_tx_power;
 	bool defer;
 	struct iwl_rxon_context *ctx = &priv->contexts[IWL_RXON_CTX_BSS];
+
+	if (priv->calib_disabled & IWL_TX_POWER_CALIB_DISABLED)
+		return 0;
 
 	lockdep_assert_held(&priv->mutex);
 
@@ -876,8 +878,8 @@ static int iwl_check_rxon_cmd(struct iwl_priv *priv,
  * or is clearing the RXON_FILTER_ASSOC_MSK, then return 1 to indicate that
  * a new tune (full RXON command, rather than RXON_ASSOC cmd) is required.
  */
-static int iwl_full_rxon_required(struct iwl_priv *priv,
-				  struct iwl_rxon_context *ctx)
+int iwl_full_rxon_required(struct iwl_priv *priv,
+			   struct iwl_rxon_context *ctx)
 {
 	const struct iwl_rxon_cmd *staging = &ctx->staging;
 	const struct iwl_rxon_cmd *active = &ctx->active;
@@ -1220,9 +1222,9 @@ int iwlagn_mac_config(struct ieee80211_hw *hw, u32 changed)
 	return ret;
 }
 
-static void iwlagn_check_needed_chains(struct iwl_priv *priv,
-				       struct iwl_rxon_context *ctx,
-				       struct ieee80211_bss_conf *bss_conf)
+void iwlagn_check_needed_chains(struct iwl_priv *priv,
+				struct iwl_rxon_context *ctx,
+				struct ieee80211_bss_conf *bss_conf)
 {
 	struct ieee80211_vif *vif = ctx->vif;
 	struct iwl_rxon_context *tmp;
@@ -1314,10 +1316,13 @@ static void iwlagn_check_needed_chains(struct iwl_priv *priv,
 	ht_conf->single_chain_sufficient = !need_multiple;
 }
 
-static void iwlagn_chain_noise_reset(struct iwl_priv *priv)
+void iwlagn_chain_noise_reset(struct iwl_priv *priv)
 {
 	struct iwl_chain_noise_data *data = &priv->chain_noise_data;
 	int ret;
+
+	if (!(priv->calib_disabled & IWL_CHAIN_NOISE_CALIB_DISABLED))
+		return;
 
 	if ((data->state == IWL_CHAIN_NOISE_ALIVE) &&
 	    iwl_is_any_associated(priv)) {
@@ -1471,8 +1476,7 @@ void iwlagn_bss_info_changed(struct ieee80211_hw *hw,
 			iwl_power_update_mode(priv, false);
 
 		/* Enable RX differential gain and sensitivity calibrations */
-		if (!priv->disable_chain_noise_cal)
-			iwlagn_chain_noise_reset(priv);
+		iwlagn_chain_noise_reset(priv);
 		priv->start_calib = 1;
 	}
 

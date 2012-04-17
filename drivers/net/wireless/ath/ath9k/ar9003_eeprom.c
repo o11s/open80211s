@@ -30,9 +30,6 @@
 #define CTL_11A_EXT (CTL_11A | EXT_ADDITIVE)
 #define CTL_11G_EXT (CTL_11G | EXT_ADDITIVE)
 #define CTL_11B_EXT (CTL_11B | EXT_ADDITIVE)
-#define PWRINCR_3_TO_1_CHAIN      9             /* 10*log(3)*2 */
-#define PWRINCR_3_TO_2_CHAIN      3             /* floor(10*log(3/2)*2) */
-#define PWRINCR_2_TO_1_CHAIN      6             /* 10*log(2)*2 */
 
 #define SUB_NUM_CTL_MODES_AT_5G_40 2    /* excluding HT40, EXT-OFDM */
 #define SUB_NUM_CTL_MODES_AT_2G_40 3    /* excluding HT40, EXT-OFDM, EXT-CCK */
@@ -2934,15 +2931,6 @@ static const struct ar9300_eeprom *ar9003_eeprom_struct_find_by_id(int id)
 #undef N_LOOP
 }
 
-
-static u16 ath9k_hw_fbin2freq(u8 fbin, bool is2GHz)
-{
-	if (fbin == AR5416_BCHAN_UNUSED)
-		return fbin;
-
-	return (u16) ((is2GHz) ? (2300 + fbin) : (4800 + 5 * fbin));
-}
-
 static int ath9k_hw_ar9300_check_eeprom(struct ath_hw *ah)
 {
 	return 0;
@@ -4068,7 +4056,7 @@ static u8 ar9003_hw_eeprom_get_tgt_pwr(struct ath_hw *ah,
 	 * targetpower piers stored on eeprom
 	 */
 	for (i = 0; i < numPiers; i++) {
-		freqArray[i] = FBIN2FREQ(pFreqBin[i], is2GHz);
+		freqArray[i] = ath9k_hw_fbin2freq(pFreqBin[i], is2GHz);
 		targetPowerArray[i] = pEepromTargetPwr[i].tPow2x[rateIndex];
 	}
 
@@ -4104,7 +4092,7 @@ static u8 ar9003_hw_eeprom_get_ht20_tgt_pwr(struct ath_hw *ah,
 	 * from targetpower piers stored on eeprom
 	 */
 	for (i = 0; i < numPiers; i++) {
-		freqArray[i] = FBIN2FREQ(pFreqBin[i], is2GHz);
+		freqArray[i] = ath9k_hw_fbin2freq(pFreqBin[i], is2GHz);
 		targetPowerArray[i] = pEepromTargetPwr[i].tPow2x[rateIndex];
 	}
 
@@ -4140,7 +4128,7 @@ static u8 ar9003_hw_eeprom_get_ht40_tgt_pwr(struct ath_hw *ah,
 	 * targetpower piers stored on eeprom
 	 */
 	for (i = 0; i < numPiers; i++) {
-		freqArray[i] = FBIN2FREQ(pFreqBin[i], is2GHz);
+		freqArray[i] = ath9k_hw_fbin2freq(pFreqBin[i], is2GHz);
 		targetPowerArray[i] = pEepromTargetPwr[i].tPow2x[rateIndex];
 	}
 
@@ -4165,7 +4153,7 @@ static u8 ar9003_hw_eeprom_get_cck_tgt_pwr(struct ath_hw *ah,
 	 * targetpower piers stored on eeprom
 	 */
 	for (i = 0; i < numPiers; i++) {
-		freqArray[i] = FBIN2FREQ(pFreqBin[i], 1);
+		freqArray[i] = ath9k_hw_fbin2freq(pFreqBin[i], 1);
 		targetPowerArray[i] = pEepromTargetPwr[i].tPow2x[rateIndex];
 	}
 
@@ -4462,7 +4450,7 @@ static int ar9003_hw_cal_pier_get(struct ath_hw *ah,
 		is2GHz = 1;
 	}
 
-	*pfrequency = FBIN2FREQ(*pCalPier, is2GHz);
+	*pfrequency = ath9k_hw_fbin2freq(*pCalPier, is2GHz);
 	*pcorrection = pCalPierStruct->refPower;
 	*ptemperature = pCalPierStruct->tempMeas;
 	*pvoltage = pCalPierStruct->voltMeas;

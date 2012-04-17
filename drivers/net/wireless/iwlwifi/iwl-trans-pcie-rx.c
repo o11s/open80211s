@@ -150,7 +150,7 @@ void iwl_rx_queue_update_write_ptr(struct iwl_trans *trans,
 			IWL_TRANS_GET_PCIE_TRANS(trans);
 
 		/* If power-saving is in use, make sure device is awake */
-		if (test_bit(STATUS_POWER_PMI, &trans_pcie->status)) {
+		if (test_bit(STATUS_TPOWER_PMI, &trans_pcie->status)) {
 			reg = iwl_read32(trans, CSR_UCODE_DRV_GP1);
 
 			if (reg & CSR_UCODE_DRV_GP1_BIT_MAC_SLEEP) {
@@ -393,8 +393,9 @@ static void iwl_rx_handle_rxbuf(struct iwl_trans *trans,
 			break;
 
 		IWL_DEBUG_RX(trans, "cmd at offset %d: %s (0x%.2x)\n",
-			     rxcb._offset, get_cmd_string(pkt->hdr.cmd),
-			     pkt->hdr.cmd);
+			rxcb._offset,
+			trans_pcie_get_cmd_string(trans_pcie, pkt->hdr.cmd),
+			pkt->hdr.cmd);
 
 		len = le32_to_cpu(pkt->len_n_flags) & FH_RSCSR_FRAME_SIZE_MSK;
 		len += sizeof(u32); /* account for status word */
@@ -547,14 +548,12 @@ static void iwl_irq_handle_error(struct iwl_trans *trans)
 			APMS_CLK_VAL_MRB_FUNC_MODE) ||
 	     (iwl_read_prph(trans, APMG_PS_CTRL_REG) &
 			APMG_PS_CTRL_VAL_RESET_REQ))) {
-		/*
-		 * Keep the restart process from trying to send host
-		 * commands by clearing the ready bit.
-		 */
-		clear_bit(STATUS_READY, &trans->shrd->status);
-		clear_bit(STATUS_HCMD_ACTIVE, &trans->shrd->status);
+		struct iwl_trans_pcie *trans_pcie;
+
+		trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+		clear_bit(STATUS_HCMD_ACTIVE, &trans_pcie->status);
+		iwl_op_mode_wimax_active(trans->op_mode);
 		wake_up(&trans->wait_command_queue);
-		IWL_ERR(trans, "RF is used by WiMAX\n");
 		return;
 	}
 

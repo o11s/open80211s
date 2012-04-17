@@ -118,45 +118,38 @@ extern struct iwl_mod_params iwlagn_mod_params;
  * @disable_11n: disable 11n capabilities, default = 0,
  *	use IWL_DISABLE_HT_* constants
  * @amsdu_size_8K: enable 8K amsdu size, default = 1
- * @antenna: both antennas (use diversity), default = 0
  * @restart_fw: restart firmware, default = 1
  * @plcp_check: enable plcp health check, default = true
  * @wd_disable: enable stuck queue check, default = 0
  * @bt_coex_active: enable bt coex, default = true
  * @led_mode: system default, default = 0
- * @no_sleep_autoadjust: disable autoadjust, default = true
  * @power_save: disable power save, default = false
  * @power_level: power level, default = 1
  * @debug_level: levels are IWL_DL_*
  * @ant_coupling: antenna coupling in dB, default = 0
  * @bt_ch_announce: BT channel inhibition, default = enable
- * @wanted_ucode_alternative: ucode alternative to use, default = 1
  * @auto_agg: enable agg. without check, default = true
  */
 struct iwl_mod_params {
 	int sw_crypto;
 	unsigned int disable_11n;
 	int amsdu_size_8K;
-	int antenna;
 	int restart_fw;
 	bool plcp_check;
 	int  wd_disable;
 	bool bt_coex_active;
 	int led_mode;
-	bool no_sleep_autoadjust;
 	bool power_save;
 	int power_level;
 	u32 debug_level;
 	int ant_coupling;
 	bool bt_ch_announce;
-	int wanted_ucode_alternative;
 	bool auto_agg;
 };
 
 /**
  * struct iwl_shared - shared fields for all the layers of the driver
  *
- * @status: STATUS_*
  * @wowlan: are we running wowlan uCode
  * @bus: pointer to the bus layer data
  * @cfg: see struct iwl_cfg
@@ -167,8 +160,6 @@ struct iwl_mod_params {
  * @eeprom: pointer to the eeprom/OTP image
  */
 struct iwl_shared {
-	unsigned long status;
-
 	const struct iwl_cfg *cfg;
 	struct iwl_trans *trans;
 	void *drv;
@@ -189,33 +180,5 @@ enum iwl_rxon_context_id {
 
 	NUM_IWL_RXON_CTX
 };
-
-const char *get_cmd_string(u8 cmd);
-
-#define IWL_CMD(x) case x: return #x
-
-/*****************************************************
-* DRIVER STATUS FUNCTIONS
-******************************************************/
-#define STATUS_HCMD_ACTIVE	0	/* host command in progress */
-/* 1 is unused (used to be STATUS_HCMD_SYNC_ACTIVE) */
-#define STATUS_INT_ENABLED	2
-#define STATUS_RF_KILL_HW	3
-#define STATUS_CT_KILL		4
-#define STATUS_INIT		5
-#define STATUS_ALIVE		6
-#define STATUS_READY		7
-#define STATUS_TEMPERATURE	8
-#define STATUS_GEO_CONFIGURED	9
-#define STATUS_EXIT_PENDING	10
-#define STATUS_STATISTICS	12
-#define STATUS_SCANNING		13
-#define STATUS_SCAN_ABORTING	14
-#define STATUS_SCAN_HW		15
-#define STATUS_POWER_PMI	16
-#define STATUS_FW_ERROR		17
-#define STATUS_DEVICE_ENABLED	18
-#define STATUS_CHANNEL_SWITCH_PENDING 19
-#define STATUS_SCAN_COMPLETE	20
 
 #endif /* #__iwl_shared_h__ */

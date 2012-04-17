@@ -79,11 +79,8 @@
 #define SUB_NUM_CTL_MODES_AT_5G_40 2
 #define SUB_NUM_CTL_MODES_AT_2G_40 3
 
-#define INCREASE_MAXPOW_BY_TWO_CHAIN     6  /* 10*log10(2)*2 */
-#define INCREASE_MAXPOW_BY_THREE_CHAIN   10 /* 10*log10(3)*2 */
-
-#define REDUCE_SCALED_POWER_BY_TWO_CHAIN	6  /* 10*log10(2)*2 */
-#define REDUCE_SCALED_POWER_BY_THREE_CHAIN	10 /* 10*log10(3)*2 */
+#define POWER_CORRECTION_FOR_TWO_CHAIN		6  /* 10*log10(2)*2 */
+#define POWER_CORRECTION_FOR_THREE_CHAIN	10 /* 10*log10(3)*2 */
 
 /*
  * For AR9285 and later chipsets, the following bits are not being programmed
@@ -701,6 +698,14 @@ void ath9k_hw_get_gain_boundaries_pdadcs(struct ath_hw *ah,
 				u16 tPdGainOverlap,
 				u16 *pPdGainBoundaries, u8 *pPDADCValues,
 				u16 numXpdGains);
+
+static inline u16 ath9k_hw_fbin2freq(u8 fbin, bool is2GHz)
+{
+	if (fbin == AR5416_BCHAN_UNUSED)
+		return fbin;
+
+	return (u16) ((is2GHz) ? (2300 + fbin) : (4800 + 5 * fbin));
+}
 
 #define ar5416_get_ntxchains(_txchainmask)			\
 	(((_txchainmask >> 2) & 1) +                            \

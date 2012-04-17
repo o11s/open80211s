@@ -139,10 +139,10 @@ struct iwl_cmd_meta {
 	/* only for SYNC commands, iff the reply skb is wanted */
 	struct iwl_host_cmd *source;
 
-	u32 flags;
-
 	DEFINE_DMA_UNMAP_ADDR(mapping);
 	DEFINE_DMA_UNMAP_LEN(len);
+
+	u32 flags;
 };
 
 /*
@@ -273,10 +273,19 @@ struct iwl_trans_pcie {
 	bool rx_buf_size_8k;
 	u32 rx_page_order;
 
+	const char **command_names;
 
 	/* queue watchdog */
 	unsigned long wd_timeout;
 };
+
+/*****************************************************
+* DRIVER STATUS FUNCTIONS
+******************************************************/
+#define STATUS_HCMD_ACTIVE	0
+#define STATUS_DEVICE_ENABLED	1
+#define STATUS_TPOWER_PMI	2
+#define STATUS_INT_ENABLED	3
 
 #define IWL_TRANS_GET_PCIE_TRANS(_iwl_trans) \
 	((struct iwl_trans_pcie *) ((_iwl_trans)->trans_specific))
@@ -407,6 +416,14 @@ static inline int iwl_queue_used(const struct iwl_queue *q, int i)
 static inline u8 get_cmd_index(struct iwl_queue *q, u32 index)
 {
 	return index & (q->n_window - 1);
+}
+
+static inline const char *
+trans_pcie_get_cmd_string(struct iwl_trans_pcie *trans_pcie, u8 cmd)
+{
+	if (!trans_pcie->command_names || !trans_pcie->command_names[cmd])
+		return "UNKNOWN";
+	return trans_pcie->command_names[cmd];
 }
 
 #endif /* __iwl_trans_int_pcie_h__ */
