@@ -279,8 +279,8 @@ void iwlagn_bt_adjust_rssi_monitor(struct iwl_priv *priv, bool rssi_ena);
 
 static inline bool iwl_advanced_bt_coexist(struct iwl_priv *priv)
 {
-	return cfg(priv)->bt_params &&
-	       cfg(priv)->bt_params->advanced_bt_coexist;
+	return priv->cfg->bt_params &&
+	       priv->cfg->bt_params->advanced_bt_coexist;
 }
 
 #ifdef CONFIG_IWLWIFI_DEBUG
@@ -472,7 +472,7 @@ static inline void iwl_dvm_set_pmi(struct iwl_priv *priv, bool state)
 		set_bit(STATUS_POWER_PMI, &priv->status);
 	else
 		clear_bit(STATUS_POWER_PMI, &priv->status);
-	iwl_trans_set_pmi(trans(priv), state);
+	iwl_trans_set_pmi(priv->trans, state);
 }
 
 #ifdef CONFIG_IWLWIFI_DEBUG
@@ -481,7 +481,7 @@ do {									\
 	if (!iwl_is_rfkill((m)))					\
 		IWL_ERR(m, fmt, ##args);				\
 	else								\
-		__iwl_err(trans(m)->dev, true,				\
+		__iwl_err((m)->dev, true,				\
 			  !iwl_have_debug_level(IWL_DL_RADIO),		\
 			  fmt, ##args);					\
 } while (0)
@@ -491,7 +491,7 @@ do {									\
 	if (!iwl_is_rfkill((m)))					\
 		IWL_ERR(m, fmt, ##args);				\
 	else								\
-		__iwl_err(trans(m)->dev, true, true, fmt, ##args);	\
+		__iwl_err((m)->dev, true, true, fmt, ##args);	\
 } while (0)
 #endif				/* CONFIG_IWLWIFI_DEBUG */
 
@@ -510,7 +510,6 @@ void iwl_setup_deferred_work(struct iwl_priv *priv);
 int iwl_send_wimax_coex(struct iwl_priv *priv);
 int iwl_send_bt_env(struct iwl_priv *priv, u8 action, u8 type);
 void iwl_debug_config(struct iwl_priv *priv);
-int iwl_alloc_traffic_mem(struct iwl_priv *priv);
 void iwl_set_hw_params(struct iwl_priv *priv);
 void iwl_init_context(struct iwl_priv *priv, u32 ucode_flags);
 int iwl_init_drv(struct iwl_priv *priv);

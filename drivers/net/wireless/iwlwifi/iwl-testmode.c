@@ -218,7 +218,7 @@ static void iwl_trace_cleanup(struct iwl_priv *priv)
 	if (priv->testmode_trace.trace_enabled) {
 		if (priv->testmode_trace.cpu_addr &&
 		    priv->testmode_trace.dma_addr)
-			dma_free_coherent(trans(priv)->dev,
+			dma_free_coherent(priv->trans->dev,
 					priv->testmode_trace.total_size,
 					priv->testmode_trace.cpu_addr,
 					priv->testmode_trace.dma_addr);
@@ -371,7 +371,7 @@ static int iwl_testmode_reg(struct ieee80211_hw *hw, struct nlattr **tb)
 
 	switch (cmd) {
 	case IWL_TM_CMD_APP2DEV_DIRECT_REG_READ32:
-		val32 = iwl_read_direct32(trans(priv), ofs);
+		val32 = iwl_read_direct32(priv->trans, ofs);
 		IWL_INFO(priv, "32bit value to read 0x%x\n", val32);
 
 		skb = cfg80211_testmode_alloc_reply_skb(hw->wiphy, 20);
@@ -391,7 +391,7 @@ static int iwl_testmode_reg(struct ieee80211_hw *hw, struct nlattr **tb)
 		} else {
 			val32 = nla_get_u32(tb[IWL_TM_ATTR_REG_VALUE32]);
 			IWL_INFO(priv, "32bit value to write 0x%x\n", val32);
-			iwl_write_direct32(trans(priv), ofs, val32);
+			iwl_write_direct32(priv->trans, ofs, val32);
 		}
 		break;
 	case IWL_TM_CMD_APP2DEV_DIRECT_REG_WRITE8:
@@ -401,7 +401,7 @@ static int iwl_testmode_reg(struct ieee80211_hw *hw, struct nlattr **tb)
 		} else {
 			val8 = nla_get_u8(tb[IWL_TM_ATTR_REG_VALUE8]);
 			IWL_INFO(priv, "8bit value to write 0x%x\n", val8);
-			iwl_write8(trans(priv), ofs, val8);
+			iwl_write8(priv->trans, ofs, val8);
 		}
 		break;
 	default:
@@ -464,7 +464,7 @@ cfg_init_calib_error:
 static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 {
 	struct iwl_priv *priv = IWL_MAC80211_GET_DVM(hw);
-	struct iwl_trans *trans = trans(priv);
+	struct iwl_trans *trans = priv->trans;
 	struct sk_buff *skb;
 	unsigned char *rsp_data_ptr = NULL;
 	int status = 0, rsp_data_len = 0;
@@ -473,8 +473,8 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 
 	switch (nla_get_u32(tb[IWL_TM_ATTR_COMMAND])) {
 	case IWL_TM_CMD_APP2DEV_GET_DEVICENAME:
-		rsp_data_ptr = (unsigned char *)cfg(priv)->name;
-		rsp_data_len = strlen(cfg(priv)->name);
+		rsp_data_ptr = (unsigned char *)priv->cfg->name;
+		rsp_data_len = strlen(priv->cfg->name);
 		skb = cfg80211_testmode_alloc_reply_skb(hw->wiphy,
 							rsp_data_len + 20);
 		if (!skb) {
@@ -534,7 +534,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 	case IWL_TM_CMD_APP2DEV_GET_EEPROM:
 		if (priv->eeprom) {
 			skb = cfg80211_testmode_alloc_reply_skb(hw->wiphy,
-				cfg(priv)->base_params->eeprom_size + 20);
+				priv->cfg->base_params->eeprom_size + 20);
 			if (!skb) {
 				IWL_ERR(priv, "Memory allocation fail\n");
 				return -ENOMEM;
@@ -542,7 +542,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 			NLA_PUT_U32(skb, IWL_TM_ATTR_COMMAND,
 				IWL_TM_CMD_DEV2APP_EEPROM_RSP);
 			NLA_PUT(skb, IWL_TM_ATTR_EEPROM,
-				cfg(priv)->base_params->eeprom_size,
+				priv->cfg->base_params->eeprom_size,
 				priv->eeprom);
 			status = cfg80211_testmode_reply(skb);
 			if (status < 0)
@@ -577,7 +577,7 @@ static int iwl_testmode_driver(struct ieee80211_hw *hw, struct nlattr **tb)
 		break;
 
 	case IWL_TM_CMD_APP2DEV_GET_DEVICE_ID:
-		devid = trans(priv)->hw_id;
+		devid = priv->trans->hw_id;
 		IWL_INFO(priv, "hw version: 0x%x\n", devid);
 
 		skb = cfg80211_testmode_alloc_reply_skb(hw->wiphy, 20);
@@ -642,7 +642,7 @@ static int iwl_testmode_trace(struct ieee80211_hw *hw, struct nlattr **tb)
 	struct iwl_priv *priv = IWL_MAC80211_GET_DVM(hw);
 	struct sk_buff *skb;
 	int status = 0;
-	struct device *dev = trans(priv)->dev;
+	struct device *dev = priv->trans->dev;
 
 	switch (nla_get_u32(tb[IWL_TM_ATTR_COMMAND])) {
 	case IWL_TM_CMD_APP2DEV_BEGIN_TRACE:
@@ -782,7 +782,7 @@ static int iwl_testmode_ownership(struct ieee80211_hw *hw, struct nlattr **tb)
 
 static int iwl_testmode_indirect_read(struct iwl_priv *priv, u32 addr, u32 size)
 {
-	struct iwl_trans *trans = trans(priv);
+	struct iwl_trans *trans = priv->trans;
 	unsigned long flags;
 	int i;
 
@@ -822,7 +822,7 @@ static int iwl_testmode_indirect_read(struct iwl_priv *priv, u32 addr, u32 size)
 static int iwl_testmode_indirect_write(struct iwl_priv *priv, u32 addr,
 	u32 size, unsigned char *buf)
 {
-	struct iwl_trans *trans = trans(priv);
+	struct iwl_trans *trans = priv->trans;
 	u32 val, i;
 	unsigned long flags;
 

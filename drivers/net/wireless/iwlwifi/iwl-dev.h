@@ -194,6 +194,7 @@ struct iwl_qos_info {
  * These states relate to a specific RA / TID.
  *
  * @IWL_AGG_OFF: aggregation is not used
+ * @IWL_AGG_STARTING: aggregation are starting (between start and oper)
  * @IWL_AGG_ON: aggregation session is up
  * @IWL_EMPTYING_HW_QUEUE_ADDBA: establishing a BA session - waiting for the
  *	HW queue to be empty from packets for this RA /TID.
@@ -202,6 +203,7 @@ struct iwl_qos_info {
  */
 enum iwl_agg_state {
 	IWL_AGG_OFF = 0,
+	IWL_AGG_STARTING,
 	IWL_AGG_ON,
 	IWL_EMPTYING_HW_QUEUE_ADDBA,
 	IWL_EMPTYING_HW_QUEUE_DELBA,
@@ -602,6 +604,13 @@ struct iwl_rf_reset {
 	unsigned long last_reset_jiffies;
 };
 
+enum iwl_rxon_context_id {
+	IWL_RXON_CTX_BSS,
+	IWL_RXON_CTX_PAN,
+
+	NUM_IWL_RXON_CTX
+};
+
 /* extend beacon time format bit shifting  */
 /*
  * for _agn devices
@@ -742,12 +751,15 @@ struct iwl_wipan_noa_data {
 };
 
 /* Calibration disabling bit mask */
-#define IWL_SENSITIVITY_CALIB_DISABLED	BIT(1)
-#define IWL_CHAIN_NOISE_CALIB_DISABLED	BIT(2)
-#define IWL_TX_POWER_CALIB_DISABLED	BIT(3)
+enum {
+	IWL_CALIB_ENABLE_ALL			= 0,
 
-#define IWL_CALIB_ENABLE_ALL	0
-#define IWL_CALIB_DISABLE_ALL	0xFFFFFFFF
+	IWL_SENSITIVITY_CALIB_DISABLED		= BIT(0),
+	IWL_CHAIN_NOISE_CALIB_DISABLED		= BIT(1),
+	IWL_TX_POWER_CALIB_DISABLED		= BIT(2),
+
+	IWL_CALIB_DISABLE_ALL			= 0xFFFFFFFF,
+};
 
 #define IWL_OP_MODE_GET_DVM(_iwl_op_mode) \
 	((struct iwl_priv *) ((_iwl_op_mode)->op_mode_specific))
@@ -758,8 +770,9 @@ struct iwl_wipan_noa_data {
 
 struct iwl_priv {
 
-	/*data shared among all the driver's layers */
-	struct iwl_shared *shrd;
+	struct iwl_trans *trans;
+	struct device *dev;		/* for debug prints only */
+	const struct iwl_cfg *cfg;
 	const struct iwl_fw *fw;
 	const struct iwl_lib_ops *lib;
 	unsigned long status;
