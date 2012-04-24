@@ -1257,8 +1257,7 @@ static int nl80211_set_wiphy(struct sk_buff *skb, struct genl_info *info)
 		result = 0;
 
 		mutex_lock(&rdev->mtx);
-	} else if (netif_running(netdev) &&
-		   nl80211_can_set_dev_channel(netdev->ieee80211_ptr))
+	} else if (nl80211_can_set_dev_channel(netdev->ieee80211_ptr))
 		wdev = netdev->ieee80211_ptr;
 	else
 		wdev = NULL;

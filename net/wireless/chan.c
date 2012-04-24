@@ -88,12 +88,8 @@ int cfg80211_set_freq(struct cfg80211_registered_device *rdev,
 	if (wdev && wdev->iftype == NL80211_IFTYPE_MONITOR)
 		wdev = NULL;
 
-	if (wdev) {
+	if (wdev)
 		ASSERT_WDEV_LOCK(wdev);
-
-		if (!netif_running(wdev->netdev))
-			return -ENETDOWN;
-	}
 
 	if (!rdev->ops->set_channel)
 		return -EOPNOTSUPP;
