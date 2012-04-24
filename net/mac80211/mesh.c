@@ -786,6 +786,20 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 		      BSS_CHANGED_BASIC_RATES |
 		      BSS_CHANGED_BEACON_INT;
 	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
+	struct ieee80211_supported_band *sband;
+	struct ieee80211_rate *bitrates;
+	int i;
+
+	sband = local->hw.wiphy->bands[band];
+	bitrates = sband->bitrates;
+	for (i = 0; i < sband->n_bitrates; i++) {
+		if (band != IEEE80211_BAND_2GHZ)
+			break;
+		if (bitrates[i].bitrate > 110) {
+			sdata->flags |= IEEE80211_SDATA_OPERATING_GMODE;
+			break;
+		}
+	}
 
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
