@@ -581,6 +581,10 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_supported_band *sband;
+	struct ieee80211_rate *bitrates;
+	enum  ieee80211_band band = local->hw.conf.channel->band;
+	int i;
 
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
@@ -599,10 +603,19 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.ht_operation_mode =
 				IEEE80211_HT_OP_MODE_PROTECTION_NONHT_MIXED;
 	sdata->vif.bss_conf.beacon_int = MESH_DEFAULT_BEACON_INTERVAL;
+
+	sband = local->hw.wiphy->bands[band];
+	bitrates = sband->bitrates;
+	for (i = 0; i < sband->n_bitrates; i++)
+		if (band == IEEE80211_BAND_2GHZ &&
+		    bitrates[i].bitrate > 110) {
+			sdata->flags |= IEEE80211_SDATA_OPERATING_GMODE;
+			break;
+		}
+
 	if (!sdata->vif.bss_conf.basic_rates)
 		sdata->vif.bss_conf.basic_rates =
-			ieee80211_mandatory_rates(local,
-						  local->hw.conf.channel->band);
+					 ieee80211_mandatory_rates(sdata, band);
 	sdata->vif.bss_conf.basic_mcs_set[0] = IEEE80211_DEFAULT_BASIC_MCS_SET;
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
