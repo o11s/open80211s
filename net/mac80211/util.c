@@ -1005,9 +1005,10 @@ void ieee80211_sta_def_wmm_params(struct ieee80211_sub_if_data *sdata,
 	ieee80211_set_wmm_default(sdata, true);
 }
 
-u32 ieee80211_mandatory_rates(struct ieee80211_local *local,
+u32 ieee80211_mandatory_rates(struct ieee80211_sub_if_data *sdata,
 			      enum ieee80211_band band)
 {
+	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_rate *bitrates;
 	u32 mandatory_rates;
@@ -1018,7 +1019,10 @@ u32 ieee80211_mandatory_rates(struct ieee80211_local *local,
 	if (WARN_ON(!sband))
 		return 1;
 
-	if (band == IEEE80211_BAND_2GHZ)
+	if (band == IEEE80211_BAND_2GHZ &&
+	    sdata->flags & IEEE80211_SDATA_OPERATING_GMODE)
+		mandatory_flag = IEEE80211_RATE_MANDATORY_G;
+	else if (band == IEEE80211_BAND_2GHZ)
 		mandatory_flag = IEEE80211_RATE_MANDATORY_B;
 	else
 		mandatory_flag = IEEE80211_RATE_MANDATORY_A;

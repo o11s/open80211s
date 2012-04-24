@@ -819,7 +819,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 				ifmsh->mshcfg.ht_opmode;
 	sdata->vif.bss_conf.enable_beacon = true;
 	sdata->vif.bss_conf.basic_rates =
-		ieee80211_mandatory_rates(local, band);
+		ieee80211_mandatory_rates(sdata, band);
 
 	changed |= ieee80211_mps_local_status_update(sdata);
 
