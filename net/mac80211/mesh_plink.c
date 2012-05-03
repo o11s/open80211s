@@ -345,6 +345,16 @@ static struct sta_info *mesh_peer_init(struct ieee80211_sub_if_data *sdata,
 
 	sta = sta_info_get(sdata, addr);
 	if (!sta) {
+		/* Userspace handles peer allocation when security is enabled */
+		if (sdata->u.mesh.security & IEEE80211_MESH_SEC_AUTHED &&
+		    elems->rsn) {
+			cfg80211_notify_new_peer_candidate(sdata->dev, addr,
+							   elems->ie_start,
+							   elems->total_len,
+							   GFP_ATOMIC);
+			return NULL;
+		}
+
 		sta = mesh_plink_alloc(sdata, addr);
 		if (!sta)
 			return NULL;
@@ -385,15 +395,6 @@ void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
 			   struct ieee802_11_elems *elems)
 {
 	struct sta_info *sta;
-
-	/* Userspace handles peer allocation when security is enabled */
-	if (sdata->u.mesh.security & IEEE80211_MESH_SEC_AUTHED) {
-		cfg80211_notify_new_peer_candidate(sdata->dev, hw_addr,
-						   elems->ie_start,
-						   elems->total_len,
-						   GFP_KERNEL);
-		return;
-	}
 
 	rcu_read_lock();
 	sta = mesh_peer_init(sdata, hw_addr, elems);
