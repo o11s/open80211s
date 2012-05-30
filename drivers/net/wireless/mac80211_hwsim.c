@@ -48,6 +48,10 @@ static bool fake_hw_scan;
 module_param(fake_hw_scan, bool, 0444);
 MODULE_PARM_DESC(fake_hw_scan, "Install fake (no-op) hw-scan handler");
 
+static int max_sta = 0;
+module_param(max_sta, int, 0444);
+MODULE_PARM_DESC(max_sta, "Number of stations the driver can support");
+
 /**
  * enum hwsim_regtest - the type of regulatory tests we offer
  *
@@ -159,6 +163,7 @@ struct hwsim_vif_priv {
 	u8 bssid[ETH_ALEN];
 	bool assoc;
 	u16 aid;
+	u8 num_sta;
 };
 
 #define HWSIM_VIF_MAGIC	0x69537748
@@ -982,7 +987,15 @@ static int mac80211_hwsim_sta_add(struct ieee80211_hw *hw,
 				  struct ieee80211_vif *vif,
 				  struct ieee80211_sta *sta)
 {
+	struct hwsim_vif_priv *vp = (void *)vif->drv_priv;
+
 	hwsim_check_magic(vif);
+	vp->num_sta++;
+	if (max_sta && vp->num_sta > max_sta) {
+		vp->num_sta--;
+		return -ENOBUFS;
+	}
+
 	hwsim_set_sta_magic(sta);
 
 	return 0;
@@ -992,9 +1005,10 @@ static int mac80211_hwsim_sta_remove(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif,
 				     struct ieee80211_sta *sta)
 {
+	struct hwsim_vif_priv *vp = (void *)vif->drv_priv;
 	hwsim_check_magic(vif);
 	hwsim_clear_sta_magic(sta);
-
+	vp->num_sta--;
 	return 0;
 }
 
