@@ -58,7 +58,7 @@ static int ieee80211_change_mtu(struct net_device *dev, int new_mtu)
 	}
 
 #ifdef CONFIG_MAC80211_VERBOSE_DEBUG
-	printk(KERN_DEBUG "%s: setting MTU %d\n", dev->name, new_mtu);
+	pr_debug("%s: setting MTU %d\n", dev->name, new_mtu);
 #endif /* CONFIG_MAC80211_VERBOSE_DEBUG */
 	dev->mtu = new_mtu;
 	return 0;
@@ -1238,7 +1238,7 @@ static void ieee80211_assign_perm_addr(struct ieee80211_local *local,
 
 		if (__ffs64(mask) + hweight64(mask) != fls64(mask)) {
 			/* not a contiguous mask ... not handled now! */
-			printk(KERN_DEBUG "not contiguous\n");
+			pr_debug("not contiguous\n");
 			break;
 		}
 
@@ -1363,6 +1363,8 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 		if (type == NL80211_IFTYPE_STATION)
 			sdata->u.mgd.use_4addr = params->use_4addr;
 	}
+
+	ndev->features |= local->hw.netdev_features;
 
 	ret = register_netdevice(ndev);
 	if (ret)

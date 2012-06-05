@@ -1297,6 +1297,10 @@ enum ieee80211_hw_flags {
  *	reports, by default it is set to _MCS, _GI and _BW but doesn't
  *	include _FMT. Use %IEEE80211_RADIOTAP_MCS_HAVE_* values, only
  *	adding _BW is supported today.
+ *
+ * @netdev_features: netdev features to be set in each netdev created
+ *	from this HW. Note only HW checksum features are currently
+ *	compatible with mac80211. Other feature bits will be rejected.
  */
 struct ieee80211_hw {
 	struct ieee80211_conf conf;
@@ -1319,6 +1323,7 @@ struct ieee80211_hw {
 	u8 max_tx_aggregation_subframes;
 	u8 offchannel_tx_hw_queue;
 	u8 radiotap_mcs_details;
+	netdev_features_t netdev_features;
 };
 
 /**
@@ -3551,16 +3556,6 @@ void ieee80211_cqm_rssi_notify(struct ieee80211_vif *vif,
 			       gfp_t gfp);
 
 /**
- * ieee80211_get_operstate - get the operstate of the vif
- *
- * @vif: &struct ieee80211_vif pointer from the add_interface callback.
- *
- * The driver might need to know the operstate of the net_device
- * (specifically, whether the link is IF_OPER_UP after resume)
- */
-unsigned char ieee80211_get_operstate(struct ieee80211_vif *vif);
-
-/**
  * ieee80211_chswitch_done - Complete channel switch process
  * @vif: &struct ieee80211_vif pointer from the add_interface callback.
  * @success: make the channel switch successful or not
@@ -3838,5 +3833,29 @@ int ieee80211_add_ext_srates_ie(struct ieee80211_vif *vif,
  * It assumes that the given vif is valid.
  */
 int ieee80211_ave_rssi(struct ieee80211_vif *vif);
+
+/* Extra debugging macros */
+
+#ifdef CONFIG_MAC80211_HT_DEBUG
+#define ht_vdbg(fmt, ...)			\
+	pr_debug(fmt, ##__VA_ARGS__)
+#else
+#define ht_vdbg(fmt, ...)			\
+do {						\
+	if (0)					\
+		pr_debug(fmt, ##__VA_ARGS__);	\
+} while (0)
+#endif
+
+#ifdef CONFIG_MAC80211_IBSS_DEBUG
+#define ibss_vdbg(fmt, ...)			\
+	pr_debug(fmt, ##__VA_ARGS__)
+#else
+#define ibss_vdbg(fmt, ...)			\
+do {						\
+	if (0)					\
+		pr_debug(fmt, ##__VA_ARGS__);	\
+} while (0)
+#endif
 
 #endif /* MAC80211_H */

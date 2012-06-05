@@ -47,12 +47,11 @@
  * iwl_trans_txq_update_byte_cnt_tbl - Set up entry in Tx byte-count array
  */
 void iwl_trans_txq_update_byte_cnt_tbl(struct iwl_trans *trans,
-					   struct iwl_tx_queue *txq,
-					   u16 byte_cnt)
+				       struct iwl_tx_queue *txq,
+				       u16 byte_cnt)
 {
 	struct iwlagn_scd_bc_tbl *scd_bc_tbl;
-	struct iwl_trans_pcie *trans_pcie =
-		IWL_TRANS_GET_PCIE_TRANS(trans);
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	int write_ptr = txq->q.write_ptr;
 	int txq_id = txq->q.id;
 	u8 sec_ctl = 0;
@@ -178,8 +177,8 @@ static inline u8 iwl_tfd_get_num_tbs(struct iwl_tfd *tfd)
 	return tfd->num_tbs & 0x1f;
 }
 
-static void iwlagn_unmap_tfd(struct iwl_trans *trans, struct iwl_cmd_meta *meta,
-		     struct iwl_tfd *tfd, enum dma_data_direction dma_dir)
+static void iwl_unmap_tfd(struct iwl_trans *trans, struct iwl_cmd_meta *meta,
+			  struct iwl_tfd *tfd, enum dma_data_direction dma_dir)
 {
 	int i;
 	int num_tbs;
@@ -209,7 +208,7 @@ static void iwlagn_unmap_tfd(struct iwl_trans *trans, struct iwl_cmd_meta *meta,
 }
 
 /**
- * iwlagn_txq_free_tfd - Free all chunks referenced by TFD [txq->q.read_ptr]
+ * iwl_txq_free_tfd - Free all chunks referenced by TFD [txq->q.read_ptr]
  * @trans - transport private data
  * @txq - tx queue
  * @dma_dir - the direction of the DMA mapping
@@ -217,8 +216,8 @@ static void iwlagn_unmap_tfd(struct iwl_trans *trans, struct iwl_cmd_meta *meta,
  * Does NOT advance any TFD circular buffer read/write indexes
  * Does NOT free the TFD itself (which is within circular buffer)
  */
-void iwlagn_txq_free_tfd(struct iwl_trans *trans, struct iwl_tx_queue *txq,
-			 enum dma_data_direction dma_dir)
+void iwl_txq_free_tfd(struct iwl_trans *trans, struct iwl_tx_queue *txq,
+		      enum dma_data_direction dma_dir)
 {
 	struct iwl_tfd *tfd_tmp = txq->tfds;
 
@@ -229,8 +228,8 @@ void iwlagn_txq_free_tfd(struct iwl_trans *trans, struct iwl_tx_queue *txq,
 	lockdep_assert_held(&txq->lock);
 
 	/* We have only q->n_window txq->entries, but we use q->n_bd tfds */
-	iwlagn_unmap_tfd(trans, &txq->entries[idx].meta,
-			 &tfd_tmp[rd_ptr], dma_dir);
+	iwl_unmap_tfd(trans, &txq->entries[idx].meta, &tfd_tmp[rd_ptr],
+		      dma_dir);
 
 	/* free SKB */
 	if (txq->entries) {
@@ -270,7 +269,7 @@ int iwlagn_txq_attach_buf_to_tfd(struct iwl_trans *trans,
 	/* Each TFD can point to a maximum 20 Tx buffers */
 	if (num_tbs >= IWL_NUM_OF_TBS) {
 		IWL_ERR(trans, "Error can not send more than %d chunks\n",
-			  IWL_NUM_OF_TBS);
+			IWL_NUM_OF_TBS);
 		return -EINVAL;
 	}
 
@@ -279,7 +278,7 @@ int iwlagn_txq_attach_buf_to_tfd(struct iwl_trans *trans,
 
 	if (unlikely(addr & ~IWL_TX_DMA_MASK))
 		IWL_ERR(trans, "Unaligned address = %llx\n",
-			  (unsigned long long)addr);
+			(unsigned long long)addr);
 
 	iwl_tfd_set_tb(tfd, num_tbs, addr, len);
 
@@ -383,14 +382,12 @@ static void iwlagn_txq_inval_byte_cnt_tbl(struct iwl_trans *trans,
 }
 
 static int iwlagn_tx_queue_set_q2ratid(struct iwl_trans *trans, u16 ra_tid,
-					u16 txq_id)
+				       u16 txq_id)
 {
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	u32 tbl_dw_addr;
 	u32 tbl_dw;
 	u16 scd_q2ratid;
-
-	struct iwl_trans_pcie *trans_pcie =
-		IWL_TRANS_GET_PCIE_TRANS(trans);
 
 	scd_q2ratid = ra_tid & SCD_QUEUE_RA_TID_MAP_RATID_MSK;
 
@@ -419,12 +416,11 @@ static void iwlagn_tx_queue_stop_scheduler(struct iwl_trans *trans, u16 txq_id)
 		(1 << SCD_QUEUE_STTS_REG_POS_SCD_ACT_EN));
 }
 
-void iwl_trans_set_wr_ptrs(struct iwl_trans *trans,
-				int txq_id, u32 index)
+void iwl_trans_set_wr_ptrs(struct iwl_trans *trans, int txq_id, u32 index)
 {
 	IWL_DEBUG_TX_QUEUES(trans, "Q %d  WrPtr: %d\n", txq_id, index & 0xff);
 	iwl_write_direct32(trans, HBUS_TARG_WRPTR,
-			(index & 0xff) | (txq_id << 8));
+			   (index & 0xff) | (txq_id << 8));
 	iwl_write_prph(trans, SCD_QUEUE_RDPTR(txq_id), index);
 }
 
@@ -615,13 +611,13 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	}
 
 	IWL_DEBUG_HC(trans,
-		"Sending command %s (#%x), seq: 0x%04X, %d bytes at %d[%d]:%d\n",
-		trans_pcie_get_cmd_string(trans_pcie, out_cmd->hdr.cmd),
-		out_cmd->hdr.cmd, le16_to_cpu(out_cmd->hdr.sequence), cmd_size,
-		q->write_ptr, idx, trans_pcie->cmd_queue);
+		     "Sending command %s (#%x), seq: 0x%04X, %d bytes at %d[%d]:%d\n",
+		     trans_pcie_get_cmd_string(trans_pcie, out_cmd->hdr.cmd),
+		     out_cmd->hdr.cmd, le16_to_cpu(out_cmd->hdr.sequence),
+		     cmd_size, q->write_ptr, idx, trans_pcie->cmd_queue);
 
 	phys_addr = dma_map_single(trans->dev, &out_cmd->hdr, copy_size,
-				DMA_BIDIRECTIONAL);
+				   DMA_BIDIRECTIONAL);
 	if (unlikely(dma_mapping_error(trans->dev, phys_addr))) {
 		idx = -ENOMEM;
 		goto out;
@@ -630,8 +626,7 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	dma_unmap_addr_set(out_meta, mapping, phys_addr);
 	dma_unmap_len_set(out_meta, len, copy_size);
 
-	iwlagn_txq_attach_buf_to_tfd(trans, txq,
-					phys_addr, copy_size, 1);
+	iwlagn_txq_attach_buf_to_tfd(trans, txq, phys_addr, copy_size, 1);
 #ifdef CONFIG_IWLWIFI_DEVICE_TRACING
 	trace_bufs[0] = &out_cmd->hdr;
 	trace_lens[0] = copy_size;
@@ -643,13 +638,12 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 			continue;
 		if (!(cmd->dataflags[i] & IWL_HCMD_DFL_NOCOPY))
 			continue;
-		phys_addr = dma_map_single(trans->dev,
-					   (void *)cmd->data[i],
+		phys_addr = dma_map_single(trans->dev, (void *)cmd->data[i],
 					   cmd->len[i], DMA_BIDIRECTIONAL);
 		if (dma_mapping_error(trans->dev, phys_addr)) {
-			iwlagn_unmap_tfd(trans, out_meta,
-					 &txq->tfds[q->write_ptr],
-					 DMA_BIDIRECTIONAL);
+			iwl_unmap_tfd(trans, out_meta,
+				      &txq->tfds[q->write_ptr],
+				      DMA_BIDIRECTIONAL);
 			idx = -ENOMEM;
 			goto out;
 		}
@@ -723,9 +717,10 @@ static void iwl_hcmd_queue_reclaim(struct iwl_trans *trans, int txq_id,
 	lockdep_assert_held(&txq->lock);
 
 	if ((idx >= q->n_bd) || (iwl_queue_used(q, idx) == 0)) {
-		IWL_ERR(trans, "%s: Read index for DMA queue txq id (%d), "
-			  "index %d is out of range [0-%d] %d %d.\n", __func__,
-			  txq_id, idx, q->n_bd, q->write_ptr, q->read_ptr);
+		IWL_ERR(trans,
+			"%s: Read index for DMA queue txq id (%d), index %d is out of range [0-%d] %d %d.\n",
+			__func__, txq_id, idx, q->n_bd,
+			q->write_ptr, q->read_ptr);
 		return;
 	}
 
@@ -733,8 +728,8 @@ static void iwl_hcmd_queue_reclaim(struct iwl_trans *trans, int txq_id,
 	     q->read_ptr = iwl_queue_inc_wrap(q->read_ptr, q->n_bd)) {
 
 		if (nfreed++ > 0) {
-			IWL_ERR(trans, "HCMD skipped: index (%d) %d %d\n", idx,
-					q->write_ptr, q->read_ptr);
+			IWL_ERR(trans, "HCMD skipped: index (%d) %d %d\n",
+				idx, q->write_ptr, q->read_ptr);
 			iwl_op_mode_nic_error(trans->op_mode);
 		}
 
@@ -771,9 +766,9 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_cmd_buffer *rxb,
 	 * in the queue management code. */
 	if (WARN(txq_id != trans_pcie->cmd_queue,
 		 "wrong command queue %d (should be %d), sequence 0x%X readp=%d writep=%d\n",
-		  txq_id, trans_pcie->cmd_queue, sequence,
-		  trans_pcie->txq[trans_pcie->cmd_queue].q.read_ptr,
-		  trans_pcie->txq[trans_pcie->cmd_queue].q.write_ptr)) {
+		 txq_id, trans_pcie->cmd_queue, sequence,
+		 trans_pcie->txq[trans_pcie->cmd_queue].q.read_ptr,
+		 trans_pcie->txq[trans_pcie->cmd_queue].q.write_ptr)) {
 		iwl_print_hex_error(trans, pkt, 32);
 		return;
 	}
@@ -784,8 +779,7 @@ void iwl_tx_cmd_complete(struct iwl_trans *trans, struct iwl_rx_cmd_buffer *rxb,
 	cmd = txq->entries[cmd_index].cmd;
 	meta = &txq->entries[cmd_index].meta;
 
-	iwlagn_unmap_tfd(trans, meta, &txq->tfds[index],
-			 DMA_BIDIRECTIONAL);
+	iwl_unmap_tfd(trans, meta, &txq->tfds[index], DMA_BIDIRECTIONAL);
 
 	/* Input error checking is done when commands are added to queue. */
 	if (meta->flags & CMD_WANT_SKB) {
@@ -870,8 +864,9 @@ static int iwl_send_cmd_sync(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	}
 
 	ret = wait_event_timeout(trans->wait_command_queue,
-			!test_bit(STATUS_HCMD_ACTIVE, &trans_pcie->status),
-			HOST_COMPLETE_TIMEOUT);
+				 !test_bit(STATUS_HCMD_ACTIVE,
+					   &trans_pcie->status),
+				 HOST_COMPLETE_TIMEOUT);
 	if (!ret) {
 		if (test_bit(STATUS_HCMD_ACTIVE, &trans_pcie->status)) {
 			struct iwl_tx_queue *txq =
@@ -956,10 +951,10 @@ int iwl_tx_queue_reclaim(struct iwl_trans *trans, int txq_id, int index,
 
 	if ((index >= q->n_bd) ||
 	   (iwl_queue_used(q, last_to_free) == 0)) {
-		IWL_ERR(trans, "%s: Read index for DMA queue txq id (%d), "
-			  "last_to_free %d is out of range [0-%d] %d %d.\n",
-			  __func__, txq_id, last_to_free, q->n_bd,
-			  q->write_ptr, q->read_ptr);
+		IWL_ERR(trans,
+			"%s: Read index for DMA queue txq id (%d), last_to_free %d is out of range [0-%d] %d %d.\n",
+			__func__, txq_id, last_to_free, q->n_bd,
+			q->write_ptr, q->read_ptr);
 		return 0;
 	}
 
@@ -979,7 +974,7 @@ int iwl_tx_queue_reclaim(struct iwl_trans *trans, int txq_id, int index,
 
 		iwlagn_txq_inval_byte_cnt_tbl(trans, txq);
 
-		iwlagn_txq_free_tfd(trans, txq, DMA_TO_DEVICE);
+		iwl_txq_free_tfd(trans, txq, DMA_TO_DEVICE);
 		freed++;
 	}
 
