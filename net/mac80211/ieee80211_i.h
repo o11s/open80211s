@@ -587,6 +587,7 @@ struct ieee80211_if_mesh {
 	struct mesh_stats mshstats;
 	struct mesh_config mshcfg;
 	u32 mesh_seqnum;
+	/* This station can establish additional peer links */
 	bool accepting_plinks;
 	int num_gates;
 	const u8 *ie;
