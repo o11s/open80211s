@@ -344,6 +344,7 @@ static struct sta_info *mesh_peer_init(struct ieee80211_sub_if_data *sdata,
 	u32 rates, basic_rates = 0;
 	struct sta_info *sta;
 	bool insert = false;
+	int err;
 
 	sband = local->hw.wiphy->bands[band];
 	rates = ieee80211_sta_get_rates(local, elems, band, &basic_rates);
@@ -388,8 +389,13 @@ static struct sta_info *mesh_peer_init(struct ieee80211_sub_if_data *sdata,
 	rate_control_rate_init(sta);
 	spin_unlock_bh(&sta->lock);
 
-	if (insert && sta_info_insert(sta))
-		return NULL;
+	if (insert) {
+		err = sta_info_insert(sta);
+		if (err) {
+			dot11MeshMaxPeerLinks(sdata) = sdata->local->num_sta;
+			return NULL;
+		}
+	}
 
 	return sta;
 }
