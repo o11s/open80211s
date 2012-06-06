@@ -930,11 +930,6 @@ void ieee80211_recalc_ps(struct ieee80211_local *local, s32 latency)
 		return;
 	}
 
-	if (!list_empty(&local->work_list)) {
-		local->ps_sdata = NULL;
-		goto change;
-	}
-
 	list_for_each_entry(sdata, &local->interfaces, list) {
 		if (!ieee80211_sdata_running(sdata))
 			continue;
@@ -1007,7 +1002,6 @@ void ieee80211_recalc_ps(struct ieee80211_local *local, s32 latency)
 		local->ps_sdata = NULL;
 	}
 
- change:
 	ieee80211_change_ps(local);
 }
 
@@ -3317,11 +3311,15 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	 * We can set this to true for non-11n hardware, that'll be checked
 	 * separately along with the peer capabilities.
 	 */
-	for (i = 0; i < req->crypto.n_ciphers_pairwise; i++)
+	for (i = 0; i < req->crypto.n_ciphers_pairwise; i++) {
 		if (req->crypto.ciphers_pairwise[i] == WLAN_CIPHER_SUITE_WEP40 ||
 		    req->crypto.ciphers_pairwise[i] == WLAN_CIPHER_SUITE_TKIP ||
-		    req->crypto.ciphers_pairwise[i] == WLAN_CIPHER_SUITE_WEP104)
+		    req->crypto.ciphers_pairwise[i] == WLAN_CIPHER_SUITE_WEP104) {
 			ifmgd->flags |= IEEE80211_STA_DISABLE_11N;
+			netdev_info(sdata->dev,
+				    "disabling HT due to WEP/TKIP use\n");
+		}
+	}
 
 	if (req->flags & ASSOC_REQ_DISABLE_HT)
 		ifmgd->flags |= IEEE80211_STA_DISABLE_11N;
@@ -3329,8 +3327,11 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	/* Also disable HT if we don't support it or the AP doesn't use WMM */
 	sband = local->hw.wiphy->bands[req->bss->channel->band];
 	if (!sband->ht_cap.ht_supported ||
-	    local->hw.queues < IEEE80211_NUM_ACS || !bss->wmm_used)
+	    local->hw.queues < IEEE80211_NUM_ACS || !bss->wmm_used) {
 		ifmgd->flags |= IEEE80211_STA_DISABLE_11N;
+		netdev_info(sdata->dev,
+			    "disabling HT as WMM/QoS is not supported\n");
+	}
 
 	memcpy(&ifmgd->ht_capa, &req->ht_capa, sizeof(ifmgd->ht_capa));
 	memcpy(&ifmgd->ht_capa_mask, &req->ht_capa_mask,
