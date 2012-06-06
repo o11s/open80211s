@@ -92,6 +92,9 @@ static struct sta_info *mesh_plink_alloc(struct ieee80211_sub_if_data *sdata,
 	if (sdata->local->num_sta >= MESH_MAX_PLINKS)
 		return NULL;
 
+	if (!sdata->u.mesh.accepting_plinks)
+		return NULL;
+
 	sta = sta_info_alloc(sdata, hw_addr, GFP_KERNEL);
 	if (!sta)
 		return NULL;
