@@ -344,10 +344,14 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 	INIT_WORK(&sta->ampdu_mlme.work, ieee80211_ba_session_work);
 	mutex_init(&sta->ampdu_mlme.mtx);
 #ifdef CONFIG_MAC80211_MESH
-	if (ieee80211_vif_is_mesh(&sdata->vif) &&
-	    !sdata->u.mesh.user_mpm)
-		init_timer(&sta->plink_timer);
-	sta->nonpeer_pm = NL80211_MESH_POWER_ACTIVE;
+	if (ieee80211_vif_is_mesh(&sdata->vif)) {
+		if (!sdata->u.mesh.user_mpm)
+			init_timer(&sta->plink_timer);
+		sta->nonpeer_pm = NL80211_MESH_POWER_ACTIVE;
+		setup_timer(&sta->nexttbtt_timer,
+			    ieee80211_mps_sta_tbtt_timeout,
+			    (unsigned long) sta);
+	}
 #endif
 
 	memcpy(sta->sta.addr, addr, ETH_ALEN);
