@@ -664,6 +664,7 @@ enum sc_op_flags {
 #define PS_WAIT_FOR_TX_ACK        BIT(3)
 #define PS_BEACON_SYNC            BIT(4)
 #define PS_WAIT_FOR_ANI           BIT(5)
+#define PS_MAC80211_CTL           BIT(6)
 
 struct ath_rate_table;
 

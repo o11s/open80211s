@@ -2316,16 +2316,24 @@ void ath9k_hw_beaconinit(struct ath_hw *ah, u32 next_beacon, u32 beacon_period)
 }
 EXPORT_SYMBOL(ath9k_hw_beaconinit);
 
+/**
+ * ath9k_hw_set_sta_beacon_timers
+ *
+ * in mesh mode overwriting AR_NEXT_TBTT_TIMER and setting AR_TBTT_TIMER_EN
+ * would shift the own TBTT
+ */
 void ath9k_hw_set_sta_beacon_timers(struct ath_hw *ah,
 				    const struct ath9k_beacon_state *bs)
 {
 	u32 nextTbtt, beaconintval, dtimperiod, beacontimeout;
+	u32 ar_timer_mode = AR_DTIM_TIMER_EN | AR_TIM_TIMER_EN;
 	struct ath9k_hw_capabilities *pCap = &ah->caps;
 	struct ath_common *common = ath9k_hw_common(ah);
 
 	ENABLE_REGWRITE_BUFFER(ah);
 
-	REG_WRITE(ah, AR_NEXT_TBTT_TIMER, TU_TO_USEC(bs->bs_nexttbtt));
+	if (ah->opmode != NL80211_IFTYPE_MESH_POINT)
+		REG_WRITE(ah, AR_NEXT_TBTT_TIMER, TU_TO_USEC(bs->bs_nexttbtt));
 
 	REG_WRITE(ah, AR_BEACON_PERIOD,
 		  TU_TO_USEC(bs->bs_intval));
@@ -2379,9 +2387,10 @@ void ath9k_hw_set_sta_beacon_timers(struct ath_hw *ah,
 
 	REGWRITE_BUFFER_FLUSH(ah);
 
-	REG_SET_BIT(ah, AR_TIMER_MODE,
-		    AR_TBTT_TIMER_EN | AR_TIM_TIMER_EN |
-		    AR_DTIM_TIMER_EN);
+	if (ah->opmode != NL80211_IFTYPE_MESH_POINT)
+		ar_timer_mode |= AR_TBTT_TIMER_EN;
+
+	REG_SET_BIT(ah, AR_TIMER_MODE, ar_timer_mode);
 
 	/* TSF Out of Range Threshold */
 	REG_WRITE(ah, AR_TSFOOR_THRESHOLD, bs->bs_tsfoor_threshold);
