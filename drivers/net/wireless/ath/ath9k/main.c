@@ -150,6 +150,9 @@ static void __ath_cancel_work(struct ath_softc *sc)
 	cancel_work_sync(&sc->hw_check_work);
 	cancel_delayed_work_sync(&sc->tx_complete_work);
 	cancel_delayed_work_sync(&sc->hw_pll_work);
+#ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
+	cancel_work_sync(&sc->mci_work);
+#endif
 }
 
 static void ath_cancel_work(struct ath_softc *sc)
@@ -1240,6 +1243,7 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 		if (ath_set_channel(sc, hw, &sc->sc_ah->channels[pos]) < 0) {
 			ath_err(common, "Unable to set channel\n");
 			mutex_unlock(&sc->mutex);
+			ath9k_ps_restore(sc);
 			return -EINVAL;
 		}
 
