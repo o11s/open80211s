@@ -26,6 +26,7 @@
 
 #include <linux/mutex.h>
 #include <linux/types.h>
+#include <linux/regmap.h>
 
 #define RC5T583_MAX_REGS		0xF8
 
@@ -249,6 +250,26 @@ enum {
 	RC5T583_EXT_PWRREQ2_CONTROL = 0x2,
 };
 
+enum {
+	RC5T583_REGULATOR_DC0,
+	RC5T583_REGULATOR_DC1,
+	RC5T583_REGULATOR_DC2,
+	RC5T583_REGULATOR_DC3,
+	RC5T583_REGULATOR_LDO0,
+	RC5T583_REGULATOR_LDO1,
+	RC5T583_REGULATOR_LDO2,
+	RC5T583_REGULATOR_LDO3,
+	RC5T583_REGULATOR_LDO4,
+	RC5T583_REGULATOR_LDO5,
+	RC5T583_REGULATOR_LDO6,
+	RC5T583_REGULATOR_LDO7,
+	RC5T583_REGULATOR_LDO8,
+	RC5T583_REGULATOR_LDO9,
+
+	/* Should be last entry */
+	RC5T583_REGULATOR_MAX,
+};
+
 struct rc5t583 {
 	struct device	*dev;
 	struct regmap	*regmap;
@@ -271,22 +292,63 @@ struct rc5t583 {
  * rc5t583_platform_data: Platform data for ricoh rc5t583 pmu.
  * The board specific data is provided through this structure.
  * @irq_base: Irq base number on which this device registers their interrupts.
+ * @gpio_base: GPIO base from which gpio of this device will start.
  * @enable_shutdown: Enable shutdown through the input pin "shutdown".
+ * @regulator_deepsleep_slot: The slot number on which device goes to sleep
+ *		in device sleep mode.
+ * @regulator_ext_pwr_control: External power request regulator control. The
+ *		regulator output enable/disable is controlled by the external
+ *		power request input state.
+ * @reg_init_data: Regulator init data.
  */
 
 struct rc5t583_platform_data {
 	int		irq_base;
+	int		gpio_base;
 	bool		enable_shutdown;
+	int		regulator_deepsleep_slot[RC5T583_REGULATOR_MAX];
+	unsigned long	regulator_ext_pwr_control[RC5T583_REGULATOR_MAX];
+	struct regulator_init_data *reg_init_data[RC5T583_REGULATOR_MAX];
 };
 
-int rc5t583_write(struct device *dev, u8 reg, uint8_t val);
-int rc5t583_read(struct device *dev, uint8_t reg, uint8_t *val);
-int rc5t583_set_bits(struct device *dev, unsigned int reg,
-		unsigned int bit_mask);
-int rc5t583_clear_bits(struct device *dev, unsigned int reg,
-		unsigned int bit_mask);
-int rc5t583_update(struct device *dev, unsigned int reg,
-		unsigned int val, unsigned int mask);
+static inline int rc5t583_write(struct device *dev, uint8_t reg, uint8_t val)
+{
+	struct rc5t583 *rc5t583 = dev_get_drvdata(dev);
+	return regmap_write(rc5t583->regmap, reg, val);
+}
+
+static inline int rc5t583_read(struct device *dev, uint8_t reg, uint8_t *val)
+{
+	struct rc5t583 *rc5t583 = dev_get_drvdata(dev);
+	unsigned int ival;
+	int ret;
+	ret = regmap_read(rc5t583->regmap, reg, &ival);
+	if (!ret)
+		*val = (uint8_t)ival;
+	return ret;
+}
+
+static inline int rc5t583_set_bits(struct device *dev, unsigned int reg,
+			unsigned int bit_mask)
+{
+	struct rc5t583 *rc5t583 = dev_get_drvdata(dev);
+	return regmap_update_bits(rc5t583->regmap, reg, bit_mask, bit_mask);
+}
+
+static inline int rc5t583_clear_bits(struct device *dev, unsigned int reg,
+			unsigned int bit_mask)
+{
+	struct rc5t583 *rc5t583 = dev_get_drvdata(dev);
+	return regmap_update_bits(rc5t583->regmap, reg, bit_mask, 0);
+}
+
+static inline int rc5t583_update(struct device *dev, unsigned int reg,
+		unsigned int val, unsigned int mask)
+{
+	struct rc5t583 *rc5t583 = dev_get_drvdata(dev);
+	return regmap_update_bits(rc5t583->regmap, reg, mask, val);
+}
+
 int rc5t583_ext_power_req_config(struct device *dev, int deepsleep_id,
 	int ext_pwr_req, int deepsleep_slot_nr);
 int rc5t583_irq_init(struct rc5t583 *rc5t583, int irq, int irq_base);

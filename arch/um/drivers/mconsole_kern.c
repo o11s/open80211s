@@ -22,6 +22,7 @@
 #include <linux/workqueue.h>
 #include <linux/mutex.h>
 #include <asm/uaccess.h>
+#include <asm/switch_to.h>
 
 #include "init.h"
 #include "irq_kern.h"
@@ -704,6 +705,7 @@ static void stack_proc(void *arg)
 	struct task_struct *from = current, *to = arg;
 
 	to->thread.saved_task = from;
+	rcu_switch_from(from);
 	switch_to(from, to, from);
 }
 

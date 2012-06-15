@@ -178,7 +178,7 @@ static void cpumf_pmu_enable(struct pmu *pmu)
 	err = lcctl(cpuhw->state);
 	if (err) {
 		pr_err("Enabling the performance measuring unit "
-		       "failed with rc=%lx\n", err);
+		       "failed with rc=%x\n", err);
 		return;
 	}
 
@@ -203,7 +203,7 @@ static void cpumf_pmu_disable(struct pmu *pmu)
 	err = lcctl(inactive);
 	if (err) {
 		pr_err("Disabling the performance measuring unit "
-		       "failed with rc=%lx\n", err);
+		       "failed with rc=%x\n", err);
 		return;
 	}
 
@@ -225,7 +225,7 @@ static void cpumf_measurement_alert(struct ext_code ext_code,
 	if (!(alert & CPU_MF_INT_CF_MASK))
 		return;
 
-	kstat_cpu(smp_processor_id()).irqs[EXTINT_CPM]++;
+	kstat_cpu(smp_processor_id()).irqs[EXTINT_CMC]++;
 	cpuhw = &__get_cpu_var(cpu_hw_events);
 
 	/* Measurement alerts are shared and might happen when the PMU

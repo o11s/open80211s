@@ -1436,7 +1436,7 @@ static void ath_rate_init(void *priv, struct ieee80211_supported_band *sband,
 
 static void ath_rate_update(void *priv, struct ieee80211_supported_band *sband,
 			    struct ieee80211_sta *sta, void *priv_sta,
-			    u32 changed, enum nl80211_channel_type oper_chan_type)
+			    u32 changed)
 {
 	struct ath_softc *sc = priv;
 	struct ath_rate_priv *ath_rc_priv = priv_sta;
@@ -1447,12 +1447,11 @@ static void ath_rate_update(void *priv, struct ieee80211_supported_band *sband,
 
 	/* FIXME: Handle AP mode later when we support CWM */
 
-	if (changed & IEEE80211_RC_HT_CHANGED) {
+	if (changed & IEEE80211_RC_BW_CHANGED) {
 		if (sc->sc_ah->opmode != NL80211_IFTYPE_STATION)
 			return;
 
-		if (oper_chan_type == NL80211_CHAN_HT40MINUS ||
-		    oper_chan_type == NL80211_CHAN_HT40PLUS)
+		if (sta->ht_cap.cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40)
 			oper_cw40 = true;
 
 		if (oper_cw40)
@@ -1479,12 +1478,6 @@ static void ath_rate_update(void *priv, struct ieee80211_supported_band *sband,
 }
 
 #ifdef CONFIG_ATH9K_DEBUGFS
-
-static int ath9k_debugfs_open(struct inode *inode, struct file *file)
-{
-	file->private_data = inode->i_private;
-	return 0;
-}
 
 static ssize_t read_file_rcstat(struct file *file, char __user *user_buf,
 				size_t count, loff_t *ppos)
@@ -1553,7 +1546,7 @@ static ssize_t read_file_rcstat(struct file *file, char __user *user_buf,
 
 static const struct file_operations fops_rcstat = {
 	.read = read_file_rcstat,
-	.open = ath9k_debugfs_open,
+	.open = simple_open,
 	.owner = THIS_MODULE
 };
 

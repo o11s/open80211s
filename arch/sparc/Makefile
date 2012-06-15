@@ -19,39 +19,27 @@ ifeq ($(CONFIG_SPARC32),y)
 # sparc32
 #
 
-#
-# Uncomment the first KBUILD_CFLAGS if you are doing kgdb source level
-# debugging of the kernel to get the proper debugging information.
-
-AS             := $(AS) -32
-LDFLAGS        := -m elf32_sparc
 CHECKFLAGS     += -D__sparc__
+LDFLAGS        := -m elf32_sparc
 export BITS    := 32
 UTS_MACHINE    := sparc
 
-#KBUILD_CFLAGS += -g -pipe -fcall-used-g5 -fcall-used-g7
-KBUILD_CFLAGS += -m32 -pipe -mno-fpu -fcall-used-g5 -fcall-used-g7
-KBUILD_AFLAGS += -m32 -Wa,-Av8
-
-#LDFLAGS_vmlinux = -N -Ttext 0xf0004000
-#  Since 2.5.40, the first stage is left not btfix-ed.
-#  Actual linking is done with "make image".
-LDFLAGS_vmlinux = -r
+KBUILD_CFLAGS  += -m32 -mcpu=v8 -pipe -mno-fpu -fcall-used-g5 -fcall-used-g7
+KBUILD_AFLAGS  += -m32 -Wa,-Av8
 
 else
 #####
 # sparc64
 #
 
-CHECKFLAGS      += -D__sparc__ -D__sparc_v9__ -D__arch64__ -m64
+CHECKFLAGS    += -D__sparc__ -D__sparc_v9__ -D__arch64__ -m64
+LDFLAGS       := -m elf64_sparc
+export BITS   := 64
+UTS_MACHINE   := sparc64
 
-LDFLAGS              := -m elf64_sparc
-export BITS          := 64
-UTS_MACHINE          := sparc64
-
-KBUILD_CFLAGS += -m64 -pipe -mno-fpu -mcpu=ultrasparc -mcmodel=medlow   \
-                 -ffixed-g4 -ffixed-g5 -fcall-used-g7 -Wno-sign-compare \
-                 -Wa,--undeclared-regs
+KBUILD_CFLAGS += -m64 -pipe -mno-fpu -mcpu=ultrasparc -mcmodel=medlow
+KBUILD_CFLAGS += -ffixed-g4 -ffixed-g5 -fcall-used-g7 -Wno-sign-compare
+KBUILD_CFLAGS += -Wa,--undeclared-regs
 KBUILD_CFLAGS += $(call cc-option,-mtune=ultrasparc3)
 KBUILD_AFLAGS += -m64 -mcpu=ultrasparc -Wa,--undeclared-regs
 
@@ -62,10 +50,9 @@ endif
 endif
 
 head-y                 := arch/sparc/kernel/head_$(BITS).o
-head-y                 += arch/sparc/kernel/init_task.o
 
-core-y                 += arch/sparc/kernel/
-core-y                 += arch/sparc/mm/ arch/sparc/math-emu/
+# See arch/sparc/Kbuild for the core part of the kernel
+core-y                 += arch/sparc/
 
 libs-y                 += arch/sparc/prom/
 libs-y                 += arch/sparc/lib/

@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <linux/clkdev.h>
 
+#include <asm/system_info.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -97,6 +98,11 @@ static void __init trout_map_io(void)
 	msm_clock_init(msm_clocks_7x01a, msm_num_clocks_7x01a);
 }
 
+static void __init trout_init_late(void)
+{
+	smd_debugfs_init();
+}
+
 MACHINE_START(TROUT, "HTC Dream")
 	.atag_offset	= 0x100,
 	.fixup		= trout_fixup,
@@ -104,5 +110,6 @@ MACHINE_START(TROUT, "HTC Dream")
 	.init_early	= trout_init_early,
 	.init_irq	= trout_init_irq,
 	.init_machine	= trout_init,
+	.init_late	= trout_init_late,
 	.timer		= &msm_timer,
 MACHINE_END

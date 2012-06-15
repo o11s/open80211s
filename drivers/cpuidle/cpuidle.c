@@ -40,17 +40,6 @@ void disable_cpuidle(void)
 	off = 1;
 }
 
-#if defined(CONFIG_ARCH_HAS_CPU_IDLE_WAIT)
-static void cpuidle_kick_cpus(void)
-{
-	cpu_idle_wait();
-}
-#elif defined(CONFIG_SMP)
-# error "Arch needs cpu_idle_wait() equivalent here"
-#else /* !CONFIG_ARCH_HAS_CPU_IDLE_WAIT && !CONFIG_SMP */
-static void cpuidle_kick_cpus(void) {}
-#endif
-
 static int __cpuidle_register_device(struct cpuidle_device *dev);
 
 static inline int cpuidle_enter(struct cpuidle_device *dev,
@@ -74,7 +63,7 @@ static cpuidle_enter_t cpuidle_enter_ops;
 /**
  * cpuidle_play_dead - cpu off-lining
  *
- * Only returns in case of an error
+ * Returns in case of an error or no driver
  */
 int cpuidle_play_dead(void)
 {
@@ -82,6 +71,9 @@ int cpuidle_play_dead(void)
 	struct cpuidle_driver *drv = cpuidle_get_driver();
 	int i, dead_state = -1;
 	int power_usage = -1;
+
+	if (!drv)
+		return -ENODEV;
 
 	/* Find lowest-power state that supports long-term idle */
 	for (i = CPUIDLE_DRIVER_STATE_START; i < drv->state_count; i++) {
@@ -183,7 +175,7 @@ void cpuidle_uninstall_idle_handler(void)
 {
 	if (enabled_devices) {
 		initialized = 0;
-		cpuidle_kick_cpus();
+		kick_all_cpus_sync();
 	}
 }
 

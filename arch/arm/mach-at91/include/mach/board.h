@@ -86,14 +86,15 @@ extern void __init at91_add_device_mci(short mmc_id, struct mci_platform_data *d
 extern void __init at91_add_device_eth(struct macb_platform_data *data);
 
  /* USB Host */
+#define AT91_MAX_USBH_PORTS	3
 struct at91_usbh_data {
-	u8		ports;		/* number of ports on root hub */
-	int		vbus_pin[2];	/* port power-control pin */
-	u8              vbus_pin_active_low[2];
+	int		vbus_pin[AT91_MAX_USBH_PORTS];	/* port power-control pin */
+	int             overcurrent_pin[AT91_MAX_USBH_PORTS];
+	u8		ports;				/* number of ports on root hub */
 	u8              overcurrent_supported;
-	int             overcurrent_pin[2];
-	u8              overcurrent_status[2];
-	u8              overcurrent_changed[2];
+	u8              vbus_pin_active_low[AT91_MAX_USBH_PORTS];
+	u8              overcurrent_status[AT91_MAX_USBH_PORTS];
+	u8              overcurrent_changed[AT91_MAX_USBH_PORTS];
 };
 extern void __init at91_add_device_usbh(struct at91_usbh_data *data);
 extern void __init at91_add_device_usbh_ohci(struct at91_usbh_data *data);
@@ -120,7 +121,6 @@ extern void __init at91_add_device_spi(struct spi_board_info *devices, int nr_de
 #define ATMEL_UART_RI	0x20
 
 extern void __init at91_register_uart(unsigned id, unsigned portnr, unsigned pins);
-extern void __init at91_set_serial_console(unsigned portnr);
 
 extern struct platform_device *atmel_default_console_device;
 

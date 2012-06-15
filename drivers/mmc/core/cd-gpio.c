@@ -12,6 +12,7 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/jiffies.h>
+#include <linux/mmc/cd-gpio.h>
 #include <linux/mmc/host.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -71,6 +72,9 @@ EXPORT_SYMBOL(mmc_cd_gpio_request);
 void mmc_cd_gpio_free(struct mmc_host *host)
 {
 	struct mmc_cd_gpio *cd = host->hotplug.handler_priv;
+
+	if (!cd)
+		return;
 
 	free_irq(host->hotplug.irq, host);
 	gpio_free(cd->gpio);

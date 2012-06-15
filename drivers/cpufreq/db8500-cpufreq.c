@@ -142,7 +142,7 @@ static int __cpuinit db8500_cpufreq_init(struct cpufreq_policy *policy)
 	policy->cpuinfo.transition_latency = 20 * 1000; /* in ns */
 
 	/* policy sharing between dual CPUs */
-	cpumask_copy(policy->cpus, &cpu_present_map);
+	cpumask_copy(policy->cpus, cpu_present_mask);
 
 	policy->shared_type = CPUFREQ_SHARED_TYPE_ALL;
 
@@ -161,7 +161,7 @@ static struct cpufreq_driver db8500_cpufreq_driver = {
 
 static int __init db8500_cpufreq_register(void)
 {
-	if (!cpu_is_u8500v20_or_later())
+	if (!cpu_is_u8500_family())
 		return -ENODEV;
 
 	pr_info("cpufreq for DB8500 started\n");
