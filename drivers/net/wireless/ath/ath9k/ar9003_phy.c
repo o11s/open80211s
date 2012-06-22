@@ -173,7 +173,7 @@ static void ar9003_hw_spur_mitigate_mrc_cck(struct ath_hw *ah,
 	int cur_bb_spur, negative = 0, cck_spur_freq;
 	int i;
 	int range, max_spur_cnts, synth_freq;
-	u8 *spur_fbin_ptr = NULL;
+	u8 *spur_fbin_ptr = ar9003_get_spur_chan_ptr(ah, IS_CHAN_2GHZ(chan));
 
 	/*
 	 * Need to verify range +/- 10 MHz in control channel, otherwise spur
@@ -181,8 +181,6 @@ static void ar9003_hw_spur_mitigate_mrc_cck(struct ath_hw *ah,
 	 */
 
 	if (AR_SREV_9485(ah) || AR_SREV_9340(ah) || AR_SREV_9330(ah)) {
-		spur_fbin_ptr = ar9003_get_spur_chan_ptr(ah,
-							 IS_CHAN_2GHZ(chan));
 		if (spur_fbin_ptr[0] == 0) /* No spur */
 			return;
 		max_spur_cnts = 5;
@@ -979,16 +977,16 @@ static bool ar9003_hw_ani_control(struct ath_hw *ah,
 			      AR_PHY_MRC_CCK_ENABLE, is_on);
 		REG_RMW_FIELD(ah, AR_PHY_MRC_CCK_CTRL,
 			      AR_PHY_MRC_CCK_MUX_REG, is_on);
-		if (!is_on != aniState->mrcCCKOff) {
+		if (is_on != aniState->mrcCCK) {
 			ath_dbg(common, ANI, "** ch %d: MRC CCK: %s=>%s\n",
 				chan->channel,
-				!aniState->mrcCCKOff ? "on" : "off",
+				aniState->mrcCCK ? "on" : "off",
 				is_on ? "on" : "off");
 		if (is_on)
 			ah->stats.ast_ani_ccklow++;
 		else
 			ah->stats.ast_ani_cckhigh++;
-		aniState->mrcCCKOff = !is_on;
+		aniState->mrcCCK = is_on;
 		}
 	break;
 	}
@@ -1004,7 +1002,7 @@ static bool ar9003_hw_ani_control(struct ath_hw *ah,
 		aniState->spurImmunityLevel,
 		aniState->ofdmWeakSigDetect ? "on" : "off",
 		aniState->firstepLevel,
-		!aniState->mrcCCKOff ? "on" : "off",
+		aniState->mrcCCK ? "on" : "off",
 		aniState->listenTime,
 		aniState->ofdmPhyErrCount,
 		aniState->cckPhyErrCount);
@@ -1114,7 +1112,7 @@ static void ar9003_hw_ani_cache_ini_regs(struct ath_hw *ah)
 	aniState->spurImmunityLevel = ATH9K_ANI_SPUR_IMMUNE_LVL;
 	aniState->firstepLevel = ATH9K_ANI_FIRSTEP_LVL;
 	aniState->ofdmWeakSigDetect = ATH9K_ANI_USE_OFDM_WEAK_SIG;
-	aniState->mrcCCKOff = !ATH9K_ANI_ENABLE_MRC_CCK;
+	aniState->mrcCCK = true;
 }
 
 static void ar9003_hw_set_radar_params(struct ath_hw *ah,
