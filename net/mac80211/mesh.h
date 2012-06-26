@@ -200,8 +200,9 @@ struct mesh_rmc {
 	u32 idx_mask;
 };
 
-#define IEEE80211_MESH_PEER_INACTIVITY_LIMIT (60 * HZ)
-#define IEEE80211_MESH_HOUSEKEEPING_INTERVAL (60 * HZ)
+#define IEEE80211_MESH_PEER_INACTIVITY_LIMIT (20 * HZ)
+#define IEEE80211_MESH_HOUSEKEEPING_INTERVAL (20 * HZ)
+#define MESH_PEERING_METRIC_THRESHOLD 10		/* in dBm */
 
 #define MESH_DEFAULT_BEACON_INTERVAL		1000 	/* in 1024 us units */
 
@@ -278,7 +279,8 @@ int mesh_gate_num(struct ieee80211_sub_if_data *sdata);
 /* Mesh plinks */
 void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
 			   u8 *hw_addr,
-			   struct ieee802_11_elems *ie);
+			   struct ieee802_11_elems *ie,
+			   struct ieee80211_rx_status *rx_status);
 bool mesh_peer_accepts_plinks(struct ieee802_11_elems *ie);
 void mesh_accept_plinks_update(struct ieee80211_sub_if_data *sdata);
 void mesh_plink_broken(struct sta_info *sta);
@@ -288,6 +290,9 @@ void mesh_plink_block(struct sta_info *sta);
 void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,
 			 struct ieee80211_mgmt *mgmt, size_t len,
 			 struct ieee80211_rx_status *rx_status);
+int compute_mesh_peering_metric(int neighbor_estab_peers_num, int neighbor_rssi);
+struct sta_info *find_evictable_peer(struct ieee80211_sub_if_data *sdata,
+		int neighbor_rssi, int neighbor_estab_peers_num);
 
 /* Private interfaces */
 /* Mesh tables */
@@ -325,7 +330,7 @@ static inline int mesh_plink_free_count(struct ieee80211_sub_if_data *sdata)
 static inline bool mesh_plink_availables(struct ieee80211_sub_if_data *sdata)
 {
 	return (min_t(long, mesh_plink_free_count(sdata),
-		   MESH_MAX_PLINKS - sdata->local->num_sta)) > 0;
+		   sdata->u.mesh.mshcfg.dot11MeshMaxPeerLinks - sdata->local->num_sta)) > 0;
 }
 
 static inline void mesh_path_activate(struct mesh_path *mpath)

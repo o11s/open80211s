@@ -89,7 +89,7 @@ static struct sta_info *mesh_plink_alloc(struct ieee80211_sub_if_data *sdata,
 {
 	struct sta_info *sta;
 
-	if (sdata->local->num_sta >= MESH_MAX_PLINKS)
+	if (sdata->local->num_sta >= dot11MeshMaxPeerLinks(sdata))
 		return NULL;
 
 	if (!sdata->u.mesh.accepting_plinks)
@@ -392,6 +392,13 @@ static struct sta_info *mesh_peer_init(struct ieee80211_sub_if_data *sdata,
 	if (insert) {
 		err = sta_info_insert(sta);
 		if (err) {
+			/*
+			printk(KERN_DEBUG "MESH ERROR(%s): Error [%d] inserting %pM\n",
+					sdata->name,
+					err,
+					sta->sta.addr
+					);
+			*/
 			dot11MeshMaxPeerLinks(sdata) = sdata->local->num_sta;
 			return NULL;
 		}
@@ -401,22 +408,72 @@ static struct sta_info *mesh_peer_init(struct ieee80211_sub_if_data *sdata,
 }
 
 void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
-			   u8 *hw_addr,
-			   struct ieee802_11_elems *elems)
+		u8 *hw_addr,
+		struct ieee802_11_elems *elems,
+		struct ieee80211_rx_status *rx_status)
 {
-	struct sta_info *sta;
+	struct sta_info *sta=NULL;
+	struct sta_info *evictable_sta=NULL;
 
 	rcu_read_lock();
+	if ((!sdata->u.mesh.accepting_plinks) &&
+		mesh_peer_accepts_plinks(elems))
+	{
+		int neighbor_estab_peers_num = (int) elems->mesh_config->meshconf_form;
+		int neighbor_rssi = (int) rx_status->signal;
+		int neighbor_peering_metric=compute_mesh_peering_metric(neighbor_estab_peers_num, neighbor_rssi);
+		printk(KERN_DEBUG "MESH %s(%s): neighbor is accepting_plinks and we are not\n", __func__, sdata->name);
+
+		printk(KERN_DEBUG "MESH PEERING(%s): 0x%x metric (%d, %d) for neighbor %pM",
+				sdata->name,
+				neighbor_peering_metric,
+				neighbor_estab_peers_num,
+				neighbor_rssi,
+				hw_addr
+				);
+
+		printk(KERN_DEBUG "MESH %s(%s): check for evictable peer\n", __func__, sdata->name);
+		evictable_sta = find_evictable_peer(sdata, neighbor_rssi,
+				neighbor_estab_peers_num);
+		if (evictable_sta)
+		{
+			printk(KERN_DEBUG "MESH %s(%s): evicting peer STA[%pM]\n", __func__, sdata->name, evictable_sta->sta.addr);
+			mesh_plink_deactivate(evictable_sta);
+			sta_info_destroy_addr(sdata, evictable_sta->sta.addr);
+		} else {
+			printk(KERN_DEBUG "MESH %s(%s): no STA worth eviction at this time\n", __func__, sdata->name);
+		}
+	}
+
+	if (!mesh_peer_accepts_plinks(elems))
+	{
+		sta = sta_info_get(sdata, hw_addr);
+		if (sta && sta->uploaded && (sta->plink_state == NL80211_PLINK_LISTEN))
+		{
+			printk(KERN_DEBUG "MESH %s(%s): remove uploaded STA[%pM] who is not accepting plinks\n", __func__, sdata->name, hw_addr);
+			sta_info_destroy_addr(sdata, hw_addr);
+			goto out;
+		}
+	}
+
+	/*if (sdata->u.mesh.accepting_plinks && ((dot11MeshMaxPeerLinks(sdata) == MESH_MAX_PLINKS) || mesh_peer_accepts_plinks(elems)))*/
 	sta = mesh_peer_init(sdata, hw_addr, elems);
+
 	if (!sta)
 		goto out;
 
+	/*
+	printk(KERN_DEBUG "MESH %s(%s): STA[%pM]->uploaded=%d\n", __func__, sdata->name, hw_addr, (int) sta->uploaded);
+	*/
+
 	if (mesh_peer_accepts_plinks(elems) &&
-	    sta->plink_state == NL80211_PLINK_LISTEN &&
-	    sdata->u.mesh.accepting_plinks &&
-	    sdata->u.mesh.mshcfg.auto_open_plinks &&
-	    rssi_threshold_check(sta, sdata))
+		sta->plink_state == NL80211_PLINK_LISTEN &&
+		sdata->u.mesh.mshcfg.auto_open_plinks &&
+		rssi_threshold_check(sta, sdata))
+	{
+		printk(KERN_DEBUG "MESH %s(%s): attempt opening plink to %pM\n", __func__, sdata->name, sta->sta.addr);
 		mesh_plink_open(sta);
+	}
 
 out:
 	rcu_read_unlock();
@@ -860,6 +917,9 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 			mesh_plink_inc_estab_count(sdata);
 			changed |= mesh_set_ht_prot_mode(sdata);
 			changed |= BSS_CHANGED_BEACON;
+			printk(KERN_DEBUG "%s: Mesh plink with %pM ESTABLISHED\n",
+				sdata->name,
+				sta->sta.addr);
 			mpl_dbg("Mesh plink with %pM ESTABLISHED\n",
 				sta->sta.addr);
 			break;
@@ -969,4 +1029,101 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 
 	if (changed)
 		ieee80211_bss_info_change_notify(sdata, changed);
+}
+
+int compute_mesh_peering_metric(int neighbor_estab_peers_num, int neighbor_rssi)
+{
+	printk(KERN_DEBUG "MESH PEERING: 0x%x metric computed from (0x%x=%d, 0x%x=%d)",
+			((neighbor_estab_peers_num << 16) | (-neighbor_rssi)),
+			neighbor_estab_peers_num,
+			neighbor_estab_peers_num,
+			neighbor_rssi,
+			neighbor_rssi
+			);
+	return (int) ((neighbor_estab_peers_num << 16) | (-neighbor_rssi));
+}
+
+/* Must call inside rcu_lock */
+struct sta_info *find_evictable_peer(struct ieee80211_sub_if_data *sdata,
+		int neighbor_rssi, int neighbor_estab_peers_num)
+{
+	u8 *worst_rssi_peer_addr=NULL;
+	int neighbor_peering_metric, local_peering_metric;
+	int local_estab_peers_num=0;
+	int local_min_peer_rssi=100;
+	struct sta_info *sta, *evictable_sta=NULL;
+
+	neighbor_peering_metric=compute_mesh_peering_metric(neighbor_estab_peers_num, neighbor_rssi);
+
+	local_estab_peers_num = atomic_read(&sdata->u.mesh.mshstats.estab_plinks);
+
+	list_for_each_entry_rcu(sta, &sdata->local->sta_list, list)
+	{
+		printk(KERN_DEBUG "MESH %s(%s): STA[%pM] RSSI [%d, %d]\n",
+				__func__,
+				sdata->name, sta->sta.addr,
+				(int) -ewma_read(&sta->avg_signal),
+				local_min_peer_rssi
+				);
+
+		if (sta->plink_state != NL80211_PLINK_ESTAB)
+		{
+			evictable_sta = NULL;
+			break;
+		}
+
+		if (local_min_peer_rssi > (int) -ewma_read(&sta->avg_signal))
+		{
+			local_min_peer_rssi = (int) -ewma_read(&sta->avg_signal);
+			worst_rssi_peer_addr = sta->sta.addr;
+			printk(KERN_DEBUG "MESH %s(%s): STA[%pM] sets min RSSI [%d]\n",
+				__func__,
+				sdata->name,
+				worst_rssi_peer_addr,
+				local_min_peer_rssi
+				);
+		}
+		else
+		{
+			printk(KERN_DEBUG "MESH %s(%s): min RSSI still [%d]\n",
+				__func__,
+				sdata->name,
+				local_min_peer_rssi
+				);
+			continue;
+		}
+		if (neighbor_rssi-MESH_PEERING_METRIC_THRESHOLD >
+				local_min_peer_rssi)
+		{
+			evictable_sta = sta;
+			printk(KERN_DEBUG "MESH %s(%s): potential evictable STA[%pM] RSSI [%d]\n",
+				__func__,
+				sdata->name, evictable_sta->sta.addr,
+				local_min_peer_rssi
+				);
+		}
+	}
+
+	if (!worst_rssi_peer_addr)
+		goto end;
+	
+	if (neighbor_estab_peers_num >= local_estab_peers_num)
+		evictable_sta = NULL;
+
+	if (!evictable_sta)
+		goto end;
+	
+	local_peering_metric=compute_mesh_peering_metric(local_estab_peers_num,
+			local_min_peer_rssi);
+
+	printk(KERN_DEBUG "MESH PEERING(%s): 0x%x metric (%d, %d) for min peer %pM",
+			sdata->name,
+			neighbor_peering_metric,
+			neighbor_estab_peers_num,
+			local_min_peer_rssi,
+			worst_rssi_peer_addr
+			);
+
+end:
+	return evictable_sta;
 }

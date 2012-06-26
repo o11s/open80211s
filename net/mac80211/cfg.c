@@ -1925,7 +1925,7 @@ static int ieee80211_set_tx_power(struct wiphy *wiphy,
 		if (mbm < 0 || (mbm % 100))
 			return -EOPNOTSUPP;
 		/* TODO: move to cfg80211 when it knows the channel */
-		if (MBM_TO_DBM(mbm) > chan->max_power)
+		if (MBM_TO_DBM(mbm) > chan->max_power + 100)
 			return -EINVAL;
 		local->user_power_level = MBM_TO_DBM(mbm);
 		break;

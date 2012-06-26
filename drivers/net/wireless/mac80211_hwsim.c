@@ -990,11 +990,17 @@ static int mac80211_hwsim_sta_add(struct ieee80211_hw *hw,
 	struct hwsim_vif_priv *vp = (void *)vif->drv_priv;
 
 	hwsim_check_magic(vif);
-	vp->num_sta++;
-	if (max_sta && vp->num_sta > max_sta) {
-		vp->num_sta--;
+	wiphy_debug(hw->wiphy, "HWSIM %s: max_sta:%d num_sta:%d vif:%pM sta:%pM\n", 
+			__func__,
+			max_sta,
+			vp->num_sta,
+			vif->addr,
+			sta->addr
+		);
+	if (vp->num_sta == max_sta) {
 		return -ENOBUFS;
 	}
+	vp->num_sta++;
 
 	hwsim_set_sta_magic(sta);
 
@@ -1007,6 +1013,13 @@ static int mac80211_hwsim_sta_remove(struct ieee80211_hw *hw,
 {
 	struct hwsim_vif_priv *vp = (void *)vif->drv_priv;
 	hwsim_check_magic(vif);
+	wiphy_debug(hw->wiphy, "HWSIM %s: max_sta:%d num_sta:%d vif:%pM sta:%pM\n", 
+			__func__,
+			max_sta,
+			vp->num_sta,
+			vif->addr,
+			sta->addr
+		);
 	hwsim_clear_sta_magic(sta);
 	vp->num_sta--;
 	return 0;
@@ -1276,6 +1289,7 @@ static void mac80211_hwsim_free(void)
 {
 	struct list_head tmplist, *i, *tmp;
 	struct mac80211_hwsim_data *data, *tmpdata;
+	printk(KERN_DEBUG "HWSIM entering %s\n", __func__);
 
 	INIT_LIST_HEAD(&tmplist);
 
@@ -1293,6 +1307,7 @@ static void mac80211_hwsim_free(void)
 		ieee80211_free_hw(data->hw);
 	}
 	class_destroy(hwsim_class);
+	printk(KERN_DEBUG "HWSIM exiting %s\n", __func__);
 }
 
 
@@ -1762,6 +1777,7 @@ static int __init init_mac80211_hwsim(void)
 	struct ieee80211_hw *hw;
 	enum ieee80211_band band;
 
+	printk(KERN_DEBUG "HWSIM entering %s\n", __func__);
 	if (radios < 1 || radios > 100)
 		return -EINVAL;
 
@@ -2074,12 +2090,14 @@ failed:
 
 static void __exit exit_mac80211_hwsim(void)
 {
+	printk(KERN_DEBUG "HWSIM entering %s\n", __func__);
 	printk(KERN_DEBUG "mac80211_hwsim: unregister radios\n");
 
 	hwsim_exit_netlink();
 
 	mac80211_hwsim_free();
 	unregister_netdev(hwsim_mon);
+	printk(KERN_DEBUG "HWSIM exiting %s\n", __func__);
 }
 
 
