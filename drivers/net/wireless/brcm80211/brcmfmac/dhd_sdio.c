@@ -3145,7 +3145,7 @@ static int brcmf_sdio_trap_info(struct brcmf_sdio *bus, struct sdpcm_shared *sh,
 			le32_to_cpu(tr.type), le32_to_cpu(tr.epc),
 			le32_to_cpu(tr.cpsr), le32_to_cpu(tr.spsr),
 			le32_to_cpu(tr.r13), le32_to_cpu(tr.r14),
-			le32_to_cpu(tr.pc), le32_to_cpu(sh->trap_addr),
+			le32_to_cpu(tr.pc), sh->trap_addr,
 			le32_to_cpu(tr.r0), le32_to_cpu(tr.r1),
 			le32_to_cpu(tr.r2), le32_to_cpu(tr.r3),
 			le32_to_cpu(tr.r4), le32_to_cpu(tr.r5),
@@ -3336,45 +3336,10 @@ brcmf_sdbrcm_bus_rxctl(struct device *dev, unsigned char *msg, uint msglen)
 	return rxlen ? (int)rxlen : -ETIMEDOUT;
 }
 
-static int brcmf_sdbrcm_downloadvars(struct brcmf_sdio *bus, void *arg, int len)
-{
-	int bcmerror = 0;
-
-	brcmf_dbg(TRACE, "Enter\n");
-
-	/* Basic sanity checks */
-	if (bus->sdiodev->bus_if->drvr_up) {
-		bcmerror = -EISCONN;
-		goto err;
-	}
-	if (!len) {
-		bcmerror = -EOVERFLOW;
-		goto err;
-	}
-
-	/* Free the old ones and replace with passed variables */
-	kfree(bus->vars);
-
-	bus->vars = kmalloc(len, GFP_ATOMIC);
-	bus->varsz = bus->vars ? len : 0;
-	if (bus->vars == NULL) {
-		bcmerror = -ENOMEM;
-		goto err;
-	}
-
-	/* Copy the passed variables, which should include the
-		 terminating double-null */
-	memcpy(bus->vars, arg, bus->varsz);
-err:
-	return bcmerror;
-}
-
 static int brcmf_sdbrcm_write_vars(struct brcmf_sdio *bus)
 {
 	int bcmerror = 0;
-	u32 varsize;
 	u32 varaddr;
-	u8 *vbuffer;
 	u32 varsizew;
 	__le32 varsizew_le;
 #ifdef DEBUG
@@ -3383,56 +3348,44 @@ static int brcmf_sdbrcm_write_vars(struct brcmf_sdio *bus)
 
 	/* Even if there are no vars are to be written, we still
 		 need to set the ramsize. */
-	varsize = bus->varsz ? roundup(bus->varsz, 4) : 0;
-	varaddr = (bus->ramsize - 4) - varsize;
+	varaddr = (bus->ramsize - 4) - bus->varsz;
 
 	if (bus->vars) {
-		vbuffer = kzalloc(varsize, GFP_ATOMIC);
-		if (!vbuffer)
-			return -ENOMEM;
-
-		memcpy(vbuffer, bus->vars, bus->varsz);
-
 		/* Write the vars list */
-		bcmerror =
-		    brcmf_sdbrcm_membytes(bus, true, varaddr, vbuffer, varsize);
+		bcmerror = brcmf_sdbrcm_membytes(bus, true, varaddr,
+						 bus->vars, bus->varsz);
 #ifdef DEBUG
 		/* Verify NVRAM bytes */
-		brcmf_dbg(INFO, "Compare NVRAM dl & ul; varsize=%d\n", varsize);
-		nvram_ularray = kmalloc(varsize, GFP_ATOMIC);
-		if (!nvram_ularray) {
-			kfree(vbuffer);
+		brcmf_dbg(INFO, "Compare NVRAM dl & ul; varsize=%d\n",
+			  bus->varsz);
+		nvram_ularray = kmalloc(bus->varsz, GFP_ATOMIC);
+		if (!nvram_ularray)
 			return -ENOMEM;
-		}
 
 		/* Upload image to verify downloaded contents. */
-		memset(nvram_ularray, 0xaa, varsize);
+		memset(nvram_ularray, 0xaa, bus->varsz);
 
 		/* Read the vars list to temp buffer for comparison */
-		bcmerror =
-		    brcmf_sdbrcm_membytes(bus, false, varaddr, nvram_ularray,
-				     varsize);
+		bcmerror = brcmf_sdbrcm_membytes(bus, false, varaddr,
+						 nvram_ularray, bus->varsz);
 		if (bcmerror) {
 			brcmf_dbg(ERROR, "error %d on reading %d nvram bytes at 0x%08x\n",
-				  bcmerror, varsize, varaddr);
+				  bcmerror, bus->varsz, varaddr);
 		}
 		/* Compare the org NVRAM with the one read from RAM */
-		if (memcmp(vbuffer, nvram_ularray, varsize))
+		if (memcmp(bus->vars, nvram_ularray, bus->varsz))
 			brcmf_dbg(ERROR, "Downloaded NVRAM image is corrupted\n");
 		else
 			brcmf_dbg(ERROR, "Download/Upload/Compare of NVRAM ok\n");
 
 		kfree(nvram_ularray);
 #endif				/* DEBUG */
-
-		kfree(vbuffer);
 	}
 
 	/* adjust to the user specified RAM */
 	brcmf_dbg(INFO, "Physical memory size: %d\n", bus->ramsize);
 	brcmf_dbg(INFO, "Vars are at %d, orig varsize is %d\n",
-		  varaddr, varsize);
-	varsize = ((bus->ramsize - 4) - varaddr);
+		  varaddr, bus->varsz);
 
 	/*
 	 * Determine the length token:
@@ -3443,13 +3396,13 @@ static int brcmf_sdbrcm_write_vars(struct brcmf_sdio *bus)
 		varsizew = 0;
 		varsizew_le = cpu_to_le32(0);
 	} else {
-		varsizew = varsize / 4;
+		varsizew = bus->varsz / 4;
 		varsizew = (~varsizew << 16) | (varsizew & 0x0000FFFF);
 		varsizew_le = cpu_to_le32(varsizew);
 	}
 
 	brcmf_dbg(INFO, "New varsize is %d, length token=0x%08x\n",
-		  varsize, varsizew);
+		  bus->varsz, varsizew);
 
 	/* Write the length token to the last word */
 	bcmerror = brcmf_sdbrcm_membytes(bus, true, (bus->ramsize - 4),
@@ -3573,13 +3526,21 @@ err:
  * by two NULs.
 */
 
-static uint brcmf_process_nvram_vars(char *varbuf, uint len)
+static int brcmf_process_nvram_vars(struct brcmf_sdio *bus)
 {
+	char *varbuf;
 	char *dp;
 	bool findNewline;
 	int column;
-	uint buf_len, n;
+	int ret = 0;
+	uint buf_len, n, len;
 
+	len = bus->firmware->size;
+	varbuf = vmalloc(len);
+	if (!varbuf)
+		return -ENOMEM;
+
+	memcpy(varbuf, bus->firmware->data, len);
 	dp = varbuf;
 
 	findNewline = false;
@@ -3608,19 +3569,33 @@ static uint brcmf_process_nvram_vars(char *varbuf, uint len)
 		column++;
 	}
 	buf_len = dp - varbuf;
-
 	while (dp < varbuf + n)
 		*dp++ = 0;
 
-	return buf_len;
+	kfree(bus->vars);
+	/* roundup needed for download to device */
+	bus->varsz = roundup(buf_len + 1, 4);
+	bus->vars = kmalloc(bus->varsz, GFP_KERNEL);
+	if (bus->vars == NULL) {
+		bus->varsz = 0;
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	/* copy the processed variables and add null termination */
+	memcpy(bus->vars, varbuf, buf_len);
+	bus->vars[buf_len] = 0;
+err:
+	vfree(varbuf);
+	return ret;
 }
 
 static int brcmf_sdbrcm_download_nvram(struct brcmf_sdio *bus)
 {
-	uint len;
-	char *memblock = NULL;
-	char *bufp;
 	int ret;
+
+	if (bus->sdiodev->bus_if->drvr_up)
+		return -EISCONN;
 
 	ret = request_firmware(&bus->firmware, BRCMF_SDIO_NV_NAME,
 			       &bus->sdiodev->func[2]->dev);
@@ -3628,36 +3603,10 @@ static int brcmf_sdbrcm_download_nvram(struct brcmf_sdio *bus)
 		brcmf_dbg(ERROR, "Fail to request nvram %d\n", ret);
 		return ret;
 	}
-	bus->fw_ptr = 0;
 
-	memblock = kmalloc(MEMBLOCK, GFP_ATOMIC);
-	if (memblock == NULL) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	len = brcmf_sdbrcm_get_image(memblock, MEMBLOCK, bus);
-
-	if (len > 0 && len < MEMBLOCK) {
-		bufp = (char *)memblock;
-		bufp[len] = 0;
-		len = brcmf_process_nvram_vars(bufp, len);
-		bufp += len;
-		*bufp++ = 0;
-		if (len)
-			ret = brcmf_sdbrcm_downloadvars(bus, memblock, len + 1);
-		if (ret)
-			brcmf_dbg(ERROR, "error downloading vars: %d\n", ret);
-	} else {
-		brcmf_dbg(ERROR, "error reading nvram file: %d\n", len);
-		ret = -EIO;
-	}
-
-err:
-	kfree(memblock);
+	ret = brcmf_process_nvram_vars(bus);
 
 	release_firmware(bus->firmware);
-	bus->fw_ptr = 0;
 
 	return ret;
 }
@@ -3936,6 +3885,8 @@ static bool brcmf_sdbrcm_chipmatch(u16 chipid)
 		return true;
 	if (chipid == BCM4330_CHIP_ID)
 		return true;
+	if (chipid == BCM4334_CHIP_ID)
+		return true;
 	return false;
 }
 
@@ -4169,6 +4120,10 @@ void *brcmf_sdbrcm_probe(u32 regsva, struct brcmf_sdio_dev *sdiodev)
 {
 	int ret;
 	struct brcmf_sdio *bus;
+	struct brcmf_bus_dcmd *dlst;
+	u32 dngl_txglom;
+	u32 dngl_txglomalign;
+	u8 idx;
 
 	brcmf_dbg(TRACE, "Enter\n");
 
@@ -4253,6 +4208,26 @@ void *brcmf_sdbrcm_probe(u32 regsva, struct brcmf_sdio_dev *sdiodev)
 
 	brcmf_sdio_debugfs_create(bus);
 	brcmf_dbg(INFO, "completed!!\n");
+
+	/* sdio bus core specific dcmd */
+	idx = brcmf_sdio_chip_getinfidx(bus->ci, BCMA_CORE_SDIO_DEV);
+	dlst = kzalloc(sizeof(struct brcmf_bus_dcmd), GFP_KERNEL);
+	if (dlst) {
+		if (bus->ci->c_inf[idx].rev < 12) {
+			/* for sdio core rev < 12, disable txgloming */
+			dngl_txglom = 0;
+			dlst->name = "bus:txglom";
+			dlst->param = (char *)&dngl_txglom;
+			dlst->param_len = sizeof(u32);
+		} else {
+			/* otherwise, set txglomalign */
+			dngl_txglomalign = bus->sdiodev->bus_if->align;
+			dlst->name = "bus:txglomalign";
+			dlst->param = (char *)&dngl_txglomalign;
+			dlst->param_len = sizeof(u32);
+		}
+		list_add(&dlst->list, &bus->sdiodev->bus_if->dcmd_list);
+	}
 
 	/* if firmware path present try to download and bring up bus */
 	ret = brcmf_bus_start(bus->sdiodev->dev);
