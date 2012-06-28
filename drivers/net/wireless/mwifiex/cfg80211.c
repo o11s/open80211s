@@ -260,13 +260,13 @@ static int mwifiex_send_domain_info_cmd_fw(struct wiphy *wiphy)
 			flag = 1;
 			first_chan = (u32) ch->hw_value;
 			next_chan = first_chan;
-			max_pwr = ch->max_power;
+			max_pwr = ch->max_reg_power;
 			no_of_parsed_chan = 1;
 			continue;
 		}
 
 		if (ch->hw_value == next_chan + 1 &&
-		    ch->max_power == max_pwr) {
+		    ch->max_reg_power == max_pwr) {
 			next_chan++;
 			no_of_parsed_chan++;
 		} else {
@@ -277,7 +277,7 @@ static int mwifiex_send_domain_info_cmd_fw(struct wiphy *wiphy)
 			no_of_triplet++;
 			first_chan = (u32) ch->hw_value;
 			next_chan = first_chan;
-			max_pwr = ch->max_power;
+			max_pwr = ch->max_reg_power;
 			no_of_parsed_chan = 1;
 		}
 	}
@@ -1422,7 +1422,7 @@ mwifiex_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 
 		priv->user_scan_cfg->chan_list[i].scan_time = 0;
 	}
-	if (mwifiex_set_user_scan_ioctl(priv, priv->user_scan_cfg))
+	if (mwifiex_scan_networks(priv, priv->user_scan_cfg))
 		return -EFAULT;
 
 	if (request->ie && request->ie_len) {
@@ -1743,7 +1743,7 @@ int mwifiex_register_cfg80211(struct mwifiex_adapter *adapter)
 
 	memcpy(wiphy->perm_addr, priv->curr_addr, ETH_ALEN);
 	wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
-	wiphy->flags |= WIPHY_FLAG_HAVE_AP_SME | WIPHY_FLAG_CUSTOM_REGULATORY;
+	wiphy->flags |= WIPHY_FLAG_HAVE_AP_SME;
 
 	/* Reserve space for mwifiex specific private data for BSS */
 	wiphy->bss_priv_size = sizeof(struct mwifiex_bss_priv);
