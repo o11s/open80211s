@@ -809,11 +809,11 @@ minstrel_ht_alloc_sta(void *priv, struct ieee80211_sta *sta, gfp_t gfp)
 			max_rates = sband->n_bitrates;
 	}
 
-	msp = kzalloc(sizeof(struct minstrel_ht_sta), gfp);
+	msp = kzalloc(sizeof(*msp), gfp);
 	if (!msp)
 		return NULL;
 
-	msp->ratelist = kzalloc(sizeof(struct minstrel_rate) * max_rates, gfp);
+	msp->ratelist = kzalloc(sizeof(*msp->ratelist) * max_rates, gfp);
 	if (!msp->ratelist)
 		goto error;
 
