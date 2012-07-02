@@ -140,6 +140,8 @@ static __le16 ieee80211_duration(struct ieee80211_tx_data *tx,
 			if (r->flags & IEEE80211_RATE_MANDATORY_A)
 				mrate = r->bitrate;
 			break;
+		case IEEE80211_BAND_60GHZ:
+			/* TODO, for now fall through */
 		case IEEE80211_NUM_BANDS:
 			WARN_ON(1);
 			break;
@@ -2420,9 +2422,9 @@ struct sk_buff *ieee80211_beacon_get_tim(struct ieee80211_hw *hw,
 		*pos++ = WLAN_EID_SSID;
 		*pos++ = 0x0;
 
-		if (ieee80211_add_srates_ie(&sdata->vif, skb, true) ||
+		if (ieee80211_add_srates_ie(sdata, skb, true) ||
 		    mesh_add_ds_params_ie(skb, sdata) ||
-		    ieee80211_add_ext_srates_ie(&sdata->vif, skb, true) ||
+		    ieee80211_add_ext_srates_ie(sdata, skb, true) ||
 		    mesh_add_rsn_ie(skb, sdata) ||
 		    mesh_add_ht_cap_ie(skb, sdata) ||
 		    mesh_add_ht_oper_ie(skb, sdata) ||

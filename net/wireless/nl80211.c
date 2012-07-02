@@ -921,6 +921,15 @@ static int nl80211_send_wiphy(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 				dev->wiphy.bands[band]->ht_cap.ampdu_density)))
 			goto nla_put_failure;
 
+		/* add VHT info */
+		if (dev->wiphy.bands[band]->vht_cap.vht_supported &&
+		    (nla_put(msg, NL80211_BAND_ATTR_VHT_MCS_SET,
+			     sizeof(dev->wiphy.bands[band]->vht_cap.vht_mcs),
+			     &dev->wiphy.bands[band]->vht_cap.vht_mcs) ||
+		     nla_put_u32(msg, NL80211_BAND_ATTR_VHT_CAPA,
+				 dev->wiphy.bands[band]->vht_cap.cap)))
+			goto nla_put_failure;
+
 		/* add frequencies */
 		nl_freqs = nla_nest_start(msg, NL80211_BAND_ATTR_FREQS);
 		if (!nl_freqs)
@@ -1112,6 +1121,7 @@ static int nl80211_send_wiphy(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 		nla_nest_end(msg, nl_ifs);
 	}
 
+#ifdef CONFIG_PM
 	if (dev->wiphy.wowlan.flags || dev->wiphy.wowlan.n_patterns) {
 		struct nlattr *nl_wowlan;
 
@@ -1152,6 +1162,7 @@ static int nl80211_send_wiphy(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 
 		nla_nest_end(msg, nl_wowlan);
 	}
+#endif
 
 	if (nl80211_put_iftypes(msg, NL80211_ATTR_SOFTWARE_IFTYPES,
 				dev->wiphy.software_iftypes))
@@ -1678,16 +1689,11 @@ static int nl80211_send_iface(struct sk_buff *msg, u32 pid, u32 seq, int flags,
 			(cfg80211_rdev_list_generation << 2)))
 		goto nla_put_failure;
 
-	if (rdev->ops->get_channel) {
-		struct ieee80211_channel *chan;
-		enum nl80211_channel_type channel_type;
-
-		chan = rdev->ops->get_channel(&rdev->wiphy, &channel_type);
-		if (chan &&
-		    (nla_put_u32(msg, NL80211_ATTR_WIPHY_FREQ,
-				    chan->center_freq) ||
-		     nla_put_u32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
-				    channel_type)))
+	if (rdev->monitor_channel) {
+		if (nla_put_u32(msg, NL80211_ATTR_WIPHY_FREQ,
+				rdev->monitor_channel->center_freq) ||
+		    nla_put_u32(msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+				rdev->monitor_channel_type))
 			goto nla_put_failure;
 	}
 
@@ -2472,11 +2478,20 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
 					  params.channel_type))
 		return -EINVAL;
 
+	mutex_lock(&rdev->devlist_mtx);
+	err = cfg80211_can_use_chan(rdev, wdev, params.channel,
+				    CHAN_MODE_SHARED);
+	mutex_unlock(&rdev->devlist_mtx);
+
+	if (err)
+		return err;
+
 	err = rdev->ops->start_ap(&rdev->wiphy, dev, &params);
 	if (!err) {
 		wdev->preset_chan = params.channel;
 		wdev->preset_chantype = params.channel_type;
 		wdev->beacon_interval = params.beacon_interval;
+		wdev->channel = params.channel;
 	}
 	return err;
 }
@@ -2510,23 +2525,8 @@ static int nl80211_stop_ap(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
 	struct net_device *dev = info->user_ptr[1];
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-	int err;
 
-	if (!rdev->ops->stop_ap)
-		return -EOPNOTSUPP;
-
-	if (dev->ieee80211_ptr->iftype != NL80211_IFTYPE_AP &&
-	    dev->ieee80211_ptr->iftype != NL80211_IFTYPE_P2P_GO)
-		return -EOPNOTSUPP;
-
-	if (!wdev->beacon_interval)
-		return -ENOENT;
-
-	err = rdev->ops->stop_ap(&rdev->wiphy, dev);
-	if (!err)
-		wdev->beacon_interval = 0;
-	return err;
+	return cfg80211_stop_ap(rdev, dev);
 }
 
 static const struct nla_policy sta_flags_policy[NL80211_STA_FLAG_MAX + 1] = {
@@ -6276,6 +6276,7 @@ static int nl80211_leave_mesh(struct sk_buff *skb, struct genl_info *info)
 	return cfg80211_leave_mesh(rdev, dev);
 }
 
+#ifdef CONFIG_PM
 static int nl80211_get_wowlan(struct sk_buff *skb, struct genl_info *info)
 {
 	struct cfg80211_registered_device *rdev = info->user_ptr[0];
@@ -6504,6 +6505,7 @@ static int nl80211_set_wowlan(struct sk_buff *skb, struct genl_info *info)
 	kfree(new_triggers.patterns);
 	return err;
 }
+#endif
 
 static int nl80211_set_rekey_data(struct sk_buff *skb, struct genl_info *info)
 {
@@ -7158,6 +7160,7 @@ static struct genl_ops nl80211_ops[] = {
 		.internal_flags = NL80211_FLAG_NEED_NETDEV_UP |
 				  NL80211_FLAG_NEED_RTNL,
 	},
+#ifdef CONFIG_PM
 	{
 		.cmd = NL80211_CMD_GET_WOWLAN,
 		.doit = nl80211_get_wowlan,
@@ -7174,6 +7177,7 @@ static struct genl_ops nl80211_ops[] = {
 		.internal_flags = NL80211_FLAG_NEED_WIPHY |
 				  NL80211_FLAG_NEED_RTNL,
 	},
+#endif
 	{
 		.cmd = NL80211_CMD_SET_REKEY_OFFLOAD,
 		.doit = nl80211_set_rekey_data,

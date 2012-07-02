@@ -1072,6 +1072,10 @@ int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
 		pos += noffset - offset;
 	}
 
+	if (sband->vht_cap.vht_supported)
+		pos = ieee80211_ie_build_vht_cap(pos, &sband->vht_cap,
+						 sband->vht_cap.cap);
+
 	return pos - buffer;
 }
 
@@ -1699,6 +1703,27 @@ u8 *ieee80211_ie_build_ht_cap(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 	return pos;
 }
 
+u8 *ieee80211_ie_build_vht_cap(u8 *pos, struct ieee80211_sta_vht_cap *vht_cap,
+							   u32 cap)
+{
+	__le32 tmp;
+
+	*pos++ = WLAN_EID_VHT_CAPABILITY;
+	*pos++ = sizeof(struct ieee80211_vht_capabilities);
+	memset(pos, 0, sizeof(struct ieee80211_vht_capabilities));
+
+	/* capability flags */
+	tmp = cpu_to_le32(cap);
+	memcpy(pos, &tmp, sizeof(u32));
+	pos += sizeof(u32);
+
+	/* VHT MCS set */
+	memcpy(pos, &vht_cap->vht_mcs, sizeof(vht_cap->vht_mcs));
+	pos += sizeof(vht_cap->vht_mcs);
+
+	return pos;
+}
+
 u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 			       struct ieee80211_channel *channel,
 			       enum nl80211_channel_type channel_type,
@@ -1764,15 +1789,14 @@ ieee80211_ht_oper_to_channel_type(struct ieee80211_ht_operation *ht_oper)
 	return channel_type;
 }
 
-int ieee80211_add_srates_ie(struct ieee80211_vif *vif,
+int ieee80211_add_srates_ie(struct ieee80211_sub_if_data *sdata,
 			    struct sk_buff *skb, bool need_basic)
 {
-	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	int rate;
 	u8 i, rates, *pos;
-	u32 basic_rates = vif->bss_conf.basic_rates;
+	u32 basic_rates = sdata->vif.bss_conf.basic_rates;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	rates = sband->n_bitrates;
@@ -1796,15 +1820,14 @@ int ieee80211_add_srates_ie(struct ieee80211_vif *vif,
 	return 0;
 }
 
-int ieee80211_add_ext_srates_ie(struct ieee80211_vif *vif,
+int ieee80211_add_ext_srates_ie(struct ieee80211_sub_if_data *sdata,
 				struct sk_buff *skb, bool need_basic)
 {
-	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_supported_band *sband;
 	int rate;
 	u8 i, exrates, *pos;
-	u32 basic_rates = vif->bss_conf.basic_rates;
+	u32 basic_rates = sdata->vif.bss_conf.basic_rates;
 
 	sband = local->hw.wiphy->bands[local->hw.conf.channel->band];
 	exrates = sband->n_bitrates;
