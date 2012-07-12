@@ -544,4 +544,10 @@ config BLK_DEV_RBD
 
 	  If unsure, say N.
 
+config BLOCKCONSOLE
+	bool "Block device console logging support"
+	help
+	  This enables logging to block devices.
+	  See <file:Documentation/block/blockconsole.txt> for details.
+
 endif # BLK_DEV
