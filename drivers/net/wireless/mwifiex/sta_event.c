@@ -186,6 +186,7 @@ int mwifiex_process_sta_event(struct mwifiex_private *priv)
 	struct mwifiex_adapter *adapter = priv->adapter;
 	int ret = 0;
 	u32 eventcause = adapter->event_cause;
+	u16 ctrl;
 
 	switch (eventcause) {
 	case EVENT_DUMMY_HOST_WAKEUP_SIGNAL:
@@ -277,10 +278,16 @@ int mwifiex_process_sta_event(struct mwifiex_private *priv)
 
 	case EVENT_MIC_ERR_UNICAST:
 		dev_dbg(adapter->dev, "event: UNICAST MIC ERROR\n");
+		cfg80211_michael_mic_failure(priv->netdev, priv->cfg_bssid,
+					     NL80211_KEYTYPE_PAIRWISE,
+					     -1, NULL, GFP_KERNEL);
 		break;
 
 	case EVENT_MIC_ERR_MULTICAST:
 		dev_dbg(adapter->dev, "event: MULTICAST MIC ERROR\n");
+		cfg80211_michael_mic_failure(priv->netdev, priv->cfg_bssid,
+					     NL80211_KEYTYPE_GROUP,
+					     -1, NULL, GFP_KERNEL);
 		break;
 	case EVENT_MIB_CHANGED:
 	case EVENT_INIT_DONE:
@@ -382,11 +389,11 @@ int mwifiex_process_sta_event(struct mwifiex_private *priv)
 					      adapter->event_body);
 		break;
 	case EVENT_AMSDU_AGGR_CTRL:
-		dev_dbg(adapter->dev, "event:  AMSDU_AGGR_CTRL %d\n",
-			*(u16 *) adapter->event_body);
+		ctrl = le16_to_cpu(*(__le16 *)adapter->event_body);
+		dev_dbg(adapter->dev, "event: AMSDU_AGGR_CTRL %d\n", ctrl);
+
 		adapter->tx_buf_size =
-			min(adapter->curr_tx_buf_size,
-			    le16_to_cpu(*(__le16 *) adapter->event_body));
+				min_t(u16, adapter->curr_tx_buf_size, ctrl);
 		dev_dbg(adapter->dev, "event: tx_buf_size %d\n",
 			adapter->tx_buf_size);
 		break;
