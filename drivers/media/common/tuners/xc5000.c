@@ -62,6 +62,9 @@ struct xc5000_priv {
 	u8  radio_input;
 
 	int chip_id;
+	u16 pll_register_no;
+	u8 init_status_supported;
+	u8 fw_checksum_supported;
 };
 
 /* Misc Defines */
@@ -111,6 +114,9 @@ struct xc5000_priv {
 #define XREG_PRODUCT_ID   0x08
 #define XREG_BUSY         0x09
 #define XREG_BUILD        0x0D
+#define XREG_TOTALGAIN    0x0F
+#define XREG_FW_CHECKSUM  0x12
+#define XREG_INIT_STATUS  0x13
 
 /*
    Basic firmware description. This will remain with
@@ -208,18 +214,25 @@ static struct XC_TV_STANDARD XC5000_Standard[MAX_TV_STANDARD] = {
 struct xc5000_fw_cfg {
 	char *name;
 	u16 size;
+	u16 pll_reg;
+	u8 init_status_supported;
+	u8 fw_checksum_supported;
 };
 
 #define XC5000A_FIRMWARE "dvb-fe-xc5000-1.6.114.fw"
 static const struct xc5000_fw_cfg xc5000a_1_6_114 = {
 	.name = XC5000A_FIRMWARE,
 	.size = 12401,
+	.pll_reg = 0x806c,
 };
 
-#define XC5000C_FIRMWARE "dvb-fe-xc5000c-41.024.5.fw"
+#define XC5000C_FIRMWARE "dvb-fe-xc5000c-4.1.30.7.fw"
 static const struct xc5000_fw_cfg xc5000c_41_024_5 = {
 	.name = XC5000C_FIRMWARE,
 	.size = 16497,
+	.pll_reg = 0x13,
+	.init_status_supported = 1,
+	.fw_checksum_supported = 1,
 };
 
 static inline const struct xc5000_fw_cfg *xc5000_assign_firmware(int chip_id)
@@ -233,7 +246,7 @@ static inline const struct xc5000_fw_cfg *xc5000_assign_firmware(int chip_id)
 	}
 }
 
-static int xc_load_fw_and_init_tuner(struct dvb_frontend *fe);
+static int xc_load_fw_and_init_tuner(struct dvb_frontend *fe, int force);
 static int xc5000_is_firmware_loaded(struct dvb_frontend *fe);
 static int xc5000_readreg(struct xc5000_priv *priv, u16 reg, u16 *val);
 static int xc5000_TunerReset(struct dvb_frontend *fe);
@@ -342,7 +355,7 @@ static int xc_write_reg(struct xc5000_priv *priv, u16 regAddr, u16 i2cData)
 			}
 		}
 	}
-	if (WatchDogTimer < 0)
+	if (WatchDogTimer <= 0)
 		result = XC_RESULT_I2C_WRITE_FAILURE;
 
 	return result;
@@ -541,6 +554,16 @@ static int xc_get_quality(struct xc5000_priv *priv, u16 *quality)
 	return xc5000_readreg(priv, XREG_QUALITY, quality);
 }
 
+static int xc_get_analogsnr(struct xc5000_priv *priv, u16 *snr)
+{
+	return xc5000_readreg(priv, XREG_SNR, snr);
+}
+
+static int xc_get_totalgain(struct xc5000_priv *priv, u16 *totalgain)
+{
+	return xc5000_readreg(priv, XREG_TOTALGAIN, totalgain);
+}
+
 static u16 WaitForLock(struct xc5000_priv *priv)
 {
 	u16 lockState = 0;
@@ -608,6 +631,9 @@ static int xc5000_fwupload(struct dvb_frontend *fe)
 	int ret;
 	const struct xc5000_fw_cfg *desired_fw =
 		xc5000_assign_firmware(priv->chip_id);
+	priv->pll_register_no = desired_fw->pll_reg;
+	priv->init_status_supported = desired_fw->init_status_supported;
+	priv->fw_checksum_supported = desired_fw->fw_checksum_supported;
 
 	/* request the firmware, this will block and timeout */
 	printk(KERN_INFO "xc5000: waiting for firmware upload (%s)...\n",
@@ -652,9 +678,12 @@ static void xc_debug_dump(struct xc5000_priv *priv)
 	u32 hsync_freq_hz = 0;
 	u16 frame_lines;
 	u16 quality;
+	u16 snr;
+	u16 totalgain;
 	u8 hw_majorversion = 0, hw_minorversion = 0;
 	u8 fw_majorversion = 0, fw_minorversion = 0;
 	u16 fw_buildversion = 0;
+	u16 regval;
 
 	/* Wait for stats to stabilize.
 	 * Frame Lines needs two frame times after initial lock
@@ -675,7 +704,7 @@ static void xc_debug_dump(struct xc5000_priv *priv)
 	xc_get_version(priv,  &hw_majorversion, &hw_minorversion,
 		&fw_majorversion, &fw_minorversion);
 	xc_get_buildversion(priv,  &fw_buildversion);
-	dprintk(1, "*** HW: V%02x.%02x, FW: V%02x.%02x.%04x\n",
+	dprintk(1, "*** HW: V%d.%d, FW: V %d.%d.%d\n",
 		hw_majorversion, hw_minorversion,
 		fw_majorversion, fw_minorversion, fw_buildversion);
 
@@ -686,7 +715,19 @@ static void xc_debug_dump(struct xc5000_priv *priv)
 	dprintk(1, "*** Frame lines = %d\n", frame_lines);
 
 	xc_get_quality(priv,  &quality);
-	dprintk(1, "*** Quality (0:<8dB, 7:>56dB) = %d\n", quality);
+	dprintk(1, "*** Quality (0:<8dB, 7:>56dB) = %d\n", quality & 0x07);
+
+	xc_get_analogsnr(priv,  &snr);
+	dprintk(1, "*** Unweighted analog SNR = %d dB\n", snr & 0x3f);
+
+	xc_get_totalgain(priv,  &totalgain);
+	dprintk(1, "*** Total gain = %d.%d dB\n", totalgain / 256,
+		(totalgain % 256) * 100 / 256);
+
+	if (priv->pll_register_no) {
+		xc5000_readreg(priv, priv->pll_register_no, &regval);
+		dprintk(1, "*** PLL lock status = 0x%04x\n", regval);
+	}
 }
 
 static int xc5000_set_params(struct dvb_frontend *fe)
@@ -697,11 +738,9 @@ static int xc5000_set_params(struct dvb_frontend *fe)
 	u32 freq = fe->dtv_property_cache.frequency;
 	u32 delsys  = fe->dtv_property_cache.delivery_system;
 
-	if (xc5000_is_firmware_loaded(fe) != XC_RESULT_SUCCESS) {
-		if (xc_load_fw_and_init_tuner(fe) != XC_RESULT_SUCCESS) {
-			dprintk(1, "Unable to load firmware and init tuner\n");
-			return -EINVAL;
-		}
+	if (xc_load_fw_and_init_tuner(fe, 0) != XC_RESULT_SUCCESS) {
+		dprintk(1, "Unable to load firmware and init tuner\n");
+		return -EINVAL;
 	}
 
 	dprintk(1, "%s() frequency=%d (Hz)\n", __func__, freq);
@@ -832,6 +871,7 @@ static int xc5000_set_tv_freq(struct dvb_frontend *fe,
 	struct analog_parameters *params)
 {
 	struct xc5000_priv *priv = fe->tuner_priv;
+	u16 pll_lock_status;
 	int ret;
 
 	dprintk(1, "%s() frequency=%d (in units of 62.5khz)\n",
@@ -912,6 +952,21 @@ tune_channel:
 	if (debug)
 		xc_debug_dump(priv);
 
+	if (priv->pll_register_no != 0) {
+		msleep(20);
+		xc5000_readreg(priv, priv->pll_register_no, &pll_lock_status);
+		if (pll_lock_status > 63) {
+			/* PLL is unlocked, force reload of the firmware */
+			dprintk(1, "xc5000: PLL not locked (0x%x).  Reloading...\n",
+				pll_lock_status);
+			if (xc_load_fw_and_init_tuner(fe, 1) != XC_RESULT_SUCCESS) {
+				printk(KERN_ERR "xc5000: Unable to reload fw\n");
+				return -EREMOTEIO;
+			}
+			goto tune_channel;
+		}
+	}
+
 	return 0;
 }
 
@@ -982,11 +1037,9 @@ static int xc5000_set_analog_params(struct dvb_frontend *fe,
 	if (priv->i2c_props.adap == NULL)
 		return -EINVAL;
 
-	if (xc5000_is_firmware_loaded(fe) != XC_RESULT_SUCCESS) {
-		if (xc_load_fw_and_init_tuner(fe) != XC_RESULT_SUCCESS) {
-			dprintk(1, "Unable to load firmware and init tuner\n");
-			return -EINVAL;
-		}
+	if (xc_load_fw_and_init_tuner(fe, 0) != XC_RESULT_SUCCESS) {
+		dprintk(1, "Unable to load firmware and init tuner\n");
+		return -EINVAL;
 	}
 
 	switch (params->mode) {
@@ -1042,29 +1095,77 @@ static int xc5000_get_status(struct dvb_frontend *fe, u32 *status)
 	return 0;
 }
 
-static int xc_load_fw_and_init_tuner(struct dvb_frontend *fe)
+static int xc_load_fw_and_init_tuner(struct dvb_frontend *fe, int force)
 {
 	struct xc5000_priv *priv = fe->tuner_priv;
-	int ret = 0;
+	int ret = XC_RESULT_SUCCESS;
+	u16 pll_lock_status;
+	u16 fw_ck;
 
-	if (xc5000_is_firmware_loaded(fe) != XC_RESULT_SUCCESS) {
+	if (force || xc5000_is_firmware_loaded(fe) != XC_RESULT_SUCCESS) {
+
+fw_retry:
+
 		ret = xc5000_fwupload(fe);
 		if (ret != XC_RESULT_SUCCESS)
 			return ret;
+
+		msleep(20);
+
+		if (priv->fw_checksum_supported) {
+			if (xc5000_readreg(priv, XREG_FW_CHECKSUM, &fw_ck)
+			    != XC_RESULT_SUCCESS) {
+				dprintk(1, "%s() FW checksum reading failed.\n",
+					__func__);
+				goto fw_retry;
+			}
+
+			if (fw_ck == 0) {
+				dprintk(1, "%s() FW checksum failed = 0x%04x\n",
+					__func__, fw_ck);
+				goto fw_retry;
+			}
+		}
+
+		/* Start the tuner self-calibration process */
+		ret |= xc_initialize(priv);
+
+		if (ret != XC_RESULT_SUCCESS)
+			goto fw_retry;
+
+		/* Wait for calibration to complete.
+		 * We could continue but XC5000 will clock stretch subsequent
+		 * I2C transactions until calibration is complete.  This way we
+		 * don't have to rely on clock stretching working.
+		 */
+		xc_wait(100);
+
+		if (priv->init_status_supported) {
+			if (xc5000_readreg(priv, XREG_INIT_STATUS, &fw_ck) != XC_RESULT_SUCCESS) {
+				dprintk(1, "%s() FW failed reading init status.\n",
+					__func__);
+				goto fw_retry;
+			}
+
+			if (fw_ck == 0) {
+				dprintk(1, "%s() FW init status failed = 0x%04x\n", __func__, fw_ck);
+				goto fw_retry;
+			}
+		}
+
+		if (priv->pll_register_no) {
+			xc5000_readreg(priv, priv->pll_register_no,
+				       &pll_lock_status);
+			if (pll_lock_status > 63) {
+				/* PLL is unlocked, force reload of the firmware */
+				printk(KERN_ERR "xc5000: PLL not running after fwload.\n");
+				goto fw_retry;
+			}
+		}
+
+		/* Default to "CABLE" mode */
+		ret |= xc_write_reg(priv, XREG_SIGNALSOURCE, XC_RF_MODE_CABLE);
 	}
-
-	/* Start the tuner self-calibration process */
-	ret |= xc_initialize(priv);
-
-	/* Wait for calibration to complete.
-	 * We could continue but XC5000 will clock stretch subsequent
-	 * I2C transactions until calibration is complete.  This way we
-	 * don't have to rely on clock stretching working.
-	 */
-	xc_wait(100);
-
-	/* Default to "CABLE" mode */
-	ret |= xc_write_reg(priv, XREG_SIGNALSOURCE, XC_RF_MODE_CABLE);
 
 	return ret;
 }
@@ -1097,7 +1198,7 @@ static int xc5000_init(struct dvb_frontend *fe)
 	struct xc5000_priv *priv = fe->tuner_priv;
 	dprintk(1, "%s()\n", __func__);
 
-	if (xc_load_fw_and_init_tuner(fe) != XC_RESULT_SUCCESS) {
+	if (xc_load_fw_and_init_tuner(fe, 0) != XC_RESULT_SUCCESS) {
 		printk(KERN_ERR "xc5000: Unable to initialise tuner\n");
 		return -EREMOTEIO;
 	}

@@ -257,9 +257,11 @@ static void setup_decoder_defaults(struct au8522_state *state, u8 input_mode)
 	au8522_writereg(state, AU8522_TVDED_DBG_MODE_REG060H,
 			AU8522_TVDED_DBG_MODE_REG060H_CVBS);
 	au8522_writereg(state, AU8522_TVDEC_FORMAT_CTRL1_REG061H,
-			AU8522_TVDEC_FORMAT_CTRL1_REG061H_CVBS13);
+			AU8522_TVDEC_FORMAT_CTRL1_REG061H_FIELD_LEN_525 |
+			AU8522_TVDEC_FORMAT_CTRL1_REG061H_LINE_LEN_63_492 |
+			AU8522_TVDEC_FORMAT_CTRL1_REG061H_SUBCARRIER_NTSC_MN);
 	au8522_writereg(state, AU8522_TVDEC_FORMAT_CTRL2_REG062H,
-			AU8522_TVDEC_FORMAT_CTRL2_REG062H_CVBS13);
+			AU8522_TVDEC_FORMAT_CTRL2_REG062H_STD_NTSC);
 	au8522_writereg(state, AU8522_TVDEC_VCR_DET_LLIM_REG063H,
 			AU8522_TVDEC_VCR_DET_LLIM_REG063H_CVBS);
 	au8522_writereg(state, AU8522_TVDEC_VCR_DET_HLIM_REG064H,
@@ -656,11 +658,6 @@ static int au8522_s_video_routing(struct v4l2_subdev *sd,
 	struct au8522_state *state = to_state(sd);
 
 	au8522_reset(sd, 0);
-
-	/* Jam open the i2c gate to the tuner.  We do this here to handle the
-	   case where the user went into digital mode (causing the gate to be
-	   closed), and then came back to analog mode */
-	au8522_writereg(state, 0x106, 1);
 
 	if (input == AU8522_COMPOSITE_CH1) {
 		au8522_setup_cvbs_mode(state);

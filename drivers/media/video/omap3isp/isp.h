@@ -90,10 +90,11 @@ enum isp_sbl_resource {
 
 enum isp_subclk_resource {
 	OMAP3_ISP_SUBCLK_CCDC		= (1 << 0),
-	OMAP3_ISP_SUBCLK_H3A		= (1 << 1),
-	OMAP3_ISP_SUBCLK_HIST		= (1 << 2),
-	OMAP3_ISP_SUBCLK_PREVIEW	= (1 << 3),
-	OMAP3_ISP_SUBCLK_RESIZER	= (1 << 4),
+	OMAP3_ISP_SUBCLK_AEWB		= (1 << 1),
+	OMAP3_ISP_SUBCLK_AF		= (1 << 2),
+	OMAP3_ISP_SUBCLK_HIST		= (1 << 3),
+	OMAP3_ISP_SUBCLK_PREVIEW	= (1 << 4),
+	OMAP3_ISP_SUBCLK_RESIZER	= (1 << 5),
 };
 
 /* ISP: OMAP 34xx ES 1.0 */
@@ -235,7 +236,7 @@ int omap3isp_pipeline_set_stream(struct isp_pipeline *pipe,
 void omap3isp_configure_bridge(struct isp_device *isp,
 			       enum ccdc_input_entity input,
 			       const struct isp_parallel_platform_data *pdata,
-			       unsigned int shift);
+			       unsigned int shift, unsigned int bridge);
 
 struct isp_device *omap3isp_get(struct isp_device *isp);
 void omap3isp_put(struct isp_device *isp);

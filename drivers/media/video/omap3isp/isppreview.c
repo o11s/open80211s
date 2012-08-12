@@ -131,7 +131,7 @@ static struct omap3isp_prev_csc flr_prev_csc = {
  * CFA Filter Coefficient Table
  *
  */
-static u32 cfa_coef_table[] = {
+static u32 cfa_coef_table[4][OMAP3ISP_PREV_CFA_BLK_SIZE] = {
 #include "cfa_coef_table.h"
 };
 
@@ -157,227 +157,14 @@ static u32 luma_enhance_table[] = {
 };
 
 /*
- * preview_enable_invalaw - Enable/Disable Inverse A-Law module in Preview.
- * @enable: 1 - Reverse the A-Law done in CCDC.
- */
-static void
-preview_enable_invalaw(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_WIDTH | ISPPRV_PCR_INVALAW);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_WIDTH | ISPPRV_PCR_INVALAW);
-}
-
-/*
- * preview_enable_drkframe_capture - Enable/Disable of the darkframe capture.
- * @prev -
- * @enable: 1 - Enable, 0 - Disable
- *
- * NOTE: PRV_WSDR_ADDR and PRV_WADD_OFFSET must be set also
- * The process is applied for each captured frame.
- */
-static void
-preview_enable_drkframe_capture(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DRKFCAP);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DRKFCAP);
-}
-
-/*
- * preview_enable_drkframe - Enable/Disable of the darkframe subtract.
- * @enable: 1 - Acquires memory bandwidth since the pixels in each frame is
- *          subtracted with the pixels in the current frame.
- *
- * The process is applied for each captured frame.
- */
-static void
-preview_enable_drkframe(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DRKFEN);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DRKFEN);
-}
-
-/*
- * preview_config_drkf_shadcomp - Configures shift value in shading comp.
- * @scomp_shtval: 3bit value of shift used in shading compensation.
- */
-static void
-preview_config_drkf_shadcomp(struct isp_prev_device *prev,
-			     const void *scomp_shtval)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const u32 *shtval = scomp_shtval;
-
-	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			ISPPRV_PCR_SCOMP_SFT_MASK,
-			*shtval << ISPPRV_PCR_SCOMP_SFT_SHIFT);
-}
-
-/*
- * preview_enable_hmed - Enables/Disables of the Horizontal Median Filter.
- * @enable: 1 - Enables Horizontal Median Filter.
- */
-static void
-preview_enable_hmed(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_HMEDEN);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_HMEDEN);
-}
-
-/*
- * preview_config_hmed - Configures the Horizontal Median Filter.
- * @prev_hmed: Structure containing the odd and even distance between the
- *             pixels in the image along with the filter threshold.
- */
-static void
-preview_config_hmed(struct isp_prev_device *prev, const void *prev_hmed)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_hmed *hmed = prev_hmed;
-
-	isp_reg_writel(isp, (hmed->odddist == 1 ? 0 : ISPPRV_HMED_ODDDIST) |
-		       (hmed->evendist == 1 ? 0 : ISPPRV_HMED_EVENDIST) |
-		       (hmed->thres << ISPPRV_HMED_THRESHOLD_SHIFT),
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_HMED);
-}
-
-/*
- * preview_config_noisefilter - Configures the Noise Filter.
- * @prev_nf: Structure containing the noisefilter table, strength to be used
- *           for the noise filter and the defect correction enable flag.
- */
-static void
-preview_config_noisefilter(struct isp_prev_device *prev, const void *prev_nf)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_nf *nf = prev_nf;
-	unsigned int i;
-
-	isp_reg_writel(isp, nf->spread, OMAP3_ISP_IOMEM_PREV, ISPPRV_NF);
-	isp_reg_writel(isp, ISPPRV_NF_TABLE_ADDR,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
-	for (i = 0; i < OMAP3ISP_PREV_NF_TBL_SIZE; i++) {
-		isp_reg_writel(isp, nf->table[i],
-			       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_DATA);
-	}
-}
-
-/*
- * preview_config_dcor - Configures the defect correction
- * @prev_dcor: Structure containing the defect correct thresholds
- */
-static void
-preview_config_dcor(struct isp_prev_device *prev, const void *prev_dcor)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_dcor *dcor = prev_dcor;
-
-	isp_reg_writel(isp, dcor->detect_correct[0],
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR0);
-	isp_reg_writel(isp, dcor->detect_correct[1],
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR1);
-	isp_reg_writel(isp, dcor->detect_correct[2],
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR2);
-	isp_reg_writel(isp, dcor->detect_correct[3],
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR3);
-	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			ISPPRV_PCR_DCCOUP,
-			dcor->couplet_mode_en ? ISPPRV_PCR_DCCOUP : 0);
-}
-
-/*
- * preview_config_cfa - Configures the CFA Interpolation parameters.
- * @prev_cfa: Structure containing the CFA interpolation table, CFA format
- *            in the image, vertical and horizontal gradient threshold.
- */
-static void
-preview_config_cfa(struct isp_prev_device *prev, const void *prev_cfa)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_cfa *cfa = prev_cfa;
-	unsigned int i;
-
-	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			ISPPRV_PCR_CFAFMT_MASK,
-			cfa->format << ISPPRV_PCR_CFAFMT_SHIFT);
-
-	isp_reg_writel(isp,
-		(cfa->gradthrs_vert << ISPPRV_CFA_GRADTH_VER_SHIFT) |
-		(cfa->gradthrs_horz << ISPPRV_CFA_GRADTH_HOR_SHIFT),
-		OMAP3_ISP_IOMEM_PREV, ISPPRV_CFA);
-
-	isp_reg_writel(isp, ISPPRV_CFA_TABLE_ADDR,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
-
-	for (i = 0; i < OMAP3ISP_PREV_CFA_TBL_SIZE; i++) {
-		isp_reg_writel(isp, cfa->table[i],
-			       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_DATA);
-	}
-}
-
-/*
- * preview_config_gammacorrn - Configures the Gamma Correction table values
- * @gtable: Structure containing the table for red, blue, green gamma table.
- */
-static void
-preview_config_gammacorrn(struct isp_prev_device *prev, const void *gtable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_gtables *gt = gtable;
-	unsigned int i;
-
-	isp_reg_writel(isp, ISPPRV_REDGAMMA_TABLE_ADDR,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
-	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
-		isp_reg_writel(isp, gt->red[i], OMAP3_ISP_IOMEM_PREV,
-			       ISPPRV_SET_TBL_DATA);
-
-	isp_reg_writel(isp, ISPPRV_GREENGAMMA_TABLE_ADDR,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
-	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
-		isp_reg_writel(isp, gt->green[i], OMAP3_ISP_IOMEM_PREV,
-			       ISPPRV_SET_TBL_DATA);
-
-	isp_reg_writel(isp, ISPPRV_BLUEGAMMA_TABLE_ADDR,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
-	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
-		isp_reg_writel(isp, gt->blue[i], OMAP3_ISP_IOMEM_PREV,
-			       ISPPRV_SET_TBL_DATA);
-}
-
-/*
- * preview_config_luma_enhancement - Sets the Luminance Enhancement table.
- * @ytable: Structure containing the table for Luminance Enhancement table.
+ * preview_config_luma_enhancement - Configure the Luminance Enhancement table
  */
 static void
 preview_config_luma_enhancement(struct isp_prev_device *prev,
-				const void *ytable)
+				const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_luma *yt = ytable;
+	const struct omap3isp_prev_luma *yt = &params->luma;
 	unsigned int i;
 
 	isp_reg_writel(isp, ISPPRV_YENH_TABLE_ADDR,
@@ -389,16 +176,115 @@ preview_config_luma_enhancement(struct isp_prev_device *prev,
 }
 
 /*
- * preview_config_chroma_suppression - Configures the Chroma Suppression.
- * @csup: Structure containing the threshold value for suppression
- *        and the hypass filter enable flag.
+ * preview_enable_luma_enhancement - Enable/disable Luminance Enhancement
+ */
+static void
+preview_enable_luma_enhancement(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_YNENHEN);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_YNENHEN);
+}
+
+/*
+ * preview_enable_invalaw - Enable/disable Inverse A-Law decompression
+ */
+static void preview_enable_invalaw(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_WIDTH | ISPPRV_PCR_INVALAW);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_WIDTH | ISPPRV_PCR_INVALAW);
+}
+
+/*
+ * preview_config_hmed - Configure the Horizontal Median Filter
+ */
+static void preview_config_hmed(struct isp_prev_device *prev,
+				const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+	const struct omap3isp_prev_hmed *hmed = &params->hmed;
+
+	isp_reg_writel(isp, (hmed->odddist == 1 ? 0 : ISPPRV_HMED_ODDDIST) |
+		       (hmed->evendist == 1 ? 0 : ISPPRV_HMED_EVENDIST) |
+		       (hmed->thres << ISPPRV_HMED_THRESHOLD_SHIFT),
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_HMED);
+}
+
+/*
+ * preview_enable_hmed - Enable/disable the Horizontal Median Filter
+ */
+static void preview_enable_hmed(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_HMEDEN);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_HMEDEN);
+}
+
+/*
+ * preview_config_cfa - Configure CFA Interpolation for Bayer formats
+ *
+ * The CFA table is organised in four blocks, one per Bayer component. The
+ * hardware expects blocks to follow the Bayer order of the input data, while
+ * the driver stores the table in GRBG order in memory. The blocks need to be
+ * reordered to support non-GRBG Bayer patterns.
+ */
+static void preview_config_cfa(struct isp_prev_device *prev,
+			       const struct prev_params *params)
+{
+	static const unsigned int cfa_coef_order[4][4] = {
+		{ 0, 1, 2, 3 }, /* GRBG */
+		{ 1, 0, 3, 2 }, /* RGGB */
+		{ 2, 3, 0, 1 }, /* BGGR */
+		{ 3, 2, 1, 0 }, /* GBRG */
+	};
+	const unsigned int *order = cfa_coef_order[prev->params.cfa_order];
+	const struct omap3isp_prev_cfa *cfa = &params->cfa;
+	struct isp_device *isp = to_isp_device(prev);
+	unsigned int i;
+	unsigned int j;
+
+	isp_reg_writel(isp,
+		(cfa->gradthrs_vert << ISPPRV_CFA_GRADTH_VER_SHIFT) |
+		(cfa->gradthrs_horz << ISPPRV_CFA_GRADTH_HOR_SHIFT),
+		OMAP3_ISP_IOMEM_PREV, ISPPRV_CFA);
+
+	isp_reg_writel(isp, ISPPRV_CFA_TABLE_ADDR,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
+
+	for (i = 0; i < 4; ++i) {
+		const __u32 *block = cfa->table[order[i]];
+
+		for (j = 0; j < OMAP3ISP_PREV_CFA_BLK_SIZE; ++j)
+			isp_reg_writel(isp, block[j], OMAP3_ISP_IOMEM_PREV,
+				       ISPPRV_SET_TBL_DATA);
+	}
+}
+
+/*
+ * preview_config_chroma_suppression - Configure Chroma Suppression
  */
 static void
 preview_config_chroma_suppression(struct isp_prev_device *prev,
-				  const void *csup)
+				  const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_csup *cs = csup;
+	const struct omap3isp_prev_csup *cs = &params->csup;
 
 	isp_reg_writel(isp,
 		       cs->gain | (cs->thres << ISPPRV_CSUP_THRES_SHIFT) |
@@ -407,80 +293,10 @@ preview_config_chroma_suppression(struct isp_prev_device *prev,
 }
 
 /*
- * preview_enable_noisefilter - Enables/Disables the Noise Filter.
- * @enable: 1 - Enables the Noise Filter.
+ * preview_enable_chroma_suppression - Enable/disable Chrominance Suppression
  */
 static void
-preview_enable_noisefilter(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_NFEN);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_NFEN);
-}
-
-/*
- * preview_enable_dcor - Enables/Disables the defect correction.
- * @enable: 1 - Enables the defect correction.
- */
-static void
-preview_enable_dcor(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DCOREN);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_DCOREN);
-}
-
-/*
- * preview_enable_gammabypass - Enables/Disables the GammaByPass
- * @enable: 1 - Bypasses Gamma - 10bit input is cropped to 8MSB.
- *          0 - Goes through Gamma Correction. input and output is 10bit.
- */
-static void
-preview_enable_gammabypass(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_GAMMA_BYPASS);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_GAMMA_BYPASS);
-}
-
-/*
- * preview_enable_luma_enhancement - Enables/Disables Luminance Enhancement
- * @enable: 1 - Enable the Luminance Enhancement.
- */
-static void
-preview_enable_luma_enhancement(struct isp_prev_device *prev, u8 enable)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	if (enable)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_YNENHEN);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_YNENHEN);
-}
-
-/*
- * preview_enable_chroma_suppression - Enables/Disables Chrominance Suppr.
- * @enable: 1 - Enable the Chrominance Suppression.
- */
-static void
-preview_enable_chroma_suppression(struct isp_prev_device *prev, u8 enable)
+preview_enable_chroma_suppression(struct isp_prev_device *prev, bool enable)
 {
 	struct isp_device *isp = to_isp_device(prev);
 
@@ -493,17 +309,16 @@ preview_enable_chroma_suppression(struct isp_prev_device *prev, u8 enable)
 }
 
 /*
- * preview_config_whitebalance - Configures the White Balance parameters.
- * @prev_wbal: Structure containing the digital gain and white balance
- *             coefficient.
+ * preview_config_whitebalance - Configure White Balance parameters
  *
  * Coefficient matrix always with default values.
  */
 static void
-preview_config_whitebalance(struct isp_prev_device *prev, const void *prev_wbal)
+preview_config_whitebalance(struct isp_prev_device *prev,
+			    const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_wbal *wbal = prev_wbal;
+	const struct omap3isp_prev_wbal *wbal = &params->wbal;
 	u32 val;
 
 	isp_reg_writel(isp, wbal->dgain, OMAP3_ISP_IOMEM_PREV, ISPPRV_WB_DGAIN);
@@ -535,15 +350,14 @@ preview_config_whitebalance(struct isp_prev_device *prev, const void *prev_wbal)
 }
 
 /*
- * preview_config_blkadj - Configures the Black Adjustment parameters.
- * @prev_blkadj: Structure containing the black adjustment towards red, green,
- *               blue.
+ * preview_config_blkadj - Configure Black Adjustment
  */
 static void
-preview_config_blkadj(struct isp_prev_device *prev, const void *prev_blkadj)
+preview_config_blkadj(struct isp_prev_device *prev,
+		      const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_blkadj *blkadj = prev_blkadj;
+	const struct omap3isp_prev_blkadj *blkadj = &params->blkadj;
 
 	isp_reg_writel(isp, (blkadj->blue << ISPPRV_BLKADJOFF_B_SHIFT) |
 		       (blkadj->green << ISPPRV_BLKADJOFF_G_SHIFT) |
@@ -552,15 +366,14 @@ preview_config_blkadj(struct isp_prev_device *prev, const void *prev_blkadj)
 }
 
 /*
- * preview_config_rgb_blending - Configures the RGB-RGB Blending matrix.
- * @rgb2rgb: Structure containing the rgb to rgb blending matrix and the rgb
- *           offset.
+ * preview_config_rgb_blending - Configure RGB-RGB Blending
  */
 static void
-preview_config_rgb_blending(struct isp_prev_device *prev, const void *rgb2rgb)
+preview_config_rgb_blending(struct isp_prev_device *prev,
+			    const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_rgbtorgb *rgbrgb = rgb2rgb;
+	const struct omap3isp_prev_rgbtorgb *rgbrgb = &params->rgb2rgb;
 	u32 val;
 
 	val = (rgbrgb->matrix[0][0] & 0xfff) << ISPPRV_RGB_MAT1_MTX_RR_SHIFT;
@@ -591,15 +404,14 @@ preview_config_rgb_blending(struct isp_prev_device *prev, const void *rgb2rgb)
 }
 
 /*
- * Configures the color space conversion (RGB toYCbYCr) matrix
- * @prev_csc: Structure containing the RGB to YCbYCr matrix and the
- *            YCbCr offset.
+ * preview_config_csc - Configure Color Space Conversion (RGB to YCbYCr)
  */
 static void
-preview_config_csc(struct isp_prev_device *prev, const void *prev_csc)
+preview_config_csc(struct isp_prev_device *prev,
+		   const struct prev_params *params)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_csc *csc = prev_csc;
+	const struct omap3isp_prev_csc *csc = &params->csc;
 	u32 val;
 
 	val = (csc->matrix[0][0] & 0x3ff) << ISPPRV_CSC0_RY_SHIFT;
@@ -621,6 +433,208 @@ preview_config_csc(struct isp_prev_device *prev, const void *prev_csc)
 	val |= (csc->offset[1] & 0xff) << ISPPRV_CSC_OFFSET_CB_SHIFT;
 	val |= (csc->offset[2] & 0xff) << ISPPRV_CSC_OFFSET_CR_SHIFT;
 	isp_reg_writel(isp, val, OMAP3_ISP_IOMEM_PREV, ISPPRV_CSC_OFFSET);
+}
+
+/*
+ * preview_config_yc_range - Configure the max and min Y and C values
+ */
+static void
+preview_config_yc_range(struct isp_prev_device *prev,
+			const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+	const struct omap3isp_prev_yclimit *yc = &params->yclimit;
+
+	isp_reg_writel(isp,
+		       yc->maxC << ISPPRV_SETUP_YC_MAXC_SHIFT |
+		       yc->maxY << ISPPRV_SETUP_YC_MAXY_SHIFT |
+		       yc->minC << ISPPRV_SETUP_YC_MINC_SHIFT |
+		       yc->minY << ISPPRV_SETUP_YC_MINY_SHIFT,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SETUP_YC);
+}
+
+/*
+ * preview_config_dcor - Configure Couplet Defect Correction
+ */
+static void
+preview_config_dcor(struct isp_prev_device *prev,
+		    const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+	const struct omap3isp_prev_dcor *dcor = &params->dcor;
+
+	isp_reg_writel(isp, dcor->detect_correct[0],
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR0);
+	isp_reg_writel(isp, dcor->detect_correct[1],
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR1);
+	isp_reg_writel(isp, dcor->detect_correct[2],
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR2);
+	isp_reg_writel(isp, dcor->detect_correct[3],
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_CDC_THR3);
+	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			ISPPRV_PCR_DCCOUP,
+			dcor->couplet_mode_en ? ISPPRV_PCR_DCCOUP : 0);
+}
+
+/*
+ * preview_enable_dcor - Enable/disable Couplet Defect Correction
+ */
+static void preview_enable_dcor(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DCOREN);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DCOREN);
+}
+
+/*
+ * preview_enable_drkframe_capture - Enable/disable Dark Frame Capture
+ */
+static void
+preview_enable_drkframe_capture(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DRKFCAP);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DRKFCAP);
+}
+
+/*
+ * preview_enable_drkframe - Enable/disable Dark Frame Subtraction
+ */
+static void preview_enable_drkframe(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DRKFEN);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_DRKFEN);
+}
+
+/*
+ * preview_config_noisefilter - Configure the Noise Filter
+ */
+static void
+preview_config_noisefilter(struct isp_prev_device *prev,
+			   const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+	const struct omap3isp_prev_nf *nf = &params->nf;
+	unsigned int i;
+
+	isp_reg_writel(isp, nf->spread, OMAP3_ISP_IOMEM_PREV, ISPPRV_NF);
+	isp_reg_writel(isp, ISPPRV_NF_TABLE_ADDR,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
+	for (i = 0; i < OMAP3ISP_PREV_NF_TBL_SIZE; i++) {
+		isp_reg_writel(isp, nf->table[i],
+			       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_DATA);
+	}
+}
+
+/*
+ * preview_enable_noisefilter - Enable/disable the Noise Filter
+ */
+static void
+preview_enable_noisefilter(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_NFEN);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_NFEN);
+}
+
+/*
+ * preview_config_gammacorrn - Configure the Gamma Correction tables
+ */
+static void
+preview_config_gammacorrn(struct isp_prev_device *prev,
+			  const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+	const struct omap3isp_prev_gtables *gt = &params->gamma;
+	unsigned int i;
+
+	isp_reg_writel(isp, ISPPRV_REDGAMMA_TABLE_ADDR,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
+	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
+		isp_reg_writel(isp, gt->red[i], OMAP3_ISP_IOMEM_PREV,
+			       ISPPRV_SET_TBL_DATA);
+
+	isp_reg_writel(isp, ISPPRV_GREENGAMMA_TABLE_ADDR,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
+	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
+		isp_reg_writel(isp, gt->green[i], OMAP3_ISP_IOMEM_PREV,
+			       ISPPRV_SET_TBL_DATA);
+
+	isp_reg_writel(isp, ISPPRV_BLUEGAMMA_TABLE_ADDR,
+		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SET_TBL_ADDR);
+	for (i = 0; i < OMAP3ISP_PREV_GAMMA_TBL_SIZE; i++)
+		isp_reg_writel(isp, gt->blue[i], OMAP3_ISP_IOMEM_PREV,
+			       ISPPRV_SET_TBL_DATA);
+}
+
+/*
+ * preview_enable_gammacorrn - Enable/disable Gamma Correction
+ *
+ * When gamma correction is disabled, the module is bypassed and its output is
+ * the 8 MSB of the 10-bit input .
+ */
+static void
+preview_enable_gammacorrn(struct isp_prev_device *prev, bool enable)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	if (enable)
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_GAMMA_BYPASS);
+	else
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_GAMMA_BYPASS);
+}
+
+/*
+ * preview_config_contrast - Configure the Contrast
+ *
+ * Value should be programmed before enabling the module.
+ */
+static void
+preview_config_contrast(struct isp_prev_device *prev,
+			const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_CNT_BRT,
+			0xff << ISPPRV_CNT_BRT_CNT_SHIFT,
+			params->contrast << ISPPRV_CNT_BRT_CNT_SHIFT);
+}
+
+/*
+ * preview_config_brightness - Configure the Brightness
+ */
+static void
+preview_config_brightness(struct isp_prev_device *prev,
+			  const struct prev_params *params)
+{
+	struct isp_device *isp = to_isp_device(prev);
+
+	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_CNT_BRT,
+			0xff << ISPPRV_CNT_BRT_BRT_SHIFT,
+			params->brightness << ISPPRV_CNT_BRT_BRT_SHIFT);
 }
 
 /*
@@ -647,22 +661,6 @@ preview_update_contrast(struct isp_prev_device *prev, u8 contrast)
 }
 
 /*
- * preview_config_contrast - Configures the Contrast.
- * @params: Contrast value (u8 pointer, U8Q0 format).
- *
- * Value should be programmed before enabling the module.
- */
-static void
-preview_config_contrast(struct isp_prev_device *prev, const void *params)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_CNT_BRT,
-			0xff << ISPPRV_CNT_BRT_CNT_SHIFT,
-			*(u8 *)params << ISPPRV_CNT_BRT_CNT_SHIFT);
-}
-
-/*
  * preview_update_brightness - Updates the brightness in preview module.
  * @brightness: Pointer to hold the current programmed brightness value.
  *
@@ -682,38 +680,6 @@ preview_update_brightness(struct isp_prev_device *prev, u8 brightness)
 		params->update |= OMAP3ISP_PREV_BRIGHTNESS;
 	}
 	spin_unlock_irqrestore(&prev->params.lock, flags);
-}
-
-/*
- * preview_config_brightness - Configures the brightness.
- * @params: Brightness value (u8 pointer, U8Q0 format).
- */
-static void
-preview_config_brightness(struct isp_prev_device *prev, const void *params)
-{
-	struct isp_device *isp = to_isp_device(prev);
-
-	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_CNT_BRT,
-			0xff << ISPPRV_CNT_BRT_BRT_SHIFT,
-			*(u8 *)params << ISPPRV_CNT_BRT_BRT_SHIFT);
-}
-
-/*
- * preview_config_yc_range - Configures the max and min Y and C values.
- * @yclimit: Structure containing the range of Y and C values.
- */
-static void
-preview_config_yc_range(struct isp_prev_device *prev, const void *yclimit)
-{
-	struct isp_device *isp = to_isp_device(prev);
-	const struct omap3isp_prev_yclimit *yc = yclimit;
-
-	isp_reg_writel(isp,
-		       yc->maxC << ISPPRV_SETUP_YC_MAXC_SHIFT |
-		       yc->maxY << ISPPRV_SETUP_YC_MAXY_SHIFT |
-		       yc->minC << ISPPRV_SETUP_YC_MINC_SHIFT |
-		       yc->minY << ISPPRV_SETUP_YC_MINY_SHIFT,
-		       OMAP3_ISP_IOMEM_PREV, ISPPRV_SETUP_YC);
 }
 
 static u32
@@ -787,8 +753,8 @@ static void preview_params_switch(struct isp_prev_device *prev)
 
 /* preview parameters update structure */
 struct preview_update {
-	void (*config)(struct isp_prev_device *, const void *);
-	void (*enable)(struct isp_prev_device *, u8);
+	void (*config)(struct isp_prev_device *, const struct prev_params *);
+	void (*enable)(struct isp_prev_device *, bool);
 	unsigned int param_offset;
 	unsigned int param_size;
 	unsigned int config_offset;
@@ -860,9 +826,9 @@ static const struct preview_update update_attrs[] = {
 		offsetof(struct prev_params, dcor),
 		FIELD_SIZEOF(struct prev_params, dcor),
 		offsetof(struct omap3isp_prev_update_config, dcor),
-	}, /* OMAP3ISP_PREV_GAMMABYPASS */ {
+	}, /* Previously OMAP3ISP_PREV_GAMMABYPASS, not used anymore */ {
 		NULL,
-		preview_enable_gammabypass,
+		NULL,
 	}, /* OMAP3ISP_PREV_DRK_FRM_CAPTURE */ {
 		NULL,
 		preview_enable_drkframe_capture,
@@ -870,7 +836,7 @@ static const struct preview_update update_attrs[] = {
 		NULL,
 		preview_enable_drkframe,
 	}, /* OMAP3ISP_PREV_LENS_SHADING */ {
-		preview_config_drkf_shadcomp,
+		NULL,
 		preview_enable_drkframe,
 	}, /* OMAP3ISP_PREV_NF */ {
 		preview_config_noisefilter,
@@ -880,20 +846,18 @@ static const struct preview_update update_attrs[] = {
 		offsetof(struct omap3isp_prev_update_config, nf),
 	}, /* OMAP3ISP_PREV_GAMMA */ {
 		preview_config_gammacorrn,
-		NULL,
+		preview_enable_gammacorrn,
 		offsetof(struct prev_params, gamma),
 		FIELD_SIZEOF(struct prev_params, gamma),
 		offsetof(struct omap3isp_prev_update_config, gamma),
 	}, /* OMAP3ISP_PREV_CONTRAST */ {
 		preview_config_contrast,
 		NULL,
-		offsetof(struct prev_params, contrast),
-		0, 0, true,
+		0, 0, 0, true,
 	}, /* OMAP3ISP_PREV_BRIGHTNESS */ {
 		preview_config_brightness,
 		NULL,
-		offsetof(struct prev_params, brightness),
-		0, 0, true,
+		0, 0, 0, true,
 	},
 };
 
@@ -988,7 +952,6 @@ static void preview_setup_hw(struct isp_prev_device *prev, u32 update,
 		const struct preview_update *attr = &update_attrs[i];
 		struct prev_params *params;
 		unsigned int bit = 1 << i;
-		void *param_ptr;
 
 		if (!(update & bit))
 			continue;
@@ -996,15 +959,13 @@ static void preview_setup_hw(struct isp_prev_device *prev, u32 update,
 		params = &prev->params.params[!(active & bit)];
 
 		if (params->features & bit) {
-			if (attr->config) {
-				param_ptr = (void *)params + attr->param_offset;
-				attr->config(prev, param_ptr);
-			}
+			if (attr->config)
+				attr->config(prev, params);
 			if (attr->enable)
-				attr->enable(prev, 1);
+				attr->enable(prev, true);
 		} else {
 			if (attr->enable)
-				attr->enable(prev, 0);
+				attr->enable(prev, false);
 		}
 	}
 }
@@ -1043,42 +1004,60 @@ preview_config_ycpos(struct isp_prev_device *prev,
 static void preview_config_averager(struct isp_prev_device *prev, u8 average)
 {
 	struct isp_device *isp = to_isp_device(prev);
-	struct prev_params *params;
-	int reg = 0;
 
-	params = (prev->params.active & OMAP3ISP_PREV_CFA)
-	       ? &prev->params.params[0] : &prev->params.params[1];
-
-	if (params->cfa.format == OMAP3ISP_CFAFMT_BAYER)
-		reg = ISPPRV_AVE_EVENDIST_2 << ISPPRV_AVE_EVENDIST_SHIFT |
-		      ISPPRV_AVE_ODDDIST_2 << ISPPRV_AVE_ODDDIST_SHIFT |
-		      average;
-	else if (params->cfa.format == OMAP3ISP_CFAFMT_RGBFOVEON)
-		reg = ISPPRV_AVE_EVENDIST_3 << ISPPRV_AVE_EVENDIST_SHIFT |
-		      ISPPRV_AVE_ODDDIST_3 << ISPPRV_AVE_ODDDIST_SHIFT |
-		      average;
-	isp_reg_writel(isp, reg, OMAP3_ISP_IOMEM_PREV, ISPPRV_AVE);
+	isp_reg_writel(isp, ISPPRV_AVE_EVENDIST_2 << ISPPRV_AVE_EVENDIST_SHIFT |
+		       ISPPRV_AVE_ODDDIST_2 << ISPPRV_AVE_ODDDIST_SHIFT |
+		       average, OMAP3_ISP_IOMEM_PREV, ISPPRV_AVE);
 }
+
 
 /*
  * preview_config_input_format - Configure the input format
  * @prev: The preview engine
  * @format: Format on the preview engine sink pad
  *
- * Enable CFA interpolation for Bayer formats and disable it for greyscale
- * formats.
+ * Enable and configure CFA interpolation for Bayer formats and disable it for
+ * greyscale formats.
+ *
+ * The CFA table is organised in four blocks, one per Bayer component. The
+ * hardware expects blocks to follow the Bayer order of the input data, while
+ * the driver stores the table in GRBG order in memory. The blocks need to be
+ * reordered to support non-GRBG Bayer patterns.
  */
 static void preview_config_input_format(struct isp_prev_device *prev,
 					const struct v4l2_mbus_framefmt *format)
 {
 	struct isp_device *isp = to_isp_device(prev);
+	struct prev_params *params;
 
-	if (format->code != V4L2_MBUS_FMT_Y10_1X10)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_CFAEN);
-	else
+	switch (format->code) {
+	case V4L2_MBUS_FMT_SGRBG10_1X10:
+		prev->params.cfa_order = 0;
+		break;
+	case V4L2_MBUS_FMT_SRGGB10_1X10:
+		prev->params.cfa_order = 1;
+		break;
+	case V4L2_MBUS_FMT_SBGGR10_1X10:
+		prev->params.cfa_order = 2;
+		break;
+	case V4L2_MBUS_FMT_SGBRG10_1X10:
+		prev->params.cfa_order = 3;
+		break;
+	default:
+		/* Disable CFA for non-Bayer formats. */
 		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
 			    ISPPRV_PCR_CFAEN);
+		return;
+	}
+
+	isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR, ISPPRV_PCR_CFAEN);
+	isp_reg_clr_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			ISPPRV_PCR_CFAFMT_MASK, ISPPRV_PCR_CFAFMT_BAYER);
+
+	params = (prev->params.active & OMAP3ISP_PREV_CFA)
+	       ? &prev->params.params[0] : &prev->params.params[1];
+
+	preview_config_cfa(prev, params);
 }
 
 /*
@@ -1421,22 +1400,6 @@ static void preview_configure(struct isp_prev_device *prev)
 	active = prev->params.active;
 	spin_unlock_irqrestore(&prev->params.lock, flags);
 
-	preview_setup_hw(prev, update, active);
-
-	if (prev->output & PREVIEW_OUTPUT_MEMORY)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_SDRPORT);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_SDRPORT);
-
-	if (prev->output & PREVIEW_OUTPUT_RESIZER)
-		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_RSZPORT);
-	else
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
-			    ISPPRV_PCR_RSZPORT);
-
 	/* PREV_PAD_SINK */
 	format = &prev->formats[PREV_PAD_SINK];
 
@@ -1451,8 +1414,24 @@ static void preview_configure(struct isp_prev_device *prev)
 		preview_config_inlineoffset(prev,
 				ALIGN(format->width, 0x20) * 2);
 
+	preview_setup_hw(prev, update, active);
+
 	/* PREV_PAD_SOURCE */
 	format = &prev->formats[PREV_PAD_SOURCE];
+
+	if (prev->output & PREVIEW_OUTPUT_MEMORY)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_SDRPORT);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_SDRPORT);
+
+	if (prev->output & PREVIEW_OUTPUT_RESIZER)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_RSZPORT);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_PREV, ISPPRV_PCR,
+			    ISPPRV_PCR_RSZPORT);
 
 	if (prev->output & PREVIEW_OUTPUT_MEMORY)
 		preview_config_outlineoffset(prev,

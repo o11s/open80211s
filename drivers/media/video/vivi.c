@@ -80,7 +80,8 @@ static const u8 *font8x16;
 struct vivi_fmt {
 	char  *name;
 	u32   fourcc;          /* v4l2 format id */
-	int   depth;
+	u8    depth;
+	bool  is_yuv;
 };
 
 static struct vivi_fmt formats[] = {
@@ -88,21 +89,25 @@ static struct vivi_fmt formats[] = {
 		.name     = "4:2:2, packed, YUYV",
 		.fourcc   = V4L2_PIX_FMT_YUYV,
 		.depth    = 16,
+		.is_yuv   = true,
 	},
 	{
 		.name     = "4:2:2, packed, UYVY",
 		.fourcc   = V4L2_PIX_FMT_UYVY,
 		.depth    = 16,
+		.is_yuv   = true,
 	},
 	{
 		.name     = "4:2:2, packed, YVYU",
 		.fourcc   = V4L2_PIX_FMT_YVYU,
 		.depth    = 16,
+		.is_yuv   = true,
 	},
 	{
 		.name     = "4:2:2, packed, VYUY",
 		.fourcc   = V4L2_PIX_FMT_VYUY,
 		.depth    = 16,
+		.is_yuv   = true,
 	},
 	{
 		.name     = "RGB565 (LE)",
@@ -309,15 +314,9 @@ static void precalculate_bars(struct vivi_dev *dev)
 		r = bars[dev->input].bar[k][0];
 		g = bars[dev->input].bar[k][1];
 		b = bars[dev->input].bar[k][2];
-		is_yuv = 0;
+		is_yuv = dev->fmt->is_yuv;
 
 		switch (dev->fmt->fourcc) {
-		case V4L2_PIX_FMT_YUYV:
-		case V4L2_PIX_FMT_UYVY:
-		case V4L2_PIX_FMT_YVYU:
-		case V4L2_PIX_FMT_VYUY:
-			is_yuv = 1;
-			break;
 		case V4L2_PIX_FMT_RGB565:
 		case V4L2_PIX_FMT_RGB565X:
 			r >>= 3;
@@ -330,6 +329,10 @@ static void precalculate_bars(struct vivi_dev *dev)
 			g >>= 3;
 			b >>= 3;
 			break;
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_UYVY:
+		case V4L2_PIX_FMT_YVYU:
+		case V4L2_PIX_FMT_VYUY:
 		case V4L2_PIX_FMT_RGB24:
 		case V4L2_PIX_FMT_BGR24:
 		case V4L2_PIX_FMT_RGB32:
@@ -930,8 +933,7 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 		(f->fmt.pix.width * dev->fmt->depth) >> 3;
 	f->fmt.pix.sizeimage =
 		f->fmt.pix.height * f->fmt.pix.bytesperline;
-	if (dev->fmt->fourcc == V4L2_PIX_FMT_YUYV ||
-	    dev->fmt->fourcc == V4L2_PIX_FMT_UYVY)
+	if (dev->fmt->is_yuv)
 		f->fmt.pix.colorspace = V4L2_COLORSPACE_SMPTE170M;
 	else
 		f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
@@ -959,11 +961,11 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		(f->fmt.pix.width * fmt->depth) >> 3;
 	f->fmt.pix.sizeimage =
 		f->fmt.pix.height * f->fmt.pix.bytesperline;
-	if (fmt->fourcc == V4L2_PIX_FMT_YUYV ||
-	    fmt->fourcc == V4L2_PIX_FMT_UYVY)
+	if (fmt->is_yuv)
 		f->fmt.pix.colorspace = V4L2_COLORSPACE_SMPTE170M;
 	else
 		f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
+	f->fmt.pix.priv = 0;
 	return 0;
 }
 
@@ -987,6 +989,27 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 	dev->width = f->fmt.pix.width;
 	dev->height = f->fmt.pix.height;
 
+	return 0;
+}
+
+static int vidioc_enum_framesizes(struct file *file, void *fh,
+					 struct v4l2_frmsizeenum *fsize)
+{
+	static const struct v4l2_frmsize_stepwise sizes = {
+		48, MAX_WIDTH, 4,
+		32, MAX_HEIGHT, 1
+	};
+	int i;
+
+	if (fsize->index)
+		return -EINVAL;
+	for (i = 0; i < ARRAY_SIZE(formats); i++)
+		if (formats[i].fourcc == fsize->pixel_format)
+			break;
+	if (i == ARRAY_SIZE(formats))
+		return -EINVAL;
+	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+	fsize->stepwise = sizes;
 	return 0;
 }
 
@@ -1174,6 +1197,7 @@ static const struct v4l2_ioctl_ops vivi_ioctl_ops = {
 	.vidioc_g_fmt_vid_cap     = vidioc_g_fmt_vid_cap,
 	.vidioc_try_fmt_vid_cap   = vidioc_try_fmt_vid_cap,
 	.vidioc_s_fmt_vid_cap     = vidioc_s_fmt_vid_cap,
+	.vidioc_enum_framesizes   = vidioc_enum_framesizes,
 	.vidioc_reqbufs       = vb2_ioctl_reqbufs,
 	.vidioc_create_bufs   = vb2_ioctl_create_bufs,
 	.vidioc_prepare_buf   = vb2_ioctl_prepare_buf,

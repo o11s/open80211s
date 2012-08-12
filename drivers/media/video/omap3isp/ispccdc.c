@@ -61,6 +61,8 @@ static const unsigned int ccdc_fmts[] = {
 	V4L2_MBUS_FMT_SRGGB12_1X12,
 	V4L2_MBUS_FMT_SBGGR12_1X12,
 	V4L2_MBUS_FMT_SGBRG12_1X12,
+	V4L2_MBUS_FMT_YUYV8_2X8,
+	V4L2_MBUS_FMT_UYVY8_2X8,
 };
 
 /*
@@ -627,9 +629,12 @@ static void ccdc_configure_lpf(struct isp_ccdc_device *ccdc)
 static void ccdc_configure_alaw(struct isp_ccdc_device *ccdc)
 {
 	struct isp_device *isp = to_isp_device(ccdc);
+	const struct isp_format_info *info;
 	u32 alaw = 0;
 
-	switch (ccdc->syncif.datsz) {
+	info = omap3isp_video_format_info(ccdc->formats[CCDC_PAD_SINK].code);
+
+	switch (info->width) {
 	case 8:
 		return;
 
@@ -813,6 +818,7 @@ static void ccdc_config_vp(struct isp_ccdc_device *ccdc)
 {
 	struct isp_pipeline *pipe = to_isp_pipeline(&ccdc->subdev.entity);
 	struct isp_device *isp = to_isp_device(ccdc);
+	const struct isp_format_info *info;
 	unsigned long l3_ick = pipe->l3_ick;
 	unsigned int max_div = isp->revision == ISP_REVISION_15_0 ? 64 : 8;
 	unsigned int div = 0;
@@ -821,7 +827,9 @@ static void ccdc_config_vp(struct isp_ccdc_device *ccdc)
 	fmtcfg_vp = isp_reg_readl(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_FMTCFG)
 		  & ~(ISPCCDC_FMTCFG_VPIN_MASK | ISPCCDC_FMTCFG_VPIF_FRQ_MASK);
 
-	switch (ccdc->syncif.datsz) {
+	info = omap3isp_video_format_info(ccdc->formats[CCDC_PAD_SINK].code);
+
+	switch (info->width) {
 	case 8:
 	case 10:
 		fmtcfg_vp |= ISPCCDC_FMTCFG_VPIN_9_0;
@@ -835,7 +843,7 @@ static void ccdc_config_vp(struct isp_ccdc_device *ccdc)
 	case 13:
 		fmtcfg_vp |= ISPCCDC_FMTCFG_VPIN_12_3;
 		break;
-	};
+	}
 
 	if (pipe->input)
 		div = DIV_ROUND_UP(l3_ick, pipe->max_rate);
@@ -959,26 +967,28 @@ void omap3isp_ccdc_max_rate(struct isp_ccdc_device *ccdc,
 /*
  * ccdc_config_sync_if - Set CCDC sync interface configuration
  * @ccdc: Pointer to ISP CCDC device.
- * @syncif: Structure containing the sync parameters like field state, CCDC in
- *          master/slave mode, raw/yuv data, polarity of data, field, hs, vs
- *          signals.
+ * @pdata: Parallel interface platform data (may be NULL)
+ * @data_size: Data size
  */
 static void ccdc_config_sync_if(struct isp_ccdc_device *ccdc,
-				struct ispccdc_syncif *syncif)
+				struct isp_parallel_platform_data *pdata,
+				unsigned int data_size)
 {
 	struct isp_device *isp = to_isp_device(ccdc);
-	u32 syn_mode = isp_reg_readl(isp, OMAP3_ISP_IOMEM_CCDC,
-				     ISPCCDC_SYN_MODE);
+	const struct v4l2_mbus_framefmt *format;
+	u32 syn_mode = ISPCCDC_SYN_MODE_VDHDEN;
 
-	syn_mode |= ISPCCDC_SYN_MODE_VDHDEN;
+	format = &ccdc->formats[CCDC_PAD_SINK];
 
-	if (syncif->fldstat)
-		syn_mode |= ISPCCDC_SYN_MODE_FLDSTAT;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_FLDSTAT;
+	if (format->code == V4L2_MBUS_FMT_YUYV8_2X8 ||
+	    format->code == V4L2_MBUS_FMT_UYVY8_2X8) {
+		/* The bridge is enabled for YUV8 formats. Configure the input
+		 * mode accordingly.
+		 */
+		syn_mode |= ISPCCDC_SYN_MODE_INPMOD_YCBCR16;
+	}
 
-	syn_mode &= ~ISPCCDC_SYN_MODE_DATSIZ_MASK;
-	switch (syncif->datsz) {
+	switch (data_size) {
 	case 8:
 		syn_mode |= ISPCCDC_SYN_MODE_DATSIZ_8;
 		break;
@@ -991,55 +1001,31 @@ static void ccdc_config_sync_if(struct isp_ccdc_device *ccdc,
 	case 12:
 		syn_mode |= ISPCCDC_SYN_MODE_DATSIZ_12;
 		break;
-	};
+	}
 
-	if (syncif->fldmode)
-		syn_mode |= ISPCCDC_SYN_MODE_FLDMODE;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_FLDMODE;
-
-	if (syncif->datapol)
+	if (pdata && pdata->data_pol)
 		syn_mode |= ISPCCDC_SYN_MODE_DATAPOL;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_DATAPOL;
 
-	if (syncif->fldpol)
-		syn_mode |= ISPCCDC_SYN_MODE_FLDPOL;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_FLDPOL;
-
-	if (syncif->hdpol)
+	if (pdata && pdata->hs_pol)
 		syn_mode |= ISPCCDC_SYN_MODE_HDPOL;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_HDPOL;
 
-	if (syncif->vdpol)
+	if (pdata && pdata->vs_pol)
 		syn_mode |= ISPCCDC_SYN_MODE_VDPOL;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_VDPOL;
-
-	if (syncif->ccdc_mastermode) {
-		syn_mode |= ISPCCDC_SYN_MODE_FLDOUT | ISPCCDC_SYN_MODE_VDHDOUT;
-		isp_reg_writel(isp,
-			       syncif->hs_width << ISPCCDC_HD_VD_WID_HDW_SHIFT
-			     | syncif->vs_width << ISPCCDC_HD_VD_WID_VDW_SHIFT,
-			       OMAP3_ISP_IOMEM_CCDC,
-			       ISPCCDC_HD_VD_WID);
-
-		isp_reg_writel(isp,
-			       syncif->ppln << ISPCCDC_PIX_LINES_PPLN_SHIFT
-			     | syncif->hlprf << ISPCCDC_PIX_LINES_HLPRF_SHIFT,
-			       OMAP3_ISP_IOMEM_CCDC,
-			       ISPCCDC_PIX_LINES);
-	} else
-		syn_mode &= ~(ISPCCDC_SYN_MODE_FLDOUT |
-			      ISPCCDC_SYN_MODE_VDHDOUT);
 
 	isp_reg_writel(isp, syn_mode, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_SYN_MODE);
 
-	if (!syncif->bt_r656_en)
-		isp_reg_clr(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_REC656IF,
-			    ISPCCDC_REC656IF_R656ON);
+	/* The CCDC_CFG.Y8POS bit is used in YCbCr8 input mode only. The
+	 * hardware seems to ignore it in all other input modes.
+	 */
+	if (format->code == V4L2_MBUS_FMT_UYVY8_2X8)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_CFG,
+			    ISPCCDC_CFG_Y8POS);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_CFG,
+			    ISPCCDC_CFG_Y8POS);
+
+	isp_reg_clr(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_REC656IF,
+		    ISPCCDC_REC656IF_R656ON);
 }
 
 /* CCDC formats descriptions */
@@ -1128,6 +1114,7 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 	unsigned int depth_in = 0;
 	struct media_pad *pad;
 	unsigned long flags;
+	unsigned int bridge;
 	unsigned int shift;
 	u32 syn_mode;
 	u32 ccdc_pattern;
@@ -1138,28 +1125,31 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 		pdata = &((struct isp_v4l2_subdevs_group *)sensor->host_priv)
 			->bus.parallel;
 
-	/* Compute shift value for lane shifter to configure the bridge. */
+	/* Compute the lane shifter shift value and enable the bridge when the
+	 * input format is YUV.
+	 */
 	fmt_src.pad = pad->index;
 	fmt_src.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	if (!v4l2_subdev_call(sensor, pad, get_fmt, NULL, &fmt_src)) {
 		fmt_info = omap3isp_video_format_info(fmt_src.format.code);
-		depth_in = fmt_info->bpp;
+		depth_in = fmt_info->width;
 	}
 
 	fmt_info = omap3isp_video_format_info
 		(isp->isp_ccdc.formats[CCDC_PAD_SINK].code);
-	depth_out = fmt_info->bpp;
-
+	depth_out = fmt_info->width;
 	shift = depth_in - depth_out;
-	omap3isp_configure_bridge(isp, ccdc->input, pdata, shift);
 
-	ccdc->syncif.datsz = depth_out;
-	ccdc->syncif.hdpol = pdata ? pdata->hs_pol : 0;
-	ccdc->syncif.vdpol = pdata ? pdata->vs_pol : 0;
-	ccdc_config_sync_if(ccdc, &ccdc->syncif);
+	if (fmt_info->code == V4L2_MBUS_FMT_YUYV8_2X8)
+		bridge = ISPCTRL_PAR_BRIDGE_LENDIAN;
+	else if (fmt_info->code == V4L2_MBUS_FMT_UYVY8_2X8)
+		bridge = ISPCTRL_PAR_BRIDGE_BENDIAN;
+	else
+		bridge = ISPCTRL_PAR_BRIDGE_DISABLE;
 
-	/* CCDC_PAD_SINK */
-	format = &ccdc->formats[CCDC_PAD_SINK];
+	omap3isp_configure_bridge(isp, ccdc->input, pdata, shift, bridge);
+
+	ccdc_config_sync_if(ccdc, pdata, depth_out);
 
 	syn_mode = isp_reg_readl(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_SYN_MODE);
 
@@ -1178,13 +1168,8 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 	else
 		syn_mode &= ~ISPCCDC_SYN_MODE_SDR2RSZ;
 
-	/* Use PACK8 mode for 1byte per pixel formats. */
-	if (omap3isp_video_format_info(format->code)->bpp <= 8)
-		syn_mode |= ISPCCDC_SYN_MODE_PACK8;
-	else
-		syn_mode &= ~ISPCCDC_SYN_MODE_PACK8;
-
-	isp_reg_writel(isp, syn_mode, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_SYN_MODE);
+	/* CCDC_PAD_SINK */
+	format = &ccdc->formats[CCDC_PAD_SINK];
 
 	/* Mosaic filter */
 	switch (format->code) {
@@ -1215,6 +1200,7 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 		       OMAP3_ISP_IOMEM_CCDC, ISPCCDC_VDINT);
 
 	/* CCDC_PAD_SOURCE_OF */
+	format = &ccdc->formats[CCDC_PAD_SOURCE_OF];
 	crop = &ccdc->crop;
 
 	isp_reg_writel(isp, (crop->left << ISPCCDC_HORZ_INFO_SPH_SHIFT) |
@@ -1227,6 +1213,24 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 		       OMAP3_ISP_IOMEM_CCDC, ISPCCDC_VERT_LINES);
 
 	ccdc_config_outlineoffset(ccdc, ccdc->video_out.bpl_value, 0, 0);
+
+	/* The CCDC outputs data in UYVY order by default. Swap bytes to get
+	 * YUYV.
+	 */
+	if (format->code == V4L2_MBUS_FMT_YUYV8_1X16)
+		isp_reg_set(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_CFG,
+			    ISPCCDC_CFG_BSWD);
+	else
+		isp_reg_clr(isp, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_CFG,
+			    ISPCCDC_CFG_BSWD);
+
+	/* Use PACK8 mode for 1byte per pixel formats. */
+	if (omap3isp_video_format_info(format->code)->width <= 8)
+		syn_mode |= ISPCCDC_SYN_MODE_PACK8;
+	else
+		syn_mode &= ~ISPCCDC_SYN_MODE_PACK8;
+
+	isp_reg_writel(isp, syn_mode, OMAP3_ISP_IOMEM_CCDC, ISPCCDC_SYN_MODE);
 
 	/* CCDC_PAD_SOURCE_VP */
 	format = &ccdc->formats[CCDC_PAD_SOURCE_VP];
@@ -1242,6 +1246,7 @@ static void ccdc_configure(struct isp_ccdc_device *ccdc)
 		       (format->height << ISPCCDC_VP_OUT_VERT_NUM_SHIFT),
 		       OMAP3_ISP_IOMEM_CCDC, ISPCCDC_VP_OUT);
 
+	/* Lens shading correction. */
 	spin_lock_irqsave(&ccdc->lsc.req_lock, flags);
 	if (ccdc->lsc.request == NULL)
 		goto unlock;
@@ -1819,8 +1824,8 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		unsigned int pad, struct v4l2_mbus_framefmt *fmt,
 		enum v4l2_subdev_format_whence which)
 {
-	struct v4l2_mbus_framefmt *format;
 	const struct isp_format_info *info;
+	enum v4l2_mbus_pixelcode pixelcode;
 	unsigned int width = fmt->width;
 	unsigned int height = fmt->height;
 	struct v4l2_rect *crop;
@@ -1828,9 +1833,6 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 
 	switch (pad) {
 	case CCDC_PAD_SINK:
-		/* TODO: If the CCDC output formatter pad is connected directly
-		 * to the resizer, only YUV formats can be used.
-		 */
 		for (i = 0; i < ARRAY_SIZE(ccdc_fmts); i++) {
 			if (fmt->code == ccdc_fmts[i])
 				break;
@@ -1846,8 +1848,26 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		break;
 
 	case CCDC_PAD_SOURCE_OF:
-		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SINK, which);
-		memcpy(fmt, format, sizeof(*fmt));
+		pixelcode = fmt->code;
+		*fmt = *__ccdc_get_format(ccdc, fh, CCDC_PAD_SINK, which);
+
+		/* YUV formats are converted from 2X8 to 1X16 by the bridge and
+		 * can be byte-swapped.
+		 */
+		if (fmt->code == V4L2_MBUS_FMT_YUYV8_2X8 ||
+		    fmt->code == V4L2_MBUS_FMT_UYVY8_2X8) {
+			/* Use the user requested format if YUV. */
+			if (pixelcode == V4L2_MBUS_FMT_YUYV8_2X8 ||
+			    pixelcode == V4L2_MBUS_FMT_UYVY8_2X8 ||
+			    pixelcode == V4L2_MBUS_FMT_YUYV8_1X16 ||
+			    pixelcode == V4L2_MBUS_FMT_UYVY8_1X16)
+				fmt->code = pixelcode;
+
+			if (fmt->code == V4L2_MBUS_FMT_YUYV8_2X8)
+				fmt->code = V4L2_MBUS_FMT_YUYV8_1X16;
+			else if (fmt->code == V4L2_MBUS_FMT_UYVY8_2X8)
+				fmt->code = V4L2_MBUS_FMT_UYVY8_1X16;
+		}
 
 		/* Hardcode the output size to the crop rectangle size. */
 		crop = __ccdc_get_crop(ccdc, fh, which);
@@ -1856,12 +1876,16 @@ ccdc_try_format(struct isp_ccdc_device *ccdc, struct v4l2_subdev_fh *fh,
 		break;
 
 	case CCDC_PAD_SOURCE_VP:
-		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SINK, which);
-		memcpy(fmt, format, sizeof(*fmt));
+		*fmt = *__ccdc_get_format(ccdc, fh, CCDC_PAD_SINK, which);
 
 		/* The video port interface truncates the data to 10 bits. */
 		info = omap3isp_video_format_info(fmt->code);
 		fmt->code = info->truncated;
+
+		/* YUV formats are not supported by the video port. */
+		if (fmt->code == V4L2_MBUS_FMT_YUYV8_2X8 ||
+		    fmt->code == V4L2_MBUS_FMT_UYVY8_2X8)
+			fmt->code = 0;
 
 		/* The number of lines that can be clocked out from the video
 		 * port output must be at least one line less than the number
@@ -1945,13 +1969,45 @@ static int ccdc_enum_mbus_code(struct v4l2_subdev *sd,
 		break;
 
 	case CCDC_PAD_SOURCE_OF:
+		format = __ccdc_get_format(ccdc, fh, code->pad,
+					   V4L2_SUBDEV_FORMAT_TRY);
+
+		if (format->code == V4L2_MBUS_FMT_YUYV8_2X8 ||
+		    format->code == V4L2_MBUS_FMT_UYVY8_2X8) {
+			/* In YUV mode the CCDC can swap bytes. */
+			if (code->index == 0)
+				code->code = V4L2_MBUS_FMT_YUYV8_1X16;
+			else if (code->index == 1)
+				code->code = V4L2_MBUS_FMT_UYVY8_1X16;
+			else
+				return -EINVAL;
+		} else {
+			/* In raw mode, no configurable format confversion is
+			 * available.
+			 */
+			if (code->index == 0)
+				code->code = format->code;
+			else
+				return -EINVAL;
+		}
+		break;
+
 	case CCDC_PAD_SOURCE_VP:
-		/* No format conversion inside CCDC */
+		/* The CCDC supports no configurable format conversion
+		 * compatible with the video port. Enumerate a single output
+		 * format code.
+		 */
 		if (code->index != 0)
 			return -EINVAL;
 
-		format = __ccdc_get_format(ccdc, fh, CCDC_PAD_SINK,
+		format = __ccdc_get_format(ccdc, fh, code->pad,
 					   V4L2_SUBDEV_FORMAT_TRY);
+
+		/* A pixel code equal to 0 means that the video port doesn't
+		 * support the input format. Don't enumerate any pixel code.
+		 */
+		if (format->code == 0)
+			return -EINVAL;
 
 		code->code = format->code;
 		break;
@@ -2182,7 +2238,7 @@ static bool ccdc_is_shiftable(enum v4l2_mbus_pixelcode in,
 	if (in_info->flavor != out_info->flavor)
 		return false;
 
-	return in_info->bpp - out_info->bpp + additional_shift <= 6;
+	return in_info->width - out_info->width + additional_shift <= 6;
 }
 
 static int ccdc_link_validate(struct v4l2_subdev *sd,
@@ -2486,14 +2542,6 @@ int omap3isp_ccdc_init(struct isp_device *isp)
 	ccdc->lsc.state = LSC_STATE_STOPPED;
 	INIT_LIST_HEAD(&ccdc->lsc.free_queue);
 	spin_lock_init(&ccdc->lsc.req_lock);
-
-	ccdc->syncif.ccdc_mastermode = 0;
-	ccdc->syncif.datapol = 0;
-	ccdc->syncif.datsz = 0;
-	ccdc->syncif.fldmode = 0;
-	ccdc->syncif.fldout = 0;
-	ccdc->syncif.fldpol = 0;
-	ccdc->syncif.fldstat = 0;
 
 	ccdc->clamp.oblen = 0;
 	ccdc->clamp.dcsubval = 0;

@@ -26,8 +26,6 @@
 #include "dvb_frontend.h"
 #include "au8522_priv.h"
 
-MODULE_LICENSE("GPL");
-
 static int debug;
 
 #define dprintk(arg...)\
@@ -100,6 +98,19 @@ int au8522_i2c_gate_ctrl(struct dvb_frontend *fe, int enable)
 		return au8522_writereg(state, 0x106, 0);
 }
 EXPORT_SYMBOL(au8522_i2c_gate_ctrl);
+
+int au8522_analog_i2c_gate_ctrl(struct dvb_frontend *fe, int enable)
+{
+	struct au8522_state *state = fe->demodulator_priv;
+
+	dprintk("%s(%d)\n", __func__, enable);
+
+	if (enable)
+		return au8522_writereg(state, 0x106, 1);
+	else
+		return au8522_writereg(state, 0x106, 0);
+}
+EXPORT_SYMBOL(au8522_analog_i2c_gate_ctrl);
 
 /* Reset the demod hardware and reset all of the configuration registers
    to a default state. */
@@ -257,3 +268,10 @@ int au8522_sleep(struct dvb_frontend *fe)
 	return 0;
 }
 EXPORT_SYMBOL(au8522_sleep);
+
+module_param(debug, int, 0644);
+MODULE_PARM_DESC(debug, "Enable verbose debug messages");
+
+MODULE_DESCRIPTION("Auvitek AU8522 QAM-B/ATSC Demodulator driver");
+MODULE_AUTHOR("Steven Toth");
+MODULE_LICENSE("GPL");
