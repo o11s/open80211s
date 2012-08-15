@@ -113,6 +113,8 @@ config VIDEO_V4L2_SUBDEV_API
 
 	  This API is mostly used by camera interfaces in embedded platforms.
 
+source "drivers/media/v4l2-core/Kconfig"
+
 #
 # DVB Core
 #	Only enables if one of DTV is selected
@@ -138,28 +140,40 @@ config DVB_NET
 	  You may want to disable the network support on embedded devices. If
 	  unsure say Y.
 
+source "drivers/media/dvb-core/Kconfig"
+
 comment "Media drivers"
-source "drivers/media/common/Kconfig"
 source "drivers/media/rc/Kconfig"
 
 #
 # Tuner drivers for DVB and V4L
 #
 
-source "drivers/media/common/tuners/Kconfig"
+source "drivers/media/tuners/Kconfig"
+
+source "drivers/media/i2c/Kconfig"
 
 #
-# Video/Radio/Hybrid adapters
+# V4L platform/mem2mem drivers
 #
-
-source "drivers/media/video/Kconfig"
+source "drivers/media/platform/Kconfig"
 
 source "drivers/media/radio/Kconfig"
 
-#
-# DVB adapters
-#
+source "drivers/media/pci/Kconfig"
+source "drivers/media/usb/Kconfig"
+source "drivers/media/mmc/Kconfig"
+source "drivers/media/parport/Kconfig"
 
-source "drivers/media/dvb/Kconfig"
+comment "Supported FireWire (IEEE 1394) Adapters"
+	depends on DVB_CORE && FIREWIRE
+source "drivers/media/firewire/Kconfig"
+
+comment "Supported DVB Frontends"
+	depends on DVB_CORE
+source "drivers/media/dvb-frontends/Kconfig"
+
+# Common drivers
+source "drivers/media/common/Kconfig"
 
 endif # MEDIA_SUPPORT
