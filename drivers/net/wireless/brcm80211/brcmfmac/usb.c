@@ -66,7 +66,9 @@
 #define BRCMF_USB_CBCTL_READ	1
 #define BRCMF_USB_MAX_PKT_SIZE	1600
 
+#define BRCMF_USB_43143_FW_NAME	"brcm/brcmfmac43143.bin"
 #define BRCMF_USB_43236_FW_NAME	"brcm/brcmfmac43236b.bin"
+#define BRCMF_USB_43242_FW_NAME	"brcm/brcmfmac43242a.bin"
 
 enum usbdev_suspend_state {
 	USBOS_SUSPEND_STATE_DEVICE_ACTIVE = 0, /* Device is busy, won't allow
@@ -366,13 +368,13 @@ static int brcmf_usb_tx_ctlpkt(struct device *dev, u8 *buf, u32 len)
 	if (test_and_set_bit(0, &devinfo->ctl_op))
 		return -EIO;
 
+	devinfo->ctl_completed = false;
 	err = brcmf_usb_send_ctl(devinfo, buf, len);
 	if (err) {
 		brcmf_dbg(ERROR, "fail %d bytes: %d\n", err, len);
 		return err;
 	}
 
-	devinfo->ctl_completed = false;
 	timeout = brcmf_usb_ioctl_resp_wait(devinfo, &devinfo->ctl_completed,
 					    &pending);
 	clear_bit(0, &devinfo->ctl_op);
@@ -1112,10 +1114,14 @@ static int brcmf_usb_dlrun(struct brcmf_usbdev_info *devinfo)
 static bool brcmf_usb_chip_support(int chipid, int chiprev)
 {
 	switch(chipid) {
+	case 43143:
+		return true;
 	case 43235:
 	case 43236:
 	case 43238:
 		return (chiprev == 3);
+	case 43242:
+		return true;
 	default:
 		break;
 	}
@@ -1228,7 +1234,22 @@ static int brcmf_usb_get_fw(struct brcmf_usbdev_info *devinfo)
 	if (devinfo->image)
 		return 0;
 
-	fwname = BRCMF_USB_43236_FW_NAME;
+	switch (devinfo->bus_pub.devid) {
+	case 43143:
+		fwname = BRCMF_USB_43143_FW_NAME;
+		break;
+	case 43235:
+	case 43236:
+	case 43238:
+		fwname = BRCMF_USB_43236_FW_NAME;
+		break;
+	case 43242:
+		fwname = BRCMF_USB_43242_FW_NAME;
+		break;
+	default:
+		return -EINVAL;
+		break;
+	}
 
 	err = request_firmware(&fw, fwname, devinfo->dev);
 	if (!fw) {
@@ -1577,17 +1598,23 @@ static int brcmf_usb_resume(struct usb_interface *intf)
 }
 
 #define BRCMF_USB_VENDOR_ID_BROADCOM	0x0a5c
+#define BRCMF_USB_DEVICE_ID_43143	0xbd1e
 #define BRCMF_USB_DEVICE_ID_43236	0xbd17
+#define BRCMF_USB_DEVICE_ID_43242	0xbd1f
 #define BRCMF_USB_DEVICE_ID_BCMFW	0x0bdc
 
 static struct usb_device_id brcmf_usb_devid_table[] = {
+	{ USB_DEVICE(BRCMF_USB_VENDOR_ID_BROADCOM, BRCMF_USB_DEVICE_ID_43143) },
 	{ USB_DEVICE(BRCMF_USB_VENDOR_ID_BROADCOM, BRCMF_USB_DEVICE_ID_43236) },
+	{ USB_DEVICE(BRCMF_USB_VENDOR_ID_BROADCOM, BRCMF_USB_DEVICE_ID_43242) },
 	/* special entry for device with firmware loaded and running */
 	{ USB_DEVICE(BRCMF_USB_VENDOR_ID_BROADCOM, BRCMF_USB_DEVICE_ID_BCMFW) },
 	{ }
 };
 MODULE_DEVICE_TABLE(usb, brcmf_usb_devid_table);
+MODULE_FIRMWARE(BRCMF_USB_43143_FW_NAME);
 MODULE_FIRMWARE(BRCMF_USB_43236_FW_NAME);
+MODULE_FIRMWARE(BRCMF_USB_43242_FW_NAME);
 
 /* TODO: suspend and resume entries */
 static struct usb_driver brcmf_usbdrvr = {

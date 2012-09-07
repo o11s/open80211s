@@ -123,7 +123,8 @@ static int mwifiex_ret_802_11_rssi_info(struct mwifiex_private *priv,
 {
 	struct host_cmd_ds_802_11_rssi_info_rsp *rssi_info_rsp =
 						&resp->params.rssi_info_rsp;
-	struct mwifiex_ds_misc_subsc_evt subsc_evt;
+	struct mwifiex_ds_misc_subsc_evt *subsc_evt =
+						&priv->async_subsc_evt_storage;
 
 	priv->data_rssi_last = le16_to_cpu(rssi_info_rsp->data_rssi_last);
 	priv->data_nf_last = le16_to_cpu(rssi_info_rsp->data_nf_last);
@@ -140,26 +141,27 @@ static int mwifiex_ret_802_11_rssi_info(struct mwifiex_private *priv,
 	if (priv->subsc_evt_rssi_state == EVENT_HANDLED)
 		return 0;
 
+	memset(subsc_evt, 0x00, sizeof(struct mwifiex_ds_misc_subsc_evt));
+
 	/* Resubscribe low and high rssi events with new thresholds */
-	memset(&subsc_evt, 0x00, sizeof(struct mwifiex_ds_misc_subsc_evt));
-	subsc_evt.events = BITMASK_BCN_RSSI_LOW | BITMASK_BCN_RSSI_HIGH;
-	subsc_evt.action = HostCmd_ACT_BITWISE_SET;
+	subsc_evt->events = BITMASK_BCN_RSSI_LOW | BITMASK_BCN_RSSI_HIGH;
+	subsc_evt->action = HostCmd_ACT_BITWISE_SET;
 	if (priv->subsc_evt_rssi_state == RSSI_LOW_RECVD) {
-		subsc_evt.bcn_l_rssi_cfg.abs_value = abs(priv->bcn_rssi_avg -
+		subsc_evt->bcn_l_rssi_cfg.abs_value = abs(priv->bcn_rssi_avg -
 				priv->cqm_rssi_hyst);
-		subsc_evt.bcn_h_rssi_cfg.abs_value = abs(priv->cqm_rssi_thold);
+		subsc_evt->bcn_h_rssi_cfg.abs_value = abs(priv->cqm_rssi_thold);
 	} else if (priv->subsc_evt_rssi_state == RSSI_HIGH_RECVD) {
-		subsc_evt.bcn_l_rssi_cfg.abs_value = abs(priv->cqm_rssi_thold);
-		subsc_evt.bcn_h_rssi_cfg.abs_value = abs(priv->bcn_rssi_avg +
+		subsc_evt->bcn_l_rssi_cfg.abs_value = abs(priv->cqm_rssi_thold);
+		subsc_evt->bcn_h_rssi_cfg.abs_value = abs(priv->bcn_rssi_avg +
 				priv->cqm_rssi_hyst);
 	}
-	subsc_evt.bcn_l_rssi_cfg.evt_freq = 1;
-	subsc_evt.bcn_h_rssi_cfg.evt_freq = 1;
+	subsc_evt->bcn_l_rssi_cfg.evt_freq = 1;
+	subsc_evt->bcn_h_rssi_cfg.evt_freq = 1;
 
 	priv->subsc_evt_rssi_state = EVENT_HANDLED;
 
 	mwifiex_send_cmd_async(priv, HostCmd_CMD_802_11_SUBSCRIBE_EVENT,
-			       0, 0, &subsc_evt);
+			       0, 0, subsc_evt);
 
 	return 0;
 }
@@ -736,7 +738,6 @@ static int mwifiex_ret_ibss_coalescing_status(struct mwifiex_private *priv,
 {
 	struct host_cmd_ds_802_11_ibss_status *ibss_coal_resp =
 					&(resp->params.ibss_coalescing);
-	u8 zero_mac[ETH_ALEN] = { 0, 0, 0, 0, 0, 0 };
 
 	if (le16_to_cpu(ibss_coal_resp->action) == HostCmd_ACT_GEN_SET)
 		return 0;
@@ -745,7 +746,7 @@ static int mwifiex_ret_ibss_coalescing_status(struct mwifiex_private *priv,
 		"info: new BSSID %pM\n", ibss_coal_resp->bssid);
 
 	/* If rsp has NULL BSSID, Just return..... No Action */
-	if (!memcmp(ibss_coal_resp->bssid, zero_mac, ETH_ALEN)) {
+	if (is_zero_ether_addr(ibss_coal_resp->bssid)) {
 		dev_warn(priv->adapter->dev, "new BSSID is NULL\n");
 		return 0;
 	}
