@@ -776,8 +776,7 @@ static int mwifiex_ret_ibss_coalescing_status(struct mwifiex_private *priv,
  * This function handles the command response for subscribe event command.
  */
 static int mwifiex_ret_subsc_evt(struct mwifiex_private *priv,
-				 struct host_cmd_ds_command *resp,
-				 struct mwifiex_ds_misc_subsc_evt *sub_event)
+				 struct host_cmd_ds_command *resp)
 {
 	struct host_cmd_ds_802_11_subsc_evt *cmd_sub_event =
 		&resp->params.subsc_evt;
@@ -786,10 +785,6 @@ static int mwifiex_ret_subsc_evt(struct mwifiex_private *priv,
 	 * current set of subscribed events*/
 	dev_dbg(priv->adapter->dev, "Bitmap of currently subscribed events: %16x\n",
 		le16_to_cpu(cmd_sub_event->events));
-
-	/*Return the subscribed event info for a Get request*/
-	if (sub_event)
-		sub_event->events = le16_to_cpu(cmd_sub_event->events);
 
 	return 0;
 }
@@ -914,7 +909,6 @@ int mwifiex_process_sta_cmdresp(struct mwifiex_private *priv, u16 cmdresp_no,
 				le16_to_cpu(resp->params.tx_buf.mp_end_port));
 		break;
 	case HostCmd_CMD_AMSDU_AGGR_CTRL:
-		ret = mwifiex_ret_amsdu_aggr_ctrl(resp, data_buf);
 		break;
 	case HostCmd_CMD_WMM_GET_STATUS:
 		ret = mwifiex_ret_wmm_get_status(priv, resp);
@@ -933,12 +927,11 @@ int mwifiex_process_sta_cmdresp(struct mwifiex_private *priv, u16 cmdresp_no,
 	case HostCmd_CMD_SET_BSS_MODE:
 		break;
 	case HostCmd_CMD_11N_CFG:
-		ret = mwifiex_ret_11n_cfg(resp, data_buf);
 		break;
 	case HostCmd_CMD_PCIE_DESC_DETAILS:
 		break;
 	case HostCmd_CMD_802_11_SUBSCRIBE_EVENT:
-		ret = mwifiex_ret_subsc_evt(priv, resp, data_buf);
+		ret = mwifiex_ret_subsc_evt(priv, resp);
 		break;
 	case HostCmd_CMD_UAP_SYS_CONFIG:
 		break;
