@@ -2358,8 +2358,6 @@ void gspca_disconnect(struct usb_interface *intf)
 
 	mutex_lock(&gspca_dev->usb_lock);
 
-	usb_set_intfdata(intf, NULL);
-	gspca_dev->dev = NULL;
 	gspca_dev->present = 0;
 	destroy_urbs(gspca_dev);
 
@@ -2375,6 +2373,7 @@ void gspca_disconnect(struct usb_interface *intf)
 	if (gspca_dev->sd_desc->stop0 && gspca_dev->streaming)
 		gspca_dev->sd_desc->stop0(gspca_dev);
 	gspca_dev->streaming = 0;
+	gspca_dev->dev = NULL;
 	wake_up_interruptible(&gspca_dev->wq);
 
 	v4l2_device_disconnect(&gspca_dev->v4l2_dev);
@@ -2392,19 +2391,22 @@ int gspca_suspend(struct usb_interface *intf, pm_message_t message)
 {
 	struct gspca_dev *gspca_dev = usb_get_intfdata(intf);
 
+	gspca_input_destroy_urb(gspca_dev);
+
 	if (!gspca_dev->streaming)
 		return 0;
+
 	mutex_lock(&gspca_dev->usb_lock);
 	gspca_dev->frozen = 1;		/* avoid urb error messages */
 	gspca_dev->usb_err = 0;
 	if (gspca_dev->sd_desc->stopN)
 		gspca_dev->sd_desc->stopN(gspca_dev);
 	destroy_urbs(gspca_dev);
-	gspca_input_destroy_urb(gspca_dev);
 	gspca_set_alt0(gspca_dev);
 	if (gspca_dev->sd_desc->stop0)
 		gspca_dev->sd_desc->stop0(gspca_dev);
 	mutex_unlock(&gspca_dev->usb_lock);
+
 	return 0;
 }
 EXPORT_SYMBOL(gspca_suspend);
@@ -2418,7 +2420,6 @@ int gspca_resume(struct usb_interface *intf)
 	gspca_dev->frozen = 0;
 	gspca_dev->usb_err = 0;
 	gspca_dev->sd_desc->init(gspca_dev);
-	gspca_input_create_urb(gspca_dev);
 	/*
 	 * Most subdrivers send all ctrl values on sd_start and thus
 	 * only write to the device registers on s_ctrl when streaming ->
@@ -2428,7 +2429,10 @@ int gspca_resume(struct usb_interface *intf)
 	gspca_dev->streaming = 0;
 	if (streaming)
 		ret = gspca_init_transfer(gspca_dev);
+	else
+		gspca_input_create_urb(gspca_dev);
 	mutex_unlock(&gspca_dev->usb_lock);
+
 	return ret;
 }
 EXPORT_SYMBOL(gspca_resume);

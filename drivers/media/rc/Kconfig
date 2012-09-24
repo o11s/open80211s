@@ -277,6 +277,7 @@ config IR_IGUANA
 
 config IR_TTUSBIR
 	tristate "TechnoTrend USB IR Receiver"
+	depends on USB_ARCH_HAS_HCD
 	depends on RC_CORE
 	select USB
 	select NEW_LEDS
@@ -290,12 +291,12 @@ config IR_TTUSBIR
 
 config IR_RX51
 	tristate "Nokia N900 IR transmitter diode"
-	depends on MACH_NOKIA_RX51 && OMAP_DM_TIMER
+	depends on OMAP_DM_TIMER && LIRC
 	---help---
 	   Say Y or M here if you want to enable support for the IR
 	   transmitter diode built in the Nokia N900 (RX51) device.
 
-	   The driver uses omap DM timers for gereating the carrier
+	   The driver uses omap DM timers for generating the carrier
 	   wave and pulses.
 
 config RC_LOOPBACK

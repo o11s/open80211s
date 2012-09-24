@@ -26,6 +26,20 @@
 /*
  * Some documentation about various registers as determined by trial and error.
  *
+ * Register page 0:
+ *
+ * Address	Description
+ * 0x02		Red balance control
+ * 0x03		Green balance control
+ * 0x04 	Blue balance control
+ *		     Valus are inverted (0=max, 255=min).
+ *		     The Windows driver uses a quadratic approach to map
+ *		     the settable values (0-200) on register values:
+ *		     min=0x80, default=0x40, max=0x20
+ * 0x0f-0x20	Colors, saturation and exposure control
+ * 0xa2-0xab	Brightness, contrast and gamma control
+ * 0xb6		Sharpness control (bits 0-4)
+ *
  * Register page 1:
  *
  * Address	Description
@@ -66,6 +80,7 @@
  * -----+------------+---------------------------------------------------
  *  0   | 0x0f..0x20 | setcolors()
  *  0   | 0xa2..0xab | setbrightcont()
+ *  0   | 0xb6       | setsharpness()
  *  0   | 0xc5       | setredbalance()
  *  0   | 0xc6       | setwhitebalance()
  *  0   | 0xc7       | setbluebalance()
@@ -109,6 +124,7 @@ struct sd {
 		struct v4l2_ctrl *hflip;
 		struct v4l2_ctrl *vflip;
 	};
+	struct v4l2_ctrl *sharpness;
 	u8 flags;
 #define FL_HFLIP 0x01		/* mirrored by default */
 #define FL_VFLIP 0x02		/* vertical flipped by default */
@@ -531,6 +547,16 @@ static void sethvflip(struct gspca_dev *gspca_dev)
 	reg_w(gspca_dev, 0x11, 0x01);
 }
 
+static void setsharpness(struct gspca_dev *gspca_dev)
+{
+	struct sd *sd = (struct sd *) gspca_dev;
+
+	reg_w(gspca_dev, 0xff, 0x00);		/* page 0 */
+	reg_w(gspca_dev, 0xb6, sd->sharpness->val);
+
+	reg_w(gspca_dev, 0xdc, 0x01);
+}
+
 /* this function is called at probe and resume time for pac7302 */
 static int sd_init(struct gspca_dev *gspca_dev)
 {
@@ -584,6 +610,9 @@ static int sd_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_HFLIP:
 		sethvflip(gspca_dev);
 		break;
+	case V4L2_CID_SHARPNESS:
+		setsharpness(gspca_dev);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -601,7 +630,7 @@ static int sd_init_controls(struct gspca_dev *gspca_dev)
 	struct v4l2_ctrl_handler *hdl = &gspca_dev->ctrl_handler;
 
 	gspca_dev->vdev.ctrl_handler = hdl;
-	v4l2_ctrl_handler_init(hdl, 11);
+	v4l2_ctrl_handler_init(hdl, 12);
 
 	sd->brightness = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
 					V4L2_CID_BRIGHTNESS, 0, 32, 1, 16);
@@ -612,11 +641,11 @@ static int sd_init_controls(struct gspca_dev *gspca_dev)
 					V4L2_CID_SATURATION, 0, 255, 1, 127);
 	sd->white_balance = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
 					V4L2_CID_WHITE_BALANCE_TEMPERATURE,
-					0, 255, 1, 4);
+					0, 255, 1, 55);
 	sd->red_balance = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
 					V4L2_CID_RED_BALANCE, 0, 3, 1, 1);
 	sd->blue_balance = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
-					V4L2_CID_RED_BALANCE, 0, 3, 1, 1);
+					V4L2_CID_BLUE_BALANCE, 0, 3, 1, 1);
 
 	gspca_dev->autogain = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
 					V4L2_CID_AUTOGAIN, 0, 1, 1, 1);
@@ -631,6 +660,9 @@ static int sd_init_controls(struct gspca_dev *gspca_dev)
 		V4L2_CID_HFLIP, 0, 1, 1, 0);
 	sd->vflip = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
 		V4L2_CID_VFLIP, 0, 1, 1, 0);
+
+	sd->sharpness = v4l2_ctrl_new_std(hdl, &sd_ctrl_ops,
+					V4L2_CID_SHARPNESS, 0, 15, 1, 8);
 
 	if (hdl->error) {
 		pr_err("Could not initialize controls\n");
@@ -650,14 +682,6 @@ static int sd_start(struct gspca_dev *gspca_dev)
 
 	reg_w_var(gspca_dev, start_7302,
 		page3_7302, sizeof(page3_7302));
-	setbrightcont(gspca_dev);
-	setcolors(gspca_dev);
-	setwhitebalance(gspca_dev);
-	setredbalance(gspca_dev);
-	setbluebalance(gspca_dev);
-	setexposure(gspca_dev);
-	setgain(gspca_dev);
-	sethvflip(gspca_dev);
 
 	sd->sof_read = 0;
 	sd->autogain_ignore_frames = 0;
@@ -905,6 +929,7 @@ static const struct usb_device_id device_table[] = {
 	{USB_DEVICE(0x093a, 0x262a)},
 	{USB_DEVICE(0x093a, 0x262c)},
 	{USB_DEVICE(0x145f, 0x013c)},
+	{USB_DEVICE(0x1ae7, 0x2001)}, /* SpeedLink Snappy Mic SL-6825-SBK */
 	{}
 };
 MODULE_DEVICE_TABLE(usb, device_table);

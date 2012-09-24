@@ -38,7 +38,8 @@ static int gl861_i2c_msg(struct dvb_usb_device *d, u8 addr,
 		value = value + wbuf[1];
 		break;
 	default:
-		pr_err("%s: wlen=%d, aborting\n", KBUILD_MODNAME, wlen);
+		dev_err(&d->udev->dev, "%s: wlen=%d, aborting\n",
+				KBUILD_MODNAME, wlen);
 		return -EINVAL;
 	}
 
@@ -163,6 +164,7 @@ static struct usb_driver gl861_usb_driver = {
 	.disconnect = dvb_usbv2_disconnect,
 	.suspend = dvb_usbv2_suspend,
 	.resume = dvb_usbv2_resume,
+	.reset_resume = dvb_usbv2_reset_resume,
 	.no_dynamic_id = 1,
 	.soft_unbind = 1,
 };

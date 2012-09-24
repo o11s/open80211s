@@ -77,7 +77,14 @@ static int command(struct gspca_dev *gspca_dev,
 			12, FPIX_TIMEOUT);
 }
 
-/* workqueue */
+/*
+ * This function is called as a workqueue function and runs whenever the camera
+ * is streaming data. Because it is a workqueue function it is allowed to sleep
+ * so we can use synchronous USB calls. To avoid possible collisions with other
+ * threads attempting to use gspca_dev->usb_buf we take the usb_lock when
+ * performing USB operations using it. In practice we don't really need this
+ * as the camera doesn't provide any controls.
+ */
 static void dostream(struct work_struct *work)
 {
 	struct usb_fpix *dev = container_of(work, struct usb_fpix, work_struct);
@@ -87,14 +94,11 @@ static void dostream(struct work_struct *work)
 	int ret = 0;
 	int len;
 
-	/* synchronize with the main driver */
-	mutex_lock(&gspca_dev->usb_lock);
-	mutex_unlock(&gspca_dev->usb_lock);
 	PDEBUG(D_STREAM, "dostream started");
 
 	/* loop reading a frame */
 again:
-	while (gspca_dev->dev && gspca_dev->streaming) {
+	while (gspca_dev->present && gspca_dev->streaming) {
 #ifdef CONFIG_PM
 		if (gspca_dev->frozen)
 			break;
@@ -110,7 +114,7 @@ again:
 		if (gspca_dev->frozen)
 			break;
 #endif
-		if (!gspca_dev->dev || !gspca_dev->streaming)
+		if (!gspca_dev->present || !gspca_dev->streaming)
 			break;
 
 		/* the frame comes in parts */
@@ -129,7 +133,7 @@ again:
 			if (gspca_dev->frozen)
 				goto out;
 #endif
-			if (!gspca_dev->dev || !gspca_dev->streaming)
+			if (!gspca_dev->present || !gspca_dev->streaming)
 				goto out;
 			if (len < FPIX_MAX_TRANSFER ||
 				(data[len - 2] == 0xff &&

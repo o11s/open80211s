@@ -5945,12 +5945,13 @@ static void transfer_update(struct work_struct *work)
 	for (;;) {
 		msleep(100);
 
+		/* To protect gspca_dev->usb_buf and gspca_dev->usb_err */
 		mutex_lock(&gspca_dev->usb_lock);
 #ifdef CONFIG_PM
 		if (gspca_dev->frozen)
 			goto err;
 #endif
-		if (!gspca_dev->dev || !gspca_dev->streaming)
+		if (!gspca_dev->present || !gspca_dev->streaming)
 			goto err;
 
 		/* Bit 0 of register 11 indicates FIFO overflow */
@@ -6831,7 +6832,8 @@ static int sd_start(struct gspca_dev *gspca_dev)
 	return 0;
 }
 
-/* called on streamoff with alt 0 and on disconnect */
+/* called on streamoff with alt==0 and on disconnect */
+/* the usb_lock is held at entry - restore on exit */
 static void sd_stop0(struct gspca_dev *gspca_dev)
 {
 	struct sd *sd = (struct sd *) gspca_dev;
@@ -6842,7 +6844,7 @@ static void sd_stop0(struct gspca_dev *gspca_dev)
 		mutex_lock(&gspca_dev->usb_lock);
 		sd->work_thread = NULL;
 	}
-	if (!gspca_dev->dev)
+	if (!gspca_dev->present)
 		return;
 	send_unknown(gspca_dev, sd->sensor);
 }

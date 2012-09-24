@@ -20,12 +20,7 @@
  */
 
 #include "dvb_frontend.h"
-#include "ec100_priv.h"
 #include "ec100.h"
-
-int ec100_debug;
-module_param_named(debug, ec100_debug, int, 0644);
-MODULE_PARM_DESC(debug, "Turn on/off frontend debugging (default:off).");
 
 struct ec100_state {
 	struct i2c_adapter *i2c;
@@ -38,23 +33,33 @@ struct ec100_state {
 /* write single register */
 static int ec100_write_reg(struct ec100_state *state, u8 reg, u8 val)
 {
+	int ret;
 	u8 buf[2] = {reg, val};
-	struct i2c_msg msg = {
-		.addr = state->config.demod_address,
-		.flags = 0,
-		.len = 2,
-		.buf = buf};
+	struct i2c_msg msg[1] = {
+		{
+			.addr = state->config.demod_address,
+			.flags = 0,
+			.len = sizeof(buf),
+			.buf = buf,
+		}
+	};
 
-	if (i2c_transfer(state->i2c, &msg, 1) != 1) {
-		warn("I2C write failed reg:%02x", reg);
-		return -EREMOTEIO;
+	ret = i2c_transfer(state->i2c, msg, 1);
+	if (ret == 1) {
+		ret = 0;
+	} else {
+		dev_warn(&state->i2c->dev, "%s: i2c wr failed=%d reg=%02x\n",
+				KBUILD_MODNAME, ret, reg);
+		ret = -EREMOTEIO;
 	}
-	return 0;
+
+	return ret;
 }
 
 /* read single register */
 static int ec100_read_reg(struct ec100_state *state, u8 reg, u8 *val)
 {
+	int ret;
 	struct i2c_msg msg[2] = {
 		{
 			.addr = state->config.demod_address,
@@ -69,11 +74,16 @@ static int ec100_read_reg(struct ec100_state *state, u8 reg, u8 *val)
 		}
 	};
 
-	if (i2c_transfer(state->i2c, msg, 2) != 2) {
-		warn("I2C read failed reg:%02x", reg);
-		return -EREMOTEIO;
+	ret = i2c_transfer(state->i2c, msg, 2);
+	if (ret == 2) {
+		ret = 0;
+	} else {
+		dev_warn(&state->i2c->dev, "%s: i2c rd failed=%d reg=%02x\n",
+				KBUILD_MODNAME, ret, reg);
+		ret = -EREMOTEIO;
 	}
-	return 0;
+
+	return ret;
 }
 
 static int ec100_set_frontend(struct dvb_frontend *fe)
@@ -83,8 +93,8 @@ static int ec100_set_frontend(struct dvb_frontend *fe)
 	int ret;
 	u8 tmp, tmp2;
 
-	deb_info("%s: freq:%d bw:%d\n", __func__, c->frequency,
-		c->bandwidth_hz);
+	dev_dbg(&state->i2c->dev, "%s: frequency=%d bandwidth_hz=%d\n",
+			__func__, c->frequency, c->bandwidth_hz);
 
 	/* program tuner */
 	if (fe->ops.tuner_ops.set_params)
@@ -150,7 +160,7 @@ static int ec100_set_frontend(struct dvb_frontend *fe)
 
 	return ret;
 error:
-	deb_info("%s: failed:%d\n", __func__, ret);
+	dev_dbg(&state->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -196,7 +206,7 @@ static int ec100_read_status(struct dvb_frontend *fe, fe_status_t *status)
 
 	return ret;
 error:
-	deb_info("%s: failed:%d\n", __func__, ret);
+	dev_dbg(&state->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -228,7 +238,7 @@ static int ec100_read_ber(struct dvb_frontend *fe, u32 *ber)
 
 	return ret;
 error:
-	deb_info("%s: failed:%d\n", __func__, ret);
+	dev_dbg(&state->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -248,7 +258,7 @@ static int ec100_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 
 	return ret;
 error:
-	deb_info("%s: failed:%d\n", __func__, ret);
+	dev_dbg(&state->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 

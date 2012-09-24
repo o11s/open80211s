@@ -44,10 +44,14 @@ struct rtl2832_config {
 	u32 if_dvbt;
 
 	/*
+	 * tuner
+	 * XXX: This must be keep sync with dvb_usb_rtl28xxu demod driver.
 	 */
+#define RTL2832_TUNER_TUA9001   0x24
+#define RTL2832_TUNER_FC0012    0x26
+#define RTL2832_TUNER_FC0013    0x29
 	u8 tuner;
 };
-
 
 #if defined(CONFIG_DVB_RTL2832) || \
 	(defined(CONFIG_DVB_RTL2832_MODULE) && defined(MODULE))
@@ -55,17 +59,13 @@ extern struct dvb_frontend *rtl2832_attach(
 	const struct rtl2832_config *cfg,
 	struct i2c_adapter *i2c
 );
-
-extern struct i2c_adapter *rtl2832_get_tuner_i2c_adapter(
-	struct dvb_frontend *fe
-);
 #else
 static inline struct dvb_frontend *rtl2832_attach(
 	const struct rtl2832_config *config,
 	struct i2c_adapter *i2c
 )
 {
-	printk(KERN_WARNING "%s: driver disabled by Kconfig\n", __func__);
+	pr_warn("%s: driver disabled by Kconfig\n", __func__);
 	return NULL;
 }
 #endif

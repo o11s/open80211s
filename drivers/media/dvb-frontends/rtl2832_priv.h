@@ -24,21 +24,6 @@
 #include "dvb_frontend.h"
 #include "rtl2832.h"
 
-#define LOG_PREFIX "rtl2832"
-
-#undef dbg
-#define dbg(f, arg...) \
-do { \
-	if (rtl2832_debug)  \
-		printk(KERN_INFO     LOG_PREFIX": " f "\n" , ## arg); \
-} while (0)
-#undef err
-#define err(f, arg...)  printk(KERN_ERR     LOG_PREFIX": " f "\n" , ## arg)
-#undef info
-#define info(f, arg...) printk(KERN_INFO    LOG_PREFIX": " f "\n" , ## arg)
-#undef warn
-#define warn(f, arg...) printk(KERN_WARNING LOG_PREFIX": " f "\n" , ## arg)
-
 struct rtl2832_priv {
 	struct i2c_adapter *i2c;
 	struct dvb_frontend fe;
@@ -255,6 +240,66 @@ enum DVBT_REG_BIT_NAME {
 	DVBT_TEST_REG_3,
 	DVBT_TEST_REG_4,
 	DVBT_REG_BIT_NAME_ITEM_TERMINATOR,
+};
+
+static const struct rtl2832_reg_value rtl2832_tuner_init_tua9001[] = {
+	{DVBT_DAGC_TRG_VAL,             0x39},
+	{DVBT_AGC_TARG_VAL_0,            0x0},
+	{DVBT_AGC_TARG_VAL_8_1,         0x5a},
+	{DVBT_AAGC_LOOP_GAIN,           0x16},
+	{DVBT_LOOP_GAIN2_3_0,            0x6},
+	{DVBT_LOOP_GAIN2_4,              0x1},
+	{DVBT_LOOP_GAIN3,               0x16},
+	{DVBT_VTOP1,                    0x35},
+	{DVBT_VTOP2,                    0x21},
+	{DVBT_VTOP3,                    0x21},
+	{DVBT_KRF1,                      0x0},
+	{DVBT_KRF2,                     0x40},
+	{DVBT_KRF3,                     0x10},
+	{DVBT_KRF4,                     0x10},
+	{DVBT_IF_AGC_MIN,               0x80},
+	{DVBT_IF_AGC_MAX,               0x7f},
+	{DVBT_RF_AGC_MIN,               0x9c},
+	{DVBT_RF_AGC_MAX,               0x7f},
+	{DVBT_POLAR_RF_AGC,              0x0},
+	{DVBT_POLAR_IF_AGC,              0x0},
+	{DVBT_AD7_SETTING,            0xe9f4},
+	{DVBT_OPT_ADC_IQ,                0x1},
+	{DVBT_AD_AVI,                    0x0},
+	{DVBT_AD_AVQ,                    0x0},
+};
+
+static const struct rtl2832_reg_value rtl2832_tuner_init_fc0012[] = {
+	{DVBT_DAGC_TRG_VAL,             0x5a},
+	{DVBT_AGC_TARG_VAL_0,            0x0},
+	{DVBT_AGC_TARG_VAL_8_1,         0x5a},
+	{DVBT_AAGC_LOOP_GAIN,           0x16},
+	{DVBT_LOOP_GAIN2_3_0,            0x6},
+	{DVBT_LOOP_GAIN2_4,              0x1},
+	{DVBT_LOOP_GAIN3,               0x16},
+	{DVBT_VTOP1,                    0x35},
+	{DVBT_VTOP2,                    0x21},
+	{DVBT_VTOP3,                    0x21},
+	{DVBT_KRF1,                      0x0},
+	{DVBT_KRF2,                     0x40},
+	{DVBT_KRF3,                     0x10},
+	{DVBT_KRF4,                     0x10},
+	{DVBT_IF_AGC_MIN,               0x80},
+	{DVBT_IF_AGC_MAX,               0x7f},
+	{DVBT_RF_AGC_MIN,               0x80},
+	{DVBT_RF_AGC_MAX,               0x7f},
+	{DVBT_POLAR_RF_AGC,              0x0},
+	{DVBT_POLAR_IF_AGC,              0x0},
+	{DVBT_AD7_SETTING,            0xe9bf},
+	{DVBT_EN_GI_PGA,                 0x0},
+	{DVBT_THD_LOCK_UP,               0x0},
+	{DVBT_THD_LOCK_DW,               0x0},
+	{DVBT_THD_UP1,                  0x11},
+	{DVBT_THD_DW1,                  0xef},
+	{DVBT_INTER_CNT_LEN,             0xc},
+	{DVBT_GI_PGA_STATE,              0x0},
+	{DVBT_EN_AGC_PGA,                0x1},
+	{DVBT_IF_AGC_MAN,                0x0},
 };
 
 #endif /* RTL2832_PRIV_H */

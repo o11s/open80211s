@@ -994,7 +994,6 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 	pdev->power_save = my_power_save;
 
 	/* Init videobuf2 queue structure */
-	memset(&pdev->vb_queue, 0, sizeof(pdev->vb_queue));
 	pdev->vb_queue.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	pdev->vb_queue.io_modes = VB2_MMAP | VB2_USERPTR | VB2_READ;
 	pdev->vb_queue.drv_priv = pdev;
@@ -1127,7 +1126,7 @@ static void usb_pwc_disconnect(struct usb_interface *intf)
 	v4l2_device_disconnect(&pdev->v4l2_dev);
 	video_unregister_device(&pdev->vdev);
 	mutex_unlock(&pdev->v4l2_lock);
-	mutex_unlock(pdev->vb_queue.lock);
+	mutex_unlock(&pdev->vb_queue_lock);
 
 #ifdef CONFIG_USB_PWC_INPUT_EVDEV
 	if (pdev->button_dev)

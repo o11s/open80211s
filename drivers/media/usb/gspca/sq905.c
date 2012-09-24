@@ -201,14 +201,13 @@ sq905_read_data(struct gspca_dev *gspca_dev, u8 *data, int size, int need_lock)
 	return 0;
 }
 
-/* This function is called as a workqueue function and runs whenever the camera
+/*
+ * This function is called as a workqueue function and runs whenever the camera
  * is streaming data. Because it is a workqueue function it is allowed to sleep
  * so we can use synchronous USB calls. To avoid possible collisions with other
- * threads attempting to use the camera's USB interface we take the gspca
- * usb_lock when performing USB operations. In practice the only thing we need
- * to protect against is the usb_set_interface call that gspca makes during
- * stream_off as the camera doesn't provide any controls that the user could try
- * to change.
+ * threads attempting to use gspca_dev->usb_buf we take the usb_lock when
+ * performing USB operations using it. In practice we don't really need this
+ * as the camera doesn't provide any controls.
  */
 static void sq905_dostream(struct work_struct *work)
 {
@@ -232,7 +231,7 @@ static void sq905_dostream(struct work_struct *work)
 	frame_sz = gspca_dev->cam.cam_mode[gspca_dev->curr_mode].sizeimage
 			+ FRAME_HEADER_LEN;
 
-	while (gspca_dev->dev && gspca_dev->streaming) {
+	while (gspca_dev->present && gspca_dev->streaming) {
 #ifdef CONFIG_PM
 		if (gspca_dev->frozen)
 			break;
@@ -246,7 +245,7 @@ static void sq905_dostream(struct work_struct *work)
 		   we must finish reading an entire frame, otherwise the
 		   next time we stream we start reading in the middle of a
 		   frame. */
-		while (bytes_left > 0 && gspca_dev->dev) {
+		while (bytes_left > 0 && gspca_dev->present) {
 			data_len = bytes_left > SQ905_MAX_TRANSFER ?
 				SQ905_MAX_TRANSFER : bytes_left;
 			ret = sq905_read_data(gspca_dev, buffer, data_len, 1);
@@ -278,7 +277,7 @@ static void sq905_dostream(struct work_struct *work)
 				gspca_frame_add(gspca_dev, LAST_PACKET,
 						NULL, 0);
 		}
-		if (gspca_dev->dev) {
+		if (gspca_dev->present) {
 			/* acknowledge the frame */
 			mutex_lock(&gspca_dev->usb_lock);
 			ret = sq905_ack_frame(gspca_dev);
@@ -288,7 +287,7 @@ static void sq905_dostream(struct work_struct *work)
 		}
 	}
 quit_stream:
-	if (gspca_dev->dev) {
+	if (gspca_dev->present) {
 		mutex_lock(&gspca_dev->usb_lock);
 		sq905_command(gspca_dev, SQ905_CLEAR);
 		mutex_unlock(&gspca_dev->usb_lock);

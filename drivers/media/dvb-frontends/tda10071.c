@@ -257,7 +257,7 @@ static int tda10071_set_voltage(struct dvb_frontend *fe,
 				__func__);
 		ret = -EINVAL;
 		goto error;
-	};
+	}
 
 	cmd.args[0] = CMD_LNB_SET_DC_LEVEL;
 	cmd.args[1] = 0;
@@ -369,7 +369,7 @@ static int tda10071_diseqc_recv_slave_reply(struct dvb_frontend *fe,
 	if (ret)
 		goto error;
 
-	reply->msg_len = tmp & 0x1f; /* [4:0] */;
+	reply->msg_len = tmp & 0x1f; /* [4:0] */
 	if (reply->msg_len > sizeof(reply->msg))
 		reply->msg_len = sizeof(reply->msg); /* truncate API max */
 
@@ -850,7 +850,7 @@ static int tda10071_init(struct dvb_frontend *fe)
 	struct tda10071_cmd cmd;
 	int ret, i, len, remaining, fw_size;
 	const struct firmware *fw;
-	u8 *fw_file = TDA10071_DEFAULT_FIRMWARE;
+	u8 *fw_file = TDA10071_FIRMWARE;
 	u8 tmp, buf[4];
 	struct tda10071_reg_val_mask tab[] = {
 		{ 0xcd, 0x00, 0x07 },
@@ -1282,3 +1282,4 @@ static struct dvb_frontend_ops tda10071_ops = {
 MODULE_AUTHOR("Antti Palosaari <crope@iki.fi>");
 MODULE_DESCRIPTION("NXP TDA10071 DVB-S/S2 demodulator driver");
 MODULE_LICENSE("GPL");
+MODULE_FIRMWARE(TDA10071_FIRMWARE);

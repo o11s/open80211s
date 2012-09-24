@@ -48,7 +48,8 @@ static int au6610_usb_msg(struct dvb_usb_device *d, u8 operation, u8 addr,
 		index += wbuf[1];
 		break;
 	default:
-		pr_err("%s: wlen = %d, aborting\n", KBUILD_MODNAME, wlen);
+		dev_err(&d->udev->dev, "%s: wlen=%d, aborting\n",
+				KBUILD_MODNAME, wlen);
 		ret = -EINVAL;
 		goto error;
 	}
@@ -56,6 +57,11 @@ static int au6610_usb_msg(struct dvb_usb_device *d, u8 operation, u8 addr,
 	ret = usb_control_msg(d->udev, usb_rcvctrlpipe(d->udev, 0), operation,
 			      USB_TYPE_VENDOR|USB_DIR_IN, addr << 1, index,
 			      usb_buf, 6, AU6610_USB_TIMEOUT);
+
+	dvb_usb_dbg_usb_control_msg(d->udev, operation,
+			(USB_TYPE_VENDOR|USB_DIR_IN), addr << 1, index,
+			usb_buf, 6);
+
 	if (ret < 0)
 		goto error;
 
@@ -194,6 +200,7 @@ static struct usb_driver au6610_driver = {
 	.disconnect = dvb_usbv2_disconnect,
 	.suspend = dvb_usbv2_suspend,
 	.resume = dvb_usbv2_resume,
+	.reset_resume = dvb_usbv2_reset_resume,
 	.no_dynamic_id = 1,
 	.soft_unbind = 1,
 };

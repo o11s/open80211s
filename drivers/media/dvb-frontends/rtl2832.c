@@ -19,6 +19,7 @@
  */
 
 #include "rtl2832_priv.h"
+#include "dvb_math.h"
 #include <linux/bitops.h>
 
 int rtl2832_debug;
@@ -178,7 +179,8 @@ static int rtl2832_wr(struct rtl2832_priv *priv, u8 reg, u8 *val, int len)
 	if (ret == 1) {
 		ret = 0;
 	} else {
-		warn("i2c wr failed=%d reg=%02x len=%d", ret, reg, len);
+		dev_warn(&priv->i2c->dev, "%s: i2c wr failed=%d reg=%02x " \
+				"len=%d\n", KBUILD_MODNAME, ret, reg, len);
 		ret = -EREMOTEIO;
 	}
 	return ret;
@@ -206,10 +208,11 @@ static int rtl2832_rd(struct rtl2832_priv *priv, u8 reg, u8 *val, int len)
 	if (ret == 2) {
 		ret = 0;
 	} else {
-		warn("i2c rd failed=%d reg=%02x len=%d", ret, reg, len);
+		dev_warn(&priv->i2c->dev, "%s: i2c rd failed=%d reg=%02x " \
+				"len=%d\n", KBUILD_MODNAME, ret, reg, len);
 		ret = -EREMOTEIO;
-}
-return ret;
+	}
+	return ret;
 }
 
 /* write multiple registers */
@@ -217,7 +220,6 @@ static int rtl2832_wr_regs(struct rtl2832_priv *priv, u8 reg, u8 page, u8 *val,
 	int len)
 {
 	int ret;
-
 
 	/* switch bank if needed */
 	if (page != priv->page) {
@@ -298,7 +300,7 @@ int rtl2832_rd_demod_reg(struct rtl2832_priv *priv, int reg, u32 *val)
 	return ret;
 
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 
 }
@@ -350,18 +352,17 @@ int rtl2832_wr_demod_reg(struct rtl2832_priv *priv, int reg, u32 val)
 	return ret;
 
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 
 }
-
 
 static int rtl2832_i2c_gate_ctrl(struct dvb_frontend *fe, int enable)
 {
 	int ret;
 	struct rtl2832_priv *priv = fe->demodulator_priv;
 
-	dbg("%s: enable=%d", __func__, enable);
+	dev_dbg(&priv->i2c->dev, "%s: enable=%d\n", __func__, enable);
 
 	/* gate already open or close */
 	if (priv->i2c_gate_state == enable)
@@ -375,19 +376,17 @@ static int rtl2832_i2c_gate_ctrl(struct dvb_frontend *fe, int enable)
 
 	return ret;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
-
-
 
 static int rtl2832_init(struct dvb_frontend *fe)
 {
 	struct rtl2832_priv *priv = fe->demodulator_priv;
-	int i, ret;
-
+	int i, ret, len;
 	u8 en_bbin;
 	u64 pset_iffreq;
+	const struct rtl2832_reg_value *init;
 
 	/* initialization values for the demodulator registers */
 	struct rtl2832_reg_value rtl2832_initial_regs[] = {
@@ -434,40 +433,9 @@ static int rtl2832_init(struct dvb_frontend *fe)
 		{DVBT_TRK_KC_I2,		0x5},
 		{DVBT_CR_THD_SET2,		0x1},
 		{DVBT_SPEC_INV,			0x0},
-		{DVBT_DAGC_TRG_VAL,		0x5a},
-		{DVBT_AGC_TARG_VAL_0,		0x0},
-		{DVBT_AGC_TARG_VAL_8_1,		0x5a},
-		{DVBT_AAGC_LOOP_GAIN,		0x16},
-		{DVBT_LOOP_GAIN2_3_0,		0x6},
-		{DVBT_LOOP_GAIN2_4,		0x1},
-		{DVBT_LOOP_GAIN3,		0x16},
-		{DVBT_VTOP1,			0x35},
-		{DVBT_VTOP2,			0x21},
-		{DVBT_VTOP3,			0x21},
-		{DVBT_KRF1,			0x0},
-		{DVBT_KRF2,			0x40},
-		{DVBT_KRF3,			0x10},
-		{DVBT_KRF4,			0x10},
-		{DVBT_IF_AGC_MIN,		0x80},
-		{DVBT_IF_AGC_MAX,		0x7f},
-		{DVBT_RF_AGC_MIN,		0x80},
-		{DVBT_RF_AGC_MAX,		0x7f},
-		{DVBT_POLAR_RF_AGC,		0x0},
-		{DVBT_POLAR_IF_AGC,		0x0},
-		{DVBT_AD7_SETTING,		0xe9bf},
-		{DVBT_EN_GI_PGA,		0x0},
-		{DVBT_THD_LOCK_UP,		0x0},
-		{DVBT_THD_LOCK_DW,		0x0},
-		{DVBT_THD_UP1,			0x11},
-		{DVBT_THD_DW1,			0xef},
-		{DVBT_INTER_CNT_LEN,		0xc},
-		{DVBT_GI_PGA_STATE,		0x0},
-		{DVBT_EN_AGC_PGA,		0x1},
-		{DVBT_IF_AGC_MAN,		0x0},
 	};
 
-
-	dbg("%s", __func__);
+	dev_dbg(&priv->i2c->dev, "%s:\n", __func__);
 
 	en_bbin = (priv->cfg.if_dvbt == 0 ? 0x1 : 0x0);
 
@@ -480,11 +448,33 @@ static int rtl2832_init(struct dvb_frontend *fe)
 	pset_iffreq = div_u64(pset_iffreq, priv->cfg.xtal);
 	pset_iffreq = pset_iffreq & 0x3fffff;
 
-
-
 	for (i = 0; i < ARRAY_SIZE(rtl2832_initial_regs); i++) {
 		ret = rtl2832_wr_demod_reg(priv, rtl2832_initial_regs[i].reg,
 			rtl2832_initial_regs[i].value);
+		if (ret)
+			goto err;
+	}
+
+	/* load tuner specific settings */
+	dev_dbg(&priv->i2c->dev, "%s: load settings for tuner=%02x\n",
+			__func__, priv->cfg.tuner);
+	switch (priv->cfg.tuner) {
+	case RTL2832_TUNER_FC0012:
+	case RTL2832_TUNER_FC0013:
+		len = ARRAY_SIZE(rtl2832_tuner_init_fc0012);
+		init = rtl2832_tuner_init_fc0012;
+		break;
+	case RTL2832_TUNER_TUA9001:
+		len = ARRAY_SIZE(rtl2832_tuner_init_tua9001);
+		init = rtl2832_tuner_init_tua9001;
+		break;
+	default:
+		ret = -EINVAL;
+		goto err;
+	}
+
+	for (i = 0; i < len; i++) {
+		ret = rtl2832_wr_demod_reg(priv, init[i].reg, init[i].value);
 		if (ret)
 			goto err;
 	}
@@ -503,7 +493,7 @@ static int rtl2832_init(struct dvb_frontend *fe)
 	return ret;
 
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -511,7 +501,7 @@ static int rtl2832_sleep(struct dvb_frontend *fe)
 {
 	struct rtl2832_priv *priv = fe->demodulator_priv;
 
-	dbg("%s", __func__);
+	dev_dbg(&priv->i2c->dev, "%s:\n", __func__);
 	priv->sleeping = true;
 	return 0;
 }
@@ -519,7 +509,9 @@ static int rtl2832_sleep(struct dvb_frontend *fe)
 int rtl2832_get_tune_settings(struct dvb_frontend *fe,
 	struct dvb_frontend_tune_settings *s)
 {
-	dbg("%s", __func__);
+	struct rtl2832_priv *priv = fe->demodulator_priv;
+
+	dev_dbg(&priv->i2c->dev, "%s:\n", __func__);
 	s->min_delay_ms = 1000;
 	s->step_size = fe->ops.info.frequency_stepsize * 2;
 	s->max_drift = (fe->ops.info.frequency_stepsize * 2) + 1;
@@ -533,8 +525,6 @@ static int rtl2832_set_frontend(struct dvb_frontend *fe)
 	int ret, i, j;
 	u64 bw_mode, num, num2;
 	u32 resamp_ratio, cfreq_off_ratio;
-
-
 	static u8 bw_params[3][32] = {
 	/* 6 MHz bandwidth */
 		{
@@ -562,14 +552,13 @@ static int rtl2832_set_frontend(struct dvb_frontend *fe)
 	};
 
 
-	dbg("%s: frequency=%d bandwidth_hz=%d inversion=%d", __func__,
-		c->frequency, c->bandwidth_hz, c->inversion);
-
+	dev_dbg(&priv->i2c->dev, "%s: frequency=%d bandwidth_hz=%d " \
+			"inversion=%d\n", __func__, c->frequency,
+			c->bandwidth_hz, c->inversion);
 
 	/* program tuner */
 	if (fe->ops.tuner_ops.set_params)
 		fe->ops.tuner_ops.set_params(fe);
-
 
 	switch (c->bandwidth_hz) {
 	case 6000000:
@@ -585,7 +574,7 @@ static int rtl2832_set_frontend(struct dvb_frontend *fe)
 		bw_mode = 64000000;
 		break;
 	default:
-		dbg("invalid bandwidth");
+		dev_dbg(&priv->i2c->dev, "%s: invalid bandwidth\n", __func__);
 		return -EINVAL;
 	}
 
@@ -632,7 +621,119 @@ static int rtl2832_set_frontend(struct dvb_frontend *fe)
 
 	return ret;
 err:
-	info("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
+	return ret;
+}
+
+static int rtl2832_get_frontend(struct dvb_frontend *fe)
+{
+	struct rtl2832_priv *priv = fe->demodulator_priv;
+	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
+	int ret;
+	u8 buf[3];
+
+	if (priv->sleeping)
+		return 0;
+
+	ret = rtl2832_rd_regs(priv, 0x3c, 3, buf, 2);
+	if (ret)
+		goto err;
+
+	ret = rtl2832_rd_reg(priv, 0x51, 3, &buf[2]);
+	if (ret)
+		goto err;
+
+	dev_dbg(&priv->i2c->dev, "%s: TPS=%*ph\n", __func__, 3, buf);
+
+	switch ((buf[0] >> 2) & 3) {
+	case 0:
+		c->modulation = QPSK;
+		break;
+	case 1:
+		c->modulation = QAM_16;
+		break;
+	case 2:
+		c->modulation = QAM_64;
+		break;
+	}
+
+	switch ((buf[2] >> 2) & 1) {
+	case 0:
+		c->transmission_mode = TRANSMISSION_MODE_2K;
+		break;
+	case 1:
+		c->transmission_mode = TRANSMISSION_MODE_8K;
+	}
+
+	switch ((buf[2] >> 0) & 3) {
+	case 0:
+		c->guard_interval = GUARD_INTERVAL_1_32;
+		break;
+	case 1:
+		c->guard_interval = GUARD_INTERVAL_1_16;
+		break;
+	case 2:
+		c->guard_interval = GUARD_INTERVAL_1_8;
+		break;
+	case 3:
+		c->guard_interval = GUARD_INTERVAL_1_4;
+		break;
+	}
+
+	switch ((buf[0] >> 4) & 7) {
+	case 0:
+		c->hierarchy = HIERARCHY_NONE;
+		break;
+	case 1:
+		c->hierarchy = HIERARCHY_1;
+		break;
+	case 2:
+		c->hierarchy = HIERARCHY_2;
+		break;
+	case 3:
+		c->hierarchy = HIERARCHY_4;
+		break;
+	}
+
+	switch ((buf[1] >> 3) & 7) {
+	case 0:
+		c->code_rate_HP = FEC_1_2;
+		break;
+	case 1:
+		c->code_rate_HP = FEC_2_3;
+		break;
+	case 2:
+		c->code_rate_HP = FEC_3_4;
+		break;
+	case 3:
+		c->code_rate_HP = FEC_5_6;
+		break;
+	case 4:
+		c->code_rate_HP = FEC_7_8;
+		break;
+	}
+
+	switch ((buf[1] >> 0) & 7) {
+	case 0:
+		c->code_rate_LP = FEC_1_2;
+		break;
+	case 1:
+		c->code_rate_LP = FEC_2_3;
+		break;
+	case 2:
+		c->code_rate_LP = FEC_3_4;
+		break;
+	case 3:
+		c->code_rate_LP = FEC_5_6;
+		break;
+	case 4:
+		c->code_rate_LP = FEC_7_8;
+		break;
+	}
+
+	return 0;
+err:
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -643,8 +744,7 @@ static int rtl2832_read_status(struct dvb_frontend *fe, fe_status_t *status)
 	u32 tmp;
 	*status = 0;
 
-
-	dbg("%s", __func__);
+	dev_dbg(&priv->i2c->dev, "%s:\n", __func__);
 	if (priv->sleeping)
 		return 0;
 
@@ -664,33 +764,72 @@ static int rtl2832_read_status(struct dvb_frontend *fe, fe_status_t *status)
 
 	return ret;
 err:
-	info("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
 static int rtl2832_read_snr(struct dvb_frontend *fe, u16 *snr)
 {
-	*snr = 0;
+	struct rtl2832_priv *priv = fe->demodulator_priv;
+	int ret, hierarchy, constellation;
+	u8 buf[2], tmp;
+	u16 tmp16;
+#define CONSTELLATION_NUM 3
+#define HIERARCHY_NUM 4
+	static const u32 snr_constant[CONSTELLATION_NUM][HIERARCHY_NUM] = {
+		{ 85387325, 85387325, 85387325, 85387325 },
+		{ 86676178, 86676178, 87167949, 87795660 },
+		{ 87659938, 87659938, 87885178, 88241743 },
+	};
+
+	/* reports SNR in resolution of 0.1 dB */
+
+	ret = rtl2832_rd_reg(priv, 0x3c, 3, &tmp);
+	if (ret)
+		goto err;
+
+	constellation = (tmp >> 2) & 0x03; /* [3:2] */
+	if (constellation > CONSTELLATION_NUM - 1)
+		goto err;
+
+	hierarchy = (tmp >> 4) & 0x07; /* [6:4] */
+	if (hierarchy > HIERARCHY_NUM - 1)
+		goto err;
+
+	ret = rtl2832_rd_regs(priv, 0x0c, 4, buf, 2);
+	if (ret)
+		goto err;
+
+	tmp16 = buf[0] << 8 | buf[1];
+
+	if (tmp16)
+		*snr = (snr_constant[constellation][hierarchy] -
+				intlog10(tmp16)) / ((1 << 24) / 100);
+	else
+		*snr = 0;
+
 	return 0;
+err:
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
+	return ret;
 }
 
 static int rtl2832_read_ber(struct dvb_frontend *fe, u32 *ber)
 {
-	*ber = 0;
-	return 0;
-}
+	struct rtl2832_priv *priv = fe->demodulator_priv;
+	int ret;
+	u8 buf[2];
 
-static int rtl2832_read_ucblocks(struct dvb_frontend *fe, u32 *ucblocks)
-{
-	*ucblocks = 0;
-	return 0;
-}
+	ret = rtl2832_rd_regs(priv, 0x4e, 3, buf, 2);
+	if (ret)
+		goto err;
 
+	*ber = buf[0] << 8 | buf[1];
 
-static int rtl2832_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
-{
-	*strength = 0;
 	return 0;
+err:
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
+	return ret;
 }
 
 static struct dvb_frontend_ops rtl2832_ops;
@@ -699,7 +838,7 @@ static void rtl2832_release(struct dvb_frontend *fe)
 {
 	struct rtl2832_priv *priv = fe->demodulator_priv;
 
-	dbg("%s", __func__);
+	dev_dbg(&priv->i2c->dev, "%s:\n", __func__);
 	kfree(priv);
 }
 
@@ -710,7 +849,7 @@ struct dvb_frontend *rtl2832_attach(const struct rtl2832_config *cfg,
 	int ret = 0;
 	u8 tmp;
 
-	dbg("%s", __func__);
+	dev_dbg(&i2c->dev, "%s:\n", __func__);
 
 	/* allocate memory for the internal state */
 	priv = kzalloc(sizeof(struct rtl2832_priv), GFP_KERNEL);
@@ -736,7 +875,7 @@ struct dvb_frontend *rtl2832_attach(const struct rtl2832_config *cfg,
 
 	return &priv->fe;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&i2c->dev, "%s: failed=%d\n", __func__, ret);
 	kfree(priv);
 	return NULL;
 }
@@ -774,12 +913,12 @@ static struct dvb_frontend_ops rtl2832_ops = {
 	.get_tune_settings = rtl2832_get_tune_settings,
 
 	.set_frontend = rtl2832_set_frontend,
+	.get_frontend = rtl2832_get_frontend,
 
 	.read_status = rtl2832_read_status,
 	.read_snr = rtl2832_read_snr,
 	.read_ber = rtl2832_read_ber,
-	.read_ucblocks = rtl2832_read_ucblocks,
-	.read_signal_strength = rtl2832_read_signal_strength,
+
 	.i2c_gate_ctrl = rtl2832_i2c_gate_ctrl,
 };
 

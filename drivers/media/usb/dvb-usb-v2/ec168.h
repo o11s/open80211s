@@ -24,18 +24,8 @@
 
 #include "dvb_usb.h"
 
-#define ec168_debug_dump(r, t, v, i, b, l) { \
-	char *direction; \
-	if (t == (USB_TYPE_VENDOR | USB_DIR_OUT)) \
-		direction = ">>>"; \
-	else \
-		direction = "<<<"; \
-	pr_debug("%s: %02x %02x %02x %02x %02x %02x %02x %02x %s\n", \
-			 __func__, t, r, v & 0xff, v >> 8, i & 0xff, i >> 8, \
-			l & 0xff, l >> 8, direction); \
-}
-
 #define EC168_USB_TIMEOUT 1000
+#define EC168_FIRMWARE "dvb-usb-ec168.fw"
 
 struct ec168_req {
 	u8  cmd;       /* [1] */

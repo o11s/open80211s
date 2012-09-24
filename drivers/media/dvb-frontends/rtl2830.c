@@ -27,12 +27,8 @@
 
 #include "rtl2830_priv.h"
 
-int rtl2830_debug;
-module_param_named(debug, rtl2830_debug, int, 0644);
-MODULE_PARM_DESC(debug, "Turn on/off frontend debugging (default:off).");
-
 /* write multiple hardware registers */
-static int rtl2830_wr(struct rtl2830_priv *priv, u8 reg, u8 *val, int len)
+static int rtl2830_wr(struct rtl2830_priv *priv, u8 reg, const u8 *val, int len)
 {
 	int ret;
 	u8 buf[1+len];
@@ -52,7 +48,8 @@ static int rtl2830_wr(struct rtl2830_priv *priv, u8 reg, u8 *val, int len)
 	if (ret == 1) {
 		ret = 0;
 	} else {
-		warn("i2c wr failed=%d reg=%02x len=%d", ret, reg, len);
+		dev_warn(&priv->i2c->dev, "%s: i2c wr failed=%d reg=%02x " \
+				"len=%d\n", KBUILD_MODNAME, ret, reg, len);
 		ret = -EREMOTEIO;
 	}
 	return ret;
@@ -80,14 +77,16 @@ static int rtl2830_rd(struct rtl2830_priv *priv, u8 reg, u8 *val, int len)
 	if (ret == 2) {
 		ret = 0;
 	} else {
-		warn("i2c rd failed=%d reg=%02x len=%d", ret, reg, len);
+		dev_warn(&priv->i2c->dev, "%s: i2c rd failed=%d reg=%02x " \
+				"len=%d\n", KBUILD_MODNAME, ret, reg, len);
 		ret = -EREMOTEIO;
 	}
 	return ret;
 }
 
 /* write multiple registers */
-static int rtl2830_wr_regs(struct rtl2830_priv *priv, u16 reg, u8 *val, int len)
+static int rtl2830_wr_regs(struct rtl2830_priv *priv, u16 reg, const u8 *val,
+		int len)
 {
 	int ret;
 	u8 reg2 = (reg >> 0) & 0xff;
@@ -123,14 +122,6 @@ static int rtl2830_rd_regs(struct rtl2830_priv *priv, u16 reg, u8 *val, int len)
 
 	return rtl2830_rd(priv, reg2, val, len);
 }
-
-#if 0 /* currently not used */
-/* write single register */
-static int rtl2830_wr_reg(struct rtl2830_priv *priv, u16 reg, u8 val)
-{
-	return rtl2830_wr_regs(priv, reg, &val, 1);
-}
-#endif
 
 /* read single register */
 static int rtl2830_rd_reg(struct rtl2830_priv *priv, u16 reg, u8 *val)
@@ -184,9 +175,6 @@ static int rtl2830_init(struct dvb_frontend *fe)
 {
 	struct rtl2830_priv *priv = fe->demodulator_priv;
 	int ret, i;
-	u64 num;
-	u8 buf[3], tmp;
-	u32 if_ctl;
 	struct rtl2830_reg_val_mask tab[] = {
 		{ 0x00d, 0x01, 0x03 },
 		{ 0x00d, 0x10, 0x10 },
@@ -242,26 +230,6 @@ static int rtl2830_init(struct dvb_frontend *fe)
 	if (ret)
 		goto err;
 
-	num = priv->cfg.if_dvbt % priv->cfg.xtal;
-	num *= 0x400000;
-	num = div_u64(num, priv->cfg.xtal);
-	num = -num;
-	if_ctl = num & 0x3fffff;
-	dbg("%s: if_ctl=%08x", __func__, if_ctl);
-
-	ret = rtl2830_rd_reg_mask(priv, 0x119, &tmp, 0xc0); /* b[7:6] */
-	if (ret)
-		goto err;
-
-	buf[0] = tmp << 6;
-	buf[0] = (if_ctl >> 16) & 0x3f;
-	buf[1] = (if_ctl >>  8) & 0xff;
-	buf[2] = (if_ctl >>  0) & 0xff;
-
-	ret = rtl2830_wr_regs(priv, 0x119, buf, 3);
-	if (ret)
-		goto err;
-
 	/* TODO: spec init */
 
 	/* soft reset */
@@ -277,7 +245,7 @@ static int rtl2830_init(struct dvb_frontend *fe)
 
 	return ret;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -303,7 +271,10 @@ static int rtl2830_set_frontend(struct dvb_frontend *fe)
 	struct rtl2830_priv *priv = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
 	int ret, i;
-	static u8 bw_params1[3][34] = {
+	u64 num;
+	u8 buf[3], tmp;
+	u32 if_ctl, if_frequency;
+	static const u8 bw_params1[3][34] = {
 		{
 		0x1f, 0xf0, 0x1f, 0xf0, 0x1f, 0xfa, 0x00, 0x17, 0x00, 0x41,
 		0x00, 0x64, 0x00, 0x67, 0x00, 0x38, 0x1f, 0xde, 0x1f, 0x7a,
@@ -321,15 +292,15 @@ static int rtl2830_set_frontend(struct dvb_frontend *fe)
 		0x04, 0x24, 0x04, 0xdb, /* 8 MHz */
 		},
 	};
-	static u8 bw_params2[3][6] = {
-		{0xc3, 0x0c, 0x44, 0x33, 0x33, 0x30,}, /* 6 MHz */
-		{0xb8, 0xe3, 0x93, 0x99, 0x99, 0x98,}, /* 7 MHz */
-		{0xae, 0xba, 0xf3, 0x26, 0x66, 0x64,}, /* 8 MHz */
+	static const u8 bw_params2[3][6] = {
+		{0xc3, 0x0c, 0x44, 0x33, 0x33, 0x30}, /* 6 MHz */
+		{0xb8, 0xe3, 0x93, 0x99, 0x99, 0x98}, /* 7 MHz */
+		{0xae, 0xba, 0xf3, 0x26, 0x66, 0x64}, /* 8 MHz */
 	};
 
-
-	dbg("%s: frequency=%d bandwidth_hz=%d inversion=%d", __func__,
-		c->frequency, c->bandwidth_hz, c->inversion);
+	dev_dbg(&priv->i2c->dev,
+			"%s: frequency=%d bandwidth_hz=%d inversion=%d\n",
+			__func__, c->frequency, c->bandwidth_hz, c->inversion);
 
 	/* program tuner */
 	if (fe->ops.tuner_ops.set_params)
@@ -346,11 +317,41 @@ static int rtl2830_set_frontend(struct dvb_frontend *fe)
 		i = 2;
 		break;
 	default:
-		dbg("invalid bandwidth");
+		dev_dbg(&priv->i2c->dev, "%s: invalid bandwidth\n", __func__);
 		return -EINVAL;
 	}
 
 	ret = rtl2830_wr_reg_mask(priv, 0x008, i << 1, 0x06);
+	if (ret)
+		goto err;
+
+	/* program if frequency */
+	if (fe->ops.tuner_ops.get_if_frequency)
+		ret = fe->ops.tuner_ops.get_if_frequency(fe, &if_frequency);
+	else
+		ret = -EINVAL;
+
+	if (ret < 0)
+		goto err;
+
+	num = if_frequency % priv->cfg.xtal;
+	num *= 0x400000;
+	num = div_u64(num, priv->cfg.xtal);
+	num = -num;
+	if_ctl = num & 0x3fffff;
+	dev_dbg(&priv->i2c->dev, "%s: if_frequency=%d if_ctl=%08x\n",
+			__func__, if_frequency, if_ctl);
+
+	ret = rtl2830_rd_reg_mask(priv, 0x119, &tmp, 0xc0); /* b[7:6] */
+	if (ret)
+		goto err;
+
+	buf[0] = tmp << 6;
+	buf[0] |= (if_ctl >> 16) & 0x3f;
+	buf[1] = (if_ctl >>  8) & 0xff;
+	buf[2] = (if_ctl >>  0) & 0xff;
+
+	ret = rtl2830_wr_regs(priv, 0x119, buf, 3);
 	if (ret)
 		goto err;
 
@@ -370,7 +371,7 @@ static int rtl2830_set_frontend(struct dvb_frontend *fe)
 
 	return ret;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -392,7 +393,7 @@ static int rtl2830_get_frontend(struct dvb_frontend *fe)
 	if (ret)
 		goto err;
 
-	dbg("%s: TPS=%*ph", __func__, 3, buf);
+	dev_dbg(&priv->i2c->dev, "%s: TPS=%*ph\n", __func__, 3, buf);
 
 	switch ((buf[0] >> 2) & 3) {
 	case 0:
@@ -482,7 +483,7 @@ static int rtl2830_get_frontend(struct dvb_frontend *fe)
 
 	return 0;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -510,7 +511,7 @@ static int rtl2830_read_status(struct dvb_frontend *fe, fe_status_t *status)
 
 	return ret;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -559,7 +560,7 @@ static int rtl2830_read_snr(struct dvb_frontend *fe, u16 *snr)
 
 	return 0;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -580,7 +581,7 @@ static int rtl2830_read_ber(struct dvb_frontend *fe, u32 *ber)
 
 	return 0;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -616,7 +617,7 @@ static int rtl2830_read_signal_strength(struct dvb_frontend *fe, u16 *strength)
 
 	return 0;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -640,11 +641,12 @@ static int rtl2830_tuner_i2c_xfer(struct i2c_adapter *i2c_adap,
 
 	ret = i2c_transfer(priv->i2c, msg, num);
 	if (ret < 0)
-		warn("tuner i2c failed=%d", ret);
+		dev_warn(&priv->i2c->dev, "%s: tuner i2c failed=%d\n",
+			KBUILD_MODNAME, ret);
 
 	return ret;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -700,7 +702,9 @@ struct dvb_frontend *rtl2830_attach(const struct rtl2830_config *cfg,
 	priv->tuner_i2c_adapter.algo_data = NULL;
 	i2c_set_adapdata(&priv->tuner_i2c_adapter, priv);
 	if (i2c_add_adapter(&priv->tuner_i2c_adapter) < 0) {
-		err("tuner I2C bus could not be initialized");
+		dev_err(&i2c->dev,
+				"%s: tuner i2c bus could not be initialized\n",
+				KBUILD_MODNAME);
 		goto err;
 	}
 
@@ -708,7 +712,7 @@ struct dvb_frontend *rtl2830_attach(const struct rtl2830_config *cfg,
 
 	return &priv->fe;
 err:
-	dbg("%s: failed=%d", __func__, ret);
+	dev_dbg(&i2c->dev, "%s: failed=%d\n", __func__, ret);
 	kfree(priv);
 	return NULL;
 }

@@ -110,7 +110,7 @@ static int vicam_set_camera_power(struct gspca_dev *gspca_dev, int state)
 }
 
 /*
- *  request and read a block of data - see warning on vicam_command.
+ *  request and read a block of data
  */
 static int vicam_read_frame(struct gspca_dev *gspca_dev, u8 *data, int size)
 {
@@ -170,14 +170,13 @@ static int vicam_read_frame(struct gspca_dev *gspca_dev, u8 *data, int size)
 	return 0;
 }
 
-/* This function is called as a workqueue function and runs whenever the camera
+/*
+ * This function is called as a workqueue function and runs whenever the camera
  * is streaming data. Because it is a workqueue function it is allowed to sleep
  * so we can use synchronous USB calls. To avoid possible collisions with other
- * threads attempting to use the camera's USB interface we take the gspca
- * usb_lock when performing USB operations. In practice the only thing we need
- * to protect against is the usb_set_interface call that gspca makes during
- * stream_off as the camera doesn't provide any controls that the user could try
- * to change.
+ * threads attempting to use gspca_dev->usb_buf we take the usb_lock when
+ * performing USB operations using it. In practice we don't really need this
+ * as the cameras controls are only written from the workqueue.
  */
 static void vicam_dostream(struct work_struct *work)
 {
@@ -194,7 +193,7 @@ static void vicam_dostream(struct work_struct *work)
 		goto exit;
 	}
 
-	while (gspca_dev->dev && gspca_dev->streaming) {
+	while (gspca_dev->present && gspca_dev->streaming) {
 #ifdef CONFIG_PM
 		if (gspca_dev->frozen)
 			break;
@@ -299,7 +298,7 @@ static void sd_stop0(struct gspca_dev *gspca_dev)
 	dev->work_thread = NULL;
 	mutex_lock(&gspca_dev->usb_lock);
 
-	if (gspca_dev->dev)
+	if (gspca_dev->present)
 		vicam_set_camera_power(gspca_dev, 0);
 }
 
