@@ -591,7 +591,7 @@ static int __fimc_md_create_flite_source_links(struct fimc_md *fmd)
 		if (fimc == NULL)
 			continue;
 		source = &fimc->subdev.entity;
-		sink = &fimc->vfd->entity;
+		sink = &fimc->vfd.entity;
 		/* FIMC-LITE's subdev and video node */
 		ret = media_entity_create_link(source, FIMC_SD_PAD_SOURCE,
 					       sink, 0, flags);
@@ -617,6 +617,7 @@ static int __fimc_md_create_flite_source_links(struct fimc_md *fmd)
  */
 static int fimc_md_create_links(struct fimc_md *fmd)
 {
+	struct v4l2_subdev *csi_sensors[2] = { NULL };
 	struct v4l2_subdev *sensor, *csis;
 	struct s5p_fimc_isp_info *pdata;
 	struct fimc_sensor_info *s_info;
@@ -659,6 +660,7 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 				  sensor->entity.name, csis->entity.name);
 
 			source = NULL;
+			csi_sensors[pdata->mux_id] = sensor;
 			break;
 
 		case FIMC_ITU_601...FIMC_ITU_656:
@@ -684,9 +686,10 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 			continue;
 		source = &fmd->csis[i].sd->entity;
 		pad = CSIS_PAD_SOURCE;
+		sensor = csi_sensors[i];
 
 		link_mask = 1 << fimc_id++;
-		ret = __fimc_md_create_fimc_sink_links(fmd, source, NULL,
+		ret = __fimc_md_create_fimc_sink_links(fmd, source, sensor,
 						       pad, link_mask);
 	}
 
@@ -696,7 +699,7 @@ static int fimc_md_create_links(struct fimc_md *fmd)
 		if (!fmd->fimc[i])
 			continue;
 		source = &fmd->fimc[i]->vid_cap.subdev.entity;
-		sink = &fmd->fimc[i]->vid_cap.vfd->entity;
+		sink = &fmd->fimc[i]->vid_cap.vfd.entity;
 		ret = media_entity_create_link(source, FIMC_SD_PAD_SOURCE,
 					      sink, 0, flags);
 		if (ret)
