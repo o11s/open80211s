@@ -1479,7 +1479,7 @@ static int wl1273_fm_vidioc_g_audio(struct file *file, void *priv,
 }
 
 static int wl1273_fm_vidioc_s_audio(struct file *file, void *priv,
-				    struct v4l2_audio *audio)
+				    const struct v4l2_audio *audio)
 {
 	struct wl1273_device *radio = video_get_drvdata(video_devdata(file));
 
@@ -1682,7 +1682,7 @@ static int wl1273_fm_vidioc_s_frequency(struct file *file, void *priv,
 #define WL1273_DEFAULT_SEEK_LEVEL	7
 
 static int wl1273_fm_vidioc_s_hw_freq_seek(struct file *file, void *priv,
-					   struct v4l2_hw_freq_seek *seek)
+					   const struct v4l2_hw_freq_seek *seek)
 {
 	struct wl1273_device *radio = video_get_drvdata(video_devdata(file));
 	struct wl1273_core *core = radio->core;
@@ -1692,6 +1692,9 @@ static int wl1273_fm_vidioc_s_hw_freq_seek(struct file *file, void *priv,
 
 	if (seek->tuner != 0 || seek->type != V4L2_TUNER_RADIO)
 		return -EINVAL;
+
+	if (file->f_flags & O_NONBLOCK)
+		return -EWOULDBLOCK;
 
 	if (mutex_lock_interruptible(&core->lock))
 		return -EINTR;
@@ -1715,7 +1718,7 @@ out:
 }
 
 static int wl1273_fm_vidioc_s_modulator(struct file *file, void *priv,
-					struct v4l2_modulator *modulator)
+					const struct v4l2_modulator *modulator)
 {
 	struct wl1273_device *radio = video_get_drvdata(video_devdata(file));
 	struct wl1273_core *core = radio->core;

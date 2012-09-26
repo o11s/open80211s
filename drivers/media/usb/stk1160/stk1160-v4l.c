@@ -184,7 +184,7 @@ static int stk1160_start_streaming(struct stk1160 *dev)
 	if (!dev->isoc_ctl.num_bufs || new_pkt_size) {
 		rc = stk1160_alloc_isoc(dev);
 		if (rc < 0)
-			goto out_unlock;
+			goto out_stop_hw;
 	}
 
 	/* submit urbs and enables IRQ */
@@ -192,8 +192,7 @@ static int stk1160_start_streaming(struct stk1160 *dev)
 		rc = usb_submit_urb(dev->isoc_ctl.urb[i], GFP_KERNEL);
 		if (rc) {
 			stk1160_err("cannot submit urb[%d] (%d)\n", i, rc);
-			stk1160_uninit_isoc(dev);
-			goto out_unlock;
+			goto out_uninit;
 		}
 	}
 
@@ -206,7 +205,16 @@ static int stk1160_start_streaming(struct stk1160 *dev)
 
 	stk1160_dbg("streaming started\n");
 
-out_unlock:
+	mutex_unlock(&dev->v4l_lock);
+
+	return 0;
+
+out_uninit:
+	stk1160_uninit_isoc(dev);
+out_stop_hw:
+	usb_set_interface(dev->udev, 0, 0);
+	stk1160_clear_queue(dev);
+
 	mutex_unlock(&dev->v4l_lock);
 
 	return rc;
@@ -318,12 +326,6 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 {
 	struct stk1160 *dev = video_drvdata(file);
 
-	if (f->fmt.pix.pixelformat != format[0].fourcc) {
-		stk1160_err("fourcc format 0x%08x invalid\n",
-			f->fmt.pix.pixelformat);
-		return -EINVAL;
-	}
-
 	/*
 	 * User can't choose size at his own will,
 	 * so we just return him the current size chosen
@@ -331,6 +333,7 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 	 * TODO: Implement frame scaling?
 	 */
 
+	f->fmt.pix.pixelformat = dev->fmt->fourcc;
 	f->fmt.pix.width = dev->width;
 	f->fmt.pix.height = dev->height;
 	f->fmt.pix.field = V4L2_FIELD_INTERLACED;
@@ -346,14 +349,11 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 {
 	struct stk1160 *dev = video_drvdata(file);
 	struct vb2_queue *q = &dev->vb_vidq;
-	int rc;
 
 	if (vb2_is_busy(q))
 		return -EBUSY;
 
-	rc = vidioc_try_fmt_vid_cap(file, priv, f);
-	if (rc < 0)
-		return rc;
+	vidioc_try_fmt_vid_cap(file, priv, f);
 
 	/* We don't support any format changes */
 

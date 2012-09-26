@@ -20,7 +20,6 @@
 #include <linux/videodev2.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-device.h>
-#include <media/videobuf-core.h>
 #include <media/videobuf2-dma-contig.h>
 #include <media/davinci/vpif_types.h>
 
@@ -62,8 +61,7 @@ struct video_obj {
 					 * most recent displayed frame only */
 	v4l2_std_id stdid;		/* Currently selected or default
 					 * standard */
-	u32 dv_preset;
-	struct v4l2_bt_timings bt_timings;
+	struct v4l2_dv_timings dv_timings;
 	u32 output_id;			/* Current output id */
 };
 

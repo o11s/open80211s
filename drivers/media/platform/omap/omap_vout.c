@@ -1291,7 +1291,7 @@ static int vidioc_g_crop(struct file *file, void *fh, struct v4l2_crop *crop)
 	return 0;
 }
 
-static int vidioc_s_crop(struct file *file, void *fh, struct v4l2_crop *crop)
+static int vidioc_s_crop(struct file *file, void *fh, const struct v4l2_crop *crop)
 {
 	int ret = -EINVAL;
 	struct omap_vout_device *vout = fh;
@@ -1744,7 +1744,7 @@ static int vidioc_streamoff(struct file *file, void *fh, enum v4l2_buf_type i)
 }
 
 static int vidioc_s_fbuf(struct file *file, void *fh,
-				struct v4l2_framebuffer *a)
+				const struct v4l2_framebuffer *a)
 {
 	int enable = 0;
 	struct omap_overlay *ovl;
@@ -1951,6 +1951,7 @@ static int __init omap_vout_setup_video_data(struct omap_vout_device *vout)
 
 	vfd->fops = &omap_vout_fops;
 	vfd->v4l2_dev = &vout->vid_dev->v4l2_dev;
+	vfd->vfl_dir = VFL_DIR_TX;
 	mutex_init(&vout->lock);
 
 	vfd->minor = -1;

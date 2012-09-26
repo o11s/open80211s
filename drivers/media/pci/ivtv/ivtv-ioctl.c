@@ -784,7 +784,7 @@ static int ivtv_g_audio(struct file *file, void *fh, struct v4l2_audio *vin)
 	return ivtv_get_audio_input(itv, vin->index, vin);
 }
 
-static int ivtv_s_audio(struct file *file, void *fh, struct v4l2_audio *vout)
+static int ivtv_s_audio(struct file *file, void *fh, const struct v4l2_audio *vout)
 {
 	struct ivtv *itv = fh2id(fh)->itv;
 
@@ -813,11 +813,13 @@ static int ivtv_g_audout(struct file *file, void *fh, struct v4l2_audioout *vin)
 	return ivtv_get_audio_output(itv, vin->index, vin);
 }
 
-static int ivtv_s_audout(struct file *file, void *fh, struct v4l2_audioout *vout)
+static int ivtv_s_audout(struct file *file, void *fh, const struct v4l2_audioout *vout)
 {
 	struct ivtv *itv = fh2id(fh)->itv;
 
-	return ivtv_get_audio_output(itv, vout->index, vout);
+	if (itv->card->video_outputs == NULL || vout->index != 0)
+		return -EINVAL;
+	return 0;
 }
 
 static int ivtv_enum_input(struct file *file, void *fh, struct v4l2_input *vin)
@@ -872,7 +874,7 @@ static int ivtv_cropcap(struct file *file, void *fh, struct v4l2_cropcap *cropca
 	return 0;
 }
 
-static int ivtv_s_crop(struct file *file, void *fh, struct v4l2_crop *crop)
+static int ivtv_s_crop(struct file *file, void *fh, const struct v4l2_crop *crop)
 {
 	struct ivtv_open_id *id = fh2id(fh);
 	struct ivtv *itv = id->itv;
@@ -1427,7 +1429,7 @@ static int ivtv_g_fbuf(struct file *file, void *fh, struct v4l2_framebuffer *fb)
 	return 0;
 }
 
-static int ivtv_s_fbuf(struct file *file, void *fh, struct v4l2_framebuffer *fb)
+static int ivtv_s_fbuf(struct file *file, void *fh, const struct v4l2_framebuffer *fb)
 {
 	struct ivtv_open_id *id = fh2id(fh);
 	struct ivtv *itv = id->itv;
@@ -1444,7 +1446,7 @@ static int ivtv_s_fbuf(struct file *file, void *fh, struct v4l2_framebuffer *fb)
 	itv->osd_chroma_key_state = (fb->flags & V4L2_FBUF_FLAG_CHROMAKEY) != 0;
 	ivtv_set_osd_alpha(itv);
 	yi->track_osd = (fb->flags & V4L2_FBUF_FLAG_OVERLAY) != 0;
-	return ivtv_g_fbuf(file, fh, fb);
+	return 0;
 }
 
 static int ivtv_overlay(struct file *file, void *fh, unsigned int on)
@@ -1460,7 +1462,7 @@ static int ivtv_overlay(struct file *file, void *fh, unsigned int on)
 	return 0;
 }
 
-static int ivtv_subscribe_event(struct v4l2_fh *fh, struct v4l2_event_subscription *sub)
+static int ivtv_subscribe_event(struct v4l2_fh *fh, const struct v4l2_event_subscription *sub)
 {
 	switch (sub->type) {
 	case V4L2_EVENT_VSYNC:

@@ -1476,7 +1476,7 @@ follows.<informaltable>
 		  </row>
 		  <row>
 		    <entry><constant>V4L2_BUF_TYPE_PRIVATE_BASE</constant></entry>
-		    <entry><constant>V4L2_BUF_TYPE_PRIVATE</constant></entry>
+		    <entry><constant>V4L2_BUF_TYPE_PRIVATE</constant> (but this is deprecated)</entry>
 		  </row>
 		</tbody>
 	      </tgroup>
@@ -2554,29 +2554,6 @@ and may change in the future.</para>
         <listitem>
 	  <para>Video Output Overlay (OSD) Interface, <xref
 	    linkend="osd" />.</para>
-        </listitem>
-	<listitem>
-	  <para><constant>V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY</constant>,
-	&v4l2-buf-type;, <xref linkend="v4l2-buf-type" />.</para>
-        </listitem>
-        <listitem>
-	  <para><constant>V4L2_CAP_VIDEO_OUTPUT_OVERLAY</constant>,
-&VIDIOC-QUERYCAP; ioctl, <xref linkend="device-capabilities" />.</para>
-        </listitem>
-        <listitem>
-	  <para>&VIDIOC-ENUM-FRAMESIZES; and
-&VIDIOC-ENUM-FRAMEINTERVALS; ioctls.</para>
-        </listitem>
-        <listitem>
-	  <para>&VIDIOC-G-ENC-INDEX; ioctl.</para>
-        </listitem>
-        <listitem>
-	  <para>&VIDIOC-ENCODER-CMD; and &VIDIOC-TRY-ENCODER-CMD;
-ioctls.</para>
-        </listitem>
-        <listitem>
-	  <para>&VIDIOC-DECODER-CMD; and &VIDIOC-TRY-DECODER-CMD;
-ioctls.</para>
         </listitem>
         <listitem>
 	  <para>&VIDIOC-DBG-G-REGISTER; and &VIDIOC-DBG-S-REGISTER;

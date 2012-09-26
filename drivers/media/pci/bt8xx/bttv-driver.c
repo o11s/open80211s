@@ -2740,7 +2740,7 @@ static int bttv_overlay(struct file *file, void *f, unsigned int on)
 }
 
 static int bttv_s_fbuf(struct file *file, void *f,
-				struct v4l2_framebuffer *fb)
+				const struct v4l2_framebuffer *fb)
 {
 	struct bttv_fh *fh = f;
 	struct bttv *btv = fh->btv;
@@ -2986,7 +2986,7 @@ static int bttv_g_crop(struct file *file, void *f, struct v4l2_crop *crop)
 	return 0;
 }
 
-static int bttv_s_crop(struct file *file, void *f, struct v4l2_crop *crop)
+static int bttv_s_crop(struct file *file, void *f, const struct v4l2_crop *crop)
 {
 	struct bttv_fh *fh = f;
 	struct bttv *btv = fh->btv;
@@ -3028,17 +3028,17 @@ static int bttv_s_crop(struct file *file, void *f, struct v4l2_crop *crop)
 	}
 
 	/* Min. scaled size 48 x 32. */
-	c.rect.left = clamp(crop->c.left, b_left, b_right - 48);
+	c.rect.left = clamp_t(s32, crop->c.left, b_left, b_right - 48);
 	c.rect.left = min(c.rect.left, (__s32) MAX_HDELAY);
 
-	c.rect.width = clamp(crop->c.width,
+	c.rect.width = clamp_t(s32, crop->c.width,
 			     48, b_right - c.rect.left);
 
-	c.rect.top = clamp(crop->c.top, b_top, b_bottom - 32);
+	c.rect.top = clamp_t(s32, crop->c.top, b_top, b_bottom - 32);
 	/* Top and height must be a multiple of two. */
 	c.rect.top = (c.rect.top + 1) & ~1;
 
-	c.rect.height = clamp(crop->c.height,
+	c.rect.height = clamp_t(s32, crop->c.height,
 			      32, b_bottom - c.rect.top);
 	c.rect.height = (c.rect.height + 1) & ~1;
 
@@ -3076,7 +3076,7 @@ static int bttv_g_audio(struct file *file, void *priv, struct v4l2_audio *a)
 	return 0;
 }
 
-static int bttv_s_audio(struct file *file, void *priv, struct v4l2_audio *a)
+static int bttv_s_audio(struct file *file, void *priv, const struct v4l2_audio *a)
 {
 	if (unlikely(a->index))
 		return -EINVAL;
@@ -3480,7 +3480,7 @@ static int radio_s_tuner(struct file *file, void *priv,
 }
 
 static int radio_s_audio(struct file *file, void *priv,
-					struct v4l2_audio *a)
+					const struct v4l2_audio *a)
 {
 	if (unlikely(a->index))
 		return -EINVAL;

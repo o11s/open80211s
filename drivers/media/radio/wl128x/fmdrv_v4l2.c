@@ -258,7 +258,7 @@ static int fm_v4l2_vidioc_g_audio(struct file *file, void *priv,
 }
 
 static int fm_v4l2_vidioc_s_audio(struct file *file, void *priv,
-		struct v4l2_audio *audio)
+		const struct v4l2_audio *audio)
 {
 	if (audio->index != 0)
 		return -EINVAL;
@@ -403,10 +403,13 @@ static int fm_v4l2_vidioc_s_freq(struct file *file, void *priv,
 
 /* Set hardware frequency seek. If current mode is NOT RX, set it RX. */
 static int fm_v4l2_vidioc_s_hw_freq_seek(struct file *file, void *priv,
-		struct v4l2_hw_freq_seek *seek)
+		const struct v4l2_hw_freq_seek *seek)
 {
 	struct fmdev *fmdev = video_drvdata(file);
 	int ret;
+
+	if (file->f_flags & O_NONBLOCK)
+		return -EWOULDBLOCK;
 
 	if (fmdev->curr_fmmode != FM_MODE_RX) {
 		ret = fmc_set_mode(fmdev, FM_MODE_RX);
@@ -448,7 +451,7 @@ static int fm_v4l2_vidioc_g_modulator(struct file *file, void *priv,
 
 /* Set modulator attributes. If mode is not TX, set to TX. */
 static int fm_v4l2_vidioc_s_modulator(struct file *file, void *priv,
-		struct v4l2_modulator *mod)
+		const struct v4l2_modulator *mod)
 {
 	struct fmdev *fmdev = video_drvdata(file);
 	u8 rds_mode;

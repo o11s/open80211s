@@ -24,6 +24,7 @@
 #include <linux/videodev2.h>
 #include <linux/of.h>
 
+#include <mach/iram.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -42,9 +43,9 @@
 #define CODA7_WORK_BUF_SIZE	(512 * 1024 + CODA_FMO_BUF_SIZE * 8 * 1024)
 #define CODA_PARA_BUF_SIZE	(10 * 1024)
 #define CODA_ISRAM_SIZE	(2048 * 2)
+#define CODA7_IRAM_SIZE		0x14000 /* 81920 bytes */
 
-#define CODA_OUTPUT_BUFS	4
-#define CODA_CAPTURE_BUFS	2
+#define CODA_MAX_FRAMEBUFFERS	2
 
 #define MAX_W		720
 #define MAX_H		576
@@ -84,6 +85,7 @@ enum coda_inst_type {
 
 enum coda_product {
 	CODA_DX6 = 0xf001,
+	CODA_7541 = 0xf012,
 };
 
 struct coda_fmt {
@@ -126,15 +128,20 @@ struct coda_dev {
 
 	struct coda_aux_buf	codebuf;
 	struct coda_aux_buf	workbuf;
+	long unsigned int	iram_paddr;
 
 	spinlock_t		irqlock;
 	struct mutex		dev_mutex;
 	struct v4l2_m2m_dev	*m2m_dev;
 	struct vb2_alloc_ctx	*alloc_ctx;
-	int			instances;
+	struct list_head	instances;
+	unsigned long		instance_mask;
+	struct delayed_work	timeout;
+	struct completion	done;
 };
 
 struct coda_params {
+	u8			rot_mode;
 	u8			h264_intra_qp;
 	u8			h264_inter_qp;
 	u8			mpeg4_intra_qp;
@@ -144,11 +151,13 @@ struct coda_params {
 	enum v4l2_mpeg_video_multi_slice_mode slice_mode;
 	u32			framerate;
 	u16			bitrate;
+	u32			slice_max_bits;
 	u32			slice_max_mb;
 };
 
 struct coda_ctx {
 	struct coda_dev			*dev;
+	struct list_head		list;
 	int				aborting;
 	int				rawstreamon;
 	int				compstreamon;
@@ -160,11 +169,12 @@ struct coda_ctx {
 	struct v4l2_m2m_ctx		*m2m_ctx;
 	struct v4l2_ctrl_handler	ctrls;
 	struct v4l2_fh			fh;
-	struct vb2_buffer		*reference;
 	int				gopcounter;
 	char				vpu_header[3][64];
 	int				vpu_header_size[3];
 	struct coda_aux_buf		parabuf;
+	struct coda_aux_buf		internal_frames[CODA_MAX_FRAMEBUFFERS];
+	int				num_internal_frames;
 	int				idx;
 };
 
@@ -261,6 +271,24 @@ static struct coda_fmt codadx6_formats[] = {
 	},
 };
 
+static struct coda_fmt coda7_formats[] = {
+	{
+		.name = "YUV 4:2:0 Planar",
+		.fourcc = V4L2_PIX_FMT_YUV420,
+		.type = CODA_FMT_RAW,
+	},
+	{
+		.name = "H264 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_H264,
+		.type = CODA_FMT_ENC,
+	},
+	{
+		.name = "MPEG4 Encoded Stream",
+		.fourcc = V4L2_PIX_FMT_MPEG4,
+		.type = CODA_FMT_ENC,
+	},
+};
+
 static struct coda_fmt *find_format(struct coda_dev *dev, struct v4l2_format *f)
 {
 	struct coda_fmt *formats = dev->devtype->formats;
@@ -287,8 +315,13 @@ static int vidioc_querycap(struct file *file, void *priv,
 	strlcpy(cap->driver, CODA_NAME, sizeof(cap->driver));
 	strlcpy(cap->card, CODA_NAME, sizeof(cap->card));
 	strlcpy(cap->bus_info, CODA_NAME, sizeof(cap->bus_info));
-	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT
-				| V4L2_CAP_STREAMING;
+	/*
+	 * This is only a mem-to-mem video device. The capture and output
+	 * device capability flags are left only for backward compatibility
+	 * and are scheduled for removal.
+	 */
+	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT |
+			   V4L2_CAP_VIDEO_M2M | V4L2_CAP_STREAMING;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
@@ -381,8 +414,8 @@ static int vidioc_try_fmt(struct coda_dev *dev, struct v4l2_format *f)
 				      W_ALIGN, &f->fmt.pix.height,
 				      MIN_H, MAX_H, H_ALIGN, S_ALIGN);
 		f->fmt.pix.bytesperline = round_up(f->fmt.pix.width, 2);
-		f->fmt.pix.sizeimage = f->fmt.pix.height *
-					f->fmt.pix.bytesperline;
+		f->fmt.pix.sizeimage = f->fmt.pix.width *
+					f->fmt.pix.height * 3 / 2;
 	} else { /*encoded formats h.264/mpeg4 */
 		f->fmt.pix.bytesperline = 0;
 		f->fmt.pix.sizeimage = CODA_MAX_FRAME_SIZE;
@@ -466,11 +499,7 @@ static int vidioc_s_fmt(struct coda_ctx *ctx, struct v4l2_format *f)
 	q_data->fmt = find_format(ctx->dev, f);
 	q_data->width = f->fmt.pix.width;
 	q_data->height = f->fmt.pix.height;
-	if (q_data->fmt->fourcc == V4L2_PIX_FMT_YUV420) {
-		q_data->sizeimage = q_data->width * q_data->height * 3 / 2;
-	} else { /* encoded format h.264/mpeg-4 */
-		q_data->sizeimage = CODA_MAX_FRAME_SIZE;
-	}
+	q_data->sizeimage = f->fmt.pix.sizeimage;
 
 	v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
 		"Setting format for type %d, wxh: %dx%d, fmt: %d\n",
@@ -673,7 +702,7 @@ static void coda_device_run(void *m2m_priv)
 	}
 
 	/* submit */
-	coda_write(dev, 0, CODA_CMD_ENC_PIC_ROT_MODE);
+	coda_write(dev, CODA_ROT_MIR_ENABLE | ctx->params.rot_mode, CODA_CMD_ENC_PIC_ROT_MODE);
 	coda_write(dev, quant_param, CODA_CMD_ENC_PIC_QS);
 
 
@@ -691,6 +720,17 @@ static void coda_device_run(void *m2m_priv)
 	coda_write(dev, pic_stream_buffer_addr, CODA_CMD_ENC_PIC_BB_START);
 	coda_write(dev, pic_stream_buffer_size / 1024,
 		   CODA_CMD_ENC_PIC_BB_SIZE);
+
+	if (dev->devtype->product == CODA_7541) {
+		coda_write(dev, CODA7_USE_BIT_ENABLE | CODA7_USE_HOST_BIT_ENABLE |
+				CODA7_USE_ME_ENABLE | CODA7_USE_HOST_ME_ENABLE,
+				CODA7_REG_BIT_AXI_SRAM_USE);
+	}
+
+	/* 1 second timeout in case CODA locks up */
+	schedule_delayed_work(&dev->timeout, HZ);
+
+	INIT_COMPLETION(dev->done);
 	coda_command_async(ctx, CODA_COMMAND_PIC_RUN);
 }
 
@@ -706,20 +746,6 @@ static int coda_job_ready(void *m2m_priv)
 		!v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx)) {
 		v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
 			 "not ready: not enough video buffers.\n");
-		return 0;
-	}
-
-	/* For P frames a reference picture is needed too */
-	if ((ctx->gopcounter != (ctx->params.gop_size - 1)) &&
-	   !ctx->reference) {
-		v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
-			 "not ready: reference picture not available.\n");
-		return 0;
-	}
-
-	if (coda_isbusy(ctx->dev)) {
-		v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
-			 "not ready: coda is still busy.\n");
 		return 0;
 	}
 
@@ -770,7 +796,6 @@ static void set_default_params(struct coda_ctx *ctx)
 	ctx->params.codec_mode = CODA_MODE_INVALID;
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
 	ctx->params.framerate = 30;
-	ctx->reference = NULL;
 	ctx->aborting = 0;
 
 	/* Default formats for output and input queues */
@@ -793,20 +818,11 @@ static int coda_queue_setup(struct vb2_queue *vq,
 				unsigned int sizes[], void *alloc_ctxs[])
 {
 	struct coda_ctx *ctx = vb2_get_drv_priv(vq);
+	struct coda_q_data *q_data;
 	unsigned int size;
 
-	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		*nbuffers = CODA_OUTPUT_BUFS;
-		if (fmt)
-			size = fmt->fmt.pix.width *
-				fmt->fmt.pix.height * 3 / 2;
-		else
-			size = MAX_W *
-				MAX_H * 3 / 2;
-	} else {
-		*nbuffers = CODA_CAPTURE_BUFS;
-		size = CODA_MAX_FRAME_SIZE;
-	}
+	q_data = get_q_data(ctx, vq->type);
+	size = q_data->sizeimage;
 
 	*nplanes = 1;
 	sizes[0] = size;
@@ -857,6 +873,77 @@ static void coda_wait_finish(struct vb2_queue *q)
 	coda_lock(ctx);
 }
 
+static void coda_free_framebuffers(struct coda_ctx *ctx)
+{
+	int i;
+
+	for (i = 0; i < CODA_MAX_FRAMEBUFFERS; i++) {
+		if (ctx->internal_frames[i].vaddr) {
+			dma_free_coherent(&ctx->dev->plat_dev->dev,
+				ctx->internal_frames[i].size,
+				ctx->internal_frames[i].vaddr,
+				ctx->internal_frames[i].paddr);
+			ctx->internal_frames[i].vaddr = NULL;
+		}
+	}
+}
+
+static int coda_alloc_framebuffers(struct coda_ctx *ctx, struct coda_q_data *q_data, u32 fourcc)
+{
+	struct coda_dev *dev = ctx->dev;
+
+	int height = q_data->height;
+	int width = q_data->width;
+	u32 *p;
+	int i;
+
+	/* Allocate frame buffers */
+	ctx->num_internal_frames = CODA_MAX_FRAMEBUFFERS;
+	for (i = 0; i < ctx->num_internal_frames; i++) {
+		ctx->internal_frames[i].size = q_data->sizeimage;
+		if (fourcc == V4L2_PIX_FMT_H264 && dev->devtype->product != CODA_DX6)
+			ctx->internal_frames[i].size += width / 2 * height / 2;
+		ctx->internal_frames[i].vaddr = dma_alloc_coherent(
+				&dev->plat_dev->dev, ctx->internal_frames[i].size,
+				&ctx->internal_frames[i].paddr, GFP_KERNEL);
+		if (!ctx->internal_frames[i].vaddr) {
+			coda_free_framebuffers(ctx);
+			return -ENOMEM;
+		}
+	}
+
+	/* Register frame buffers in the parameter buffer */
+	p = ctx->parabuf.vaddr;
+
+	if (dev->devtype->product == CODA_DX6) {
+		for (i = 0; i < ctx->num_internal_frames; i++) {
+			p[i * 3] = ctx->internal_frames[i].paddr; /* Y */
+			p[i * 3 + 1] = p[i * 3] + width * height; /* Cb */
+			p[i * 3 + 2] = p[i * 3 + 1] + width / 2 * height / 2; /* Cr */
+		}
+	} else {
+		for (i = 0; i < ctx->num_internal_frames; i += 2) {
+			p[i * 3 + 1] = ctx->internal_frames[i].paddr; /* Y */
+			p[i * 3] = p[i * 3 + 1] + width * height; /* Cb */
+			p[i * 3 + 3] = p[i * 3] + (width / 2) * (height / 2); /* Cr */
+
+			if (fourcc == V4L2_PIX_FMT_H264)
+				p[96 + i + 1] = p[i * 3 + 3] + (width / 2) * (height / 2);
+
+			if (i + 1 < ctx->num_internal_frames) {
+				p[i * 3 + 2] = ctx->internal_frames[i+1].paddr; /* Y */
+				p[i * 3 + 5] = p[i * 3 + 2] + width * height ; /* Cb */
+				p[i * 3 + 4] = p[i * 3 + 5] + (width / 2) * (height / 2); /* Cr */
+
+				if (fourcc == V4L2_PIX_FMT_H264)
+					p[96 + i] = p[i * 3 + 4] + (width / 2) * (height / 2);
+			}
+		}
+	}
+
+	return 0;
+}
+
 static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct coda_ctx *ctx = vb2_get_drv_priv(q);
@@ -864,11 +951,10 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 	u32 bitstream_buf, bitstream_size;
 	struct coda_dev *dev = ctx->dev;
 	struct coda_q_data *q_data_src, *q_data_dst;
-	u32 dst_fourcc;
 	struct vb2_buffer *buf;
-	struct vb2_queue *src_vq;
+	u32 dst_fourcc;
 	u32 value;
-	int i = 0;
+	int ret;
 
 	if (count < 1)
 		return -EINVAL;
@@ -881,6 +967,10 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 	/* Don't start the coda unless both queues are on */
 	if (!(ctx->rawstreamon & ctx->compstreamon))
 		return 0;
+
+	if (coda_isbusy(dev))
+		if (wait_for_completion_interruptible_timeout(&dev->done, HZ) <= 0)
+			return -EBUSY;
 
 	ctx->gopcounter = ctx->params.gop_size - 1;
 
@@ -922,8 +1012,10 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 			CODA7_STREAM_BUF_PIC_RESET, CODA_REG_BIT_STREAM_CTRL);
 	}
 
-	/* Configure the coda */
-	coda_write(dev, 0xffff4c00, CODA_REG_BIT_SEARCH_RAM_BASE_ADDR);
+	if (dev->devtype->product == CODA_DX6) {
+		/* Configure the coda */
+		coda_write(dev, dev->iram_paddr, CODADX6_REG_BIT_SEARCH_RAM_BASE_ADDR);
+	}
 
 	/* Could set rotation here if needed */
 	switch (dev->devtype->product) {
@@ -963,12 +1055,23 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 		return -EINVAL;
 	}
 
-	value  = (ctx->params.slice_max_mb & CODA_SLICING_SIZE_MASK) << CODA_SLICING_SIZE_OFFSET;
-	value |= (1 & CODA_SLICING_UNIT_MASK) << CODA_SLICING_UNIT_OFFSET;
-	if (ctx->params.slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB)
+	switch (ctx->params.slice_mode) {
+	case V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE:
+		value = 0;
+		break;
+	case V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB:
+		value  = (ctx->params.slice_max_mb & CODA_SLICING_SIZE_MASK) << CODA_SLICING_SIZE_OFFSET;
+		value |= (1 & CODA_SLICING_UNIT_MASK) << CODA_SLICING_UNIT_OFFSET;
 		value |=  1 & CODA_SLICING_MODE_MASK;
+		break;
+	case V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES:
+		value  = (ctx->params.slice_max_bits & CODA_SLICING_SIZE_MASK) << CODA_SLICING_SIZE_OFFSET;
+		value |= (0 & CODA_SLICING_UNIT_MASK) << CODA_SLICING_UNIT_OFFSET;
+		value |=  1 & CODA_SLICING_MODE_MASK;
+		break;
+	}
 	coda_write(dev, value, CODA_CMD_ENC_SEQ_SLICE_MODE);
-	value  =  ctx->params.gop_size & CODA_GOP_SIZE_MASK;
+	value = ctx->params.gop_size & CODA_GOP_SIZE_MASK;
 	coda_write(dev, value, CODA_CMD_ENC_SEQ_GOP_SIZE);
 
 	if (ctx->params.bitrate) {
@@ -998,7 +1101,12 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 		value  = (FMO_SLICE_SAVE_BUF_SIZE << 7);
 		value |= (0 & CODA_FMOPARAM_TYPE_MASK) << CODA_FMOPARAM_TYPE_OFFSET;
 		value |=  0 & CODA_FMOPARAM_SLICENUM_MASK;
-		coda_write(dev, value, CODA_CMD_ENC_SEQ_FMO);
+		if (dev->devtype->product == CODA_DX6) {
+			coda_write(dev, value, CODADX6_CMD_ENC_SEQ_FMO);
+		} else {
+			coda_write(dev, dev->iram_paddr, CODA7_CMD_ENC_SEQ_SEARCH_BASE);
+			coda_write(dev, 48 * 1024, CODA7_CMD_ENC_SEQ_SEARCH_SIZE);
+		}
 	}
 
 	if (coda_command_sync(ctx, CODA_COMMAND_SEQ_INIT)) {
@@ -1009,26 +1117,20 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 	if (coda_read(dev, CODA_RET_ENC_SEQ_SUCCESS) == 0)
 		return -EFAULT;
 
-	/*
-	 * Walk the src buffer list and let the codec know the
-	 * addresses of the pictures.
-	 */
-	src_vq = v4l2_m2m_get_vq(ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
-	for (i = 0; i < src_vq->num_buffers; i++) {
-		u32 *p;
+	ret = coda_alloc_framebuffers(ctx, q_data_src, dst_fourcc);
+	if (ret < 0)
+		return ret;
 
-		buf = src_vq->bufs[i];
-		p = ctx->parabuf.vaddr;
-
-		p[i * 3] = vb2_dma_contig_plane_dma_addr(buf, 0);
-		p[i * 3 + 1] = p[i * 3] + q_data_src->width *
-				q_data_src->height;
-		p[i * 3 + 2] = p[i * 3 + 1] + q_data_src->width / 2 *
-				q_data_src->height / 2;
+	coda_write(dev, ctx->num_internal_frames, CODA_CMD_SET_FRAME_BUF_NUM);
+	coda_write(dev, round_up(q_data_src->width, 8), CODA_CMD_SET_FRAME_BUF_STRIDE);
+	if (dev->devtype->product != CODA_DX6) {
+		coda_write(dev, round_up(q_data_src->width, 8), CODA7_CMD_SET_FRAME_SOURCE_BUF_STRIDE);
+		coda_write(dev, dev->iram_paddr + 48 * 1024, CODA7_CMD_SET_FRAME_AXI_DBKY_ADDR);
+		coda_write(dev, dev->iram_paddr + 53 * 1024, CODA7_CMD_SET_FRAME_AXI_DBKC_ADDR);
+		coda_write(dev, dev->iram_paddr + 58 * 1024, CODA7_CMD_SET_FRAME_AXI_BIT_ADDR);
+		coda_write(dev, dev->iram_paddr + 68 * 1024, CODA7_CMD_SET_FRAME_AXI_IPACDC_ADDR);
+		coda_write(dev, 0x0, CODA7_CMD_SET_FRAME_AXI_OVL_ADDR);
 	}
-
-	coda_write(dev, src_vq->num_buffers, CODA_CMD_SET_FRAME_BUF_NUM);
-	coda_write(dev, q_data_src->width, CODA_CMD_SET_FRAME_BUF_STRIDE);
 	if (coda_command_sync(ctx, CODA_COMMAND_SET_FRAME_BUF)) {
 		v4l2_err(v4l2_dev, "CODA_COMMAND_SET_FRAME_BUF timeout\n");
 		return -ETIMEDOUT;
@@ -1123,6 +1225,7 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 static int coda_stop_streaming(struct vb2_queue *q)
 {
 	struct coda_ctx *ctx = vb2_get_drv_priv(q);
+	struct coda_dev *dev = ctx->dev;
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
@@ -1134,15 +1237,28 @@ static int coda_stop_streaming(struct vb2_queue *q)
 		ctx->compstreamon = 0;
 	}
 
-	if (!ctx->rawstreamon && !ctx->compstreamon) {
-		v4l2_dbg(1, coda_debug, &ctx->dev->v4l2_dev,
-			 "%s: sent command 'SEQ_END' to coda\n", __func__);
-		if (coda_command_sync(ctx, CODA_COMMAND_SEQ_END)) {
-			v4l2_err(&ctx->dev->v4l2_dev,
-				 "CODA_COMMAND_SEQ_END failed\n");
-			return -ETIMEDOUT;
+	/* Don't stop the coda unless both queues are off */
+	if (ctx->rawstreamon || ctx->compstreamon)
+		return 0;
+
+	if (coda_isbusy(dev)) {
+		if (wait_for_completion_interruptible_timeout(&dev->done, HZ) <= 0) {
+			v4l2_warn(&dev->v4l2_dev,
+				  "%s: timeout, sending SEQ_END anyway\n", __func__);
 		}
 	}
+
+	cancel_delayed_work(&dev->timeout);
+
+	v4l2_dbg(1, coda_debug, &dev->v4l2_dev,
+		 "%s: sent command 'SEQ_END' to coda\n", __func__);
+	if (coda_command_sync(ctx, CODA_COMMAND_SEQ_END)) {
+		v4l2_err(&dev->v4l2_dev,
+			 "CODA_COMMAND_SEQ_END failed\n");
+		return -ETIMEDOUT;
+	}
+
+	coda_free_framebuffers(ctx);
 
 	return 0;
 }
@@ -1166,6 +1282,18 @@ static int coda_s_ctrl(struct v4l2_ctrl *ctrl)
 		 "s_ctrl: id = %d, val = %d\n", ctrl->id, ctrl->val);
 
 	switch (ctrl->id) {
+	case V4L2_CID_HFLIP:
+		if (ctrl->val)
+			ctx->params.rot_mode |= CODA_MIR_HOR;
+		else
+			ctx->params.rot_mode &= ~CODA_MIR_HOR;
+		break;
+	case V4L2_CID_VFLIP:
+		if (ctrl->val)
+			ctx->params.rot_mode |= CODA_MIR_VER;
+		else
+			ctx->params.rot_mode &= ~CODA_MIR_VER;
+		break;
 	case V4L2_CID_MPEG_VIDEO_BITRATE:
 		ctx->params.bitrate = ctrl->val / 1000;
 		break;
@@ -1190,6 +1318,9 @@ static int coda_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB:
 		ctx->params.slice_max_mb = ctrl->val;
 		break;
+	case V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_BYTES:
+		ctx->params.slice_max_bits = ctrl->val * 8;
+		break;
 	case V4L2_CID_MPEG_VIDEO_HEADER_MODE:
 		break;
 	default:
@@ -1211,6 +1342,10 @@ static int coda_ctrls_setup(struct coda_ctx *ctx)
 	v4l2_ctrl_handler_init(&ctx->ctrls, 9);
 
 	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
+		V4L2_CID_HFLIP, 0, 1, 1, 0);
+	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
+		V4L2_CID_VFLIP, 0, 1, 1, 0);
+	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_BITRATE, 0, 32767000, 1, 0);
 	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_GOP_SIZE, 1, 60, 1, 16);
@@ -1224,10 +1359,12 @@ static int coda_ctrls_setup(struct coda_ctx *ctx)
 		V4L2_CID_MPEG_VIDEO_MPEG4_P_FRAME_QP, 1, 31, 1, 2);
 	v4l2_ctrl_new_std_menu(&ctx->ctrls, &coda_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MODE,
-		V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB, 0,
-		V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB);
+		V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES, 0x0,
+		V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE);
 	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB, 1, 0x3fffffff, 1, 1);
+	v4l2_ctrl_new_std(&ctx->ctrls, &coda_ctrl_ops,
+		V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_BYTES, 1, 0x3fffffff, 1, 500);
 	v4l2_ctrl_new_std_menu(&ctx->ctrls, &coda_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_HEADER_MODE,
 		V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME,
@@ -1250,7 +1387,7 @@ static int coda_queue_init(void *priv, struct vb2_queue *src_vq,
 	int ret;
 
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-	src_vq->io_modes = VB2_MMAP;
+	src_vq->io_modes = VB2_MMAP | VB2_USERPTR;
 	src_vq->drv_priv = ctx;
 	src_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	src_vq->ops = &coda_qops;
@@ -1261,7 +1398,7 @@ static int coda_queue_init(void *priv, struct vb2_queue *src_vq,
 		return ret;
 
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	dst_vq->io_modes = VB2_MMAP;
+	dst_vq->io_modes = VB2_MMAP | VB2_USERPTR;
 	dst_vq->drv_priv = ctx;
 	dst_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	dst_vq->ops = &coda_qops;
@@ -1270,14 +1407,22 @@ static int coda_queue_init(void *priv, struct vb2_queue *src_vq,
 	return vb2_queue_init(dst_vq);
 }
 
+static int coda_next_free_instance(struct coda_dev *dev)
+{
+	return ffz(dev->instance_mask);
+}
+
 static int coda_open(struct file *file)
 {
 	struct coda_dev *dev = video_drvdata(file);
 	struct coda_ctx *ctx = NULL;
 	int ret = 0;
+	int idx;
 
-	if (dev->instances >= CODA_MAX_INSTANCES)
+	idx = coda_next_free_instance(dev);
+	if (idx >= CODA_MAX_INSTANCES)
 		return -EBUSY;
+	set_bit(idx, &dev->instance_mask);
 
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
 	if (!ctx)
@@ -1287,6 +1432,7 @@ static int coda_open(struct file *file)
 	file->private_data = &ctx->fh;
 	v4l2_fh_add(&ctx->fh);
 	ctx->dev = dev;
+	ctx->idx = idx;
 
 	set_default_params(ctx);
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev, ctx,
@@ -1315,7 +1461,7 @@ static int coda_open(struct file *file)
 	}
 
 	coda_lock(ctx);
-	ctx->idx = dev->instances++;
+	list_add(&ctx->list, &dev->instances);
 	coda_unlock(ctx);
 
 	clk_prepare_enable(dev->clk_per);
@@ -1342,7 +1488,7 @@ static int coda_release(struct file *file)
 		 ctx);
 
 	coda_lock(ctx);
-	dev->instances--;
+	list_del(&ctx->list);
 	coda_unlock(ctx);
 
 	dma_free_coherent(&dev->plat_dev->dev, CODA_PARA_BUF_SIZE,
@@ -1353,6 +1499,7 @@ static int coda_release(struct file *file)
 	clk_disable_unprepare(dev->clk_ahb);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
+	clear_bit(ctx->idx, &dev->instance_mask);
 	kfree(ctx);
 
 	return 0;
@@ -1388,10 +1535,12 @@ static const struct v4l2_file_operations coda_fops = {
 
 static irqreturn_t coda_irq_handler(int irq, void *data)
 {
-	struct vb2_buffer *src_buf, *dst_buf, *tmp_buf;
+	struct vb2_buffer *src_buf, *dst_buf;
 	struct coda_dev *dev = data;
 	u32 wr_ptr, start_ptr;
 	struct coda_ctx *ctx;
+
+	__cancel_delayed_work(&dev->timeout);
 
 	/* read status register to attend the IRQ */
 	coda_read(dev, CODA_REG_BIT_INT_STATUS);
@@ -1416,8 +1565,10 @@ static irqreturn_t coda_irq_handler(int irq, void *data)
 		return IRQ_NONE;
 	}
 
-	src_buf = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
-	dst_buf = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
+	complete(&dev->done);
+
+	src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+	dst_buf = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 
 	/* Get results from the coda */
 	coda_read(dev, CODA_RET_ENC_PIC_TYPE);
@@ -1447,23 +1598,7 @@ static irqreturn_t coda_irq_handler(int irq, void *data)
 		dst_buf->v4l2_buf.flags &= ~V4L2_BUF_FLAG_KEYFRAME;
 	}
 
-	/* Free previous reference picture if available */
-	if (ctx->reference) {
-		v4l2_m2m_buf_done(ctx->reference, VB2_BUF_STATE_DONE);
-		ctx->reference = NULL;
-	}
-
-	/*
-	 * For the last frame of the gop we don't need to save
-	 * a reference picture.
-	 */
-	v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
-	tmp_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
-	if (ctx->gopcounter == 0)
-		v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
-	else
-		ctx->reference = tmp_buf;
-
+	v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
 	v4l2_m2m_buf_done(dst_buf, VB2_BUF_STATE_DONE);
 
 	ctx->gopcounter--;
@@ -1481,8 +1616,30 @@ static irqreturn_t coda_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void coda_timeout(struct work_struct *work)
+{
+	struct coda_ctx *ctx;
+	struct coda_dev *dev = container_of(to_delayed_work(work),
+					    struct coda_dev, timeout);
+
+	if (completion_done(&dev->done))
+		return;
+
+	complete(&dev->done);
+
+	v4l2_err(&dev->v4l2_dev, "CODA PIC_RUN timeout, stopping all streams\n");
+
+	mutex_lock(&dev->dev_mutex);
+	list_for_each_entry(ctx, &dev->instances, list) {
+		v4l2_m2m_streamoff(NULL, ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+		v4l2_m2m_streamoff(NULL, ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	}
+	mutex_unlock(&dev->dev_mutex);
+}
+
 static u32 coda_supported_firmwares[] = {
 	CODA_FIRMWARE_VERNUM(CODA_DX6, 2, 2, 5),
+	CODA_FIRMWARE_VERNUM(CODA_7541, 13, 4, 29),
 };
 
 static bool coda_firmware_supported(u32 vernum)
@@ -1502,13 +1659,15 @@ static char *coda_product_name(int product)
 	switch (product) {
 	case CODA_DX6:
 		return "CodaDx6";
+	case CODA_7541:
+		return "CODA7541";
 	default:
 		snprintf(buf, sizeof(buf), "(0x%04x)", product);
 		return buf;
 	}
 }
 
-static int coda_hw_init(struct coda_dev *dev, const struct firmware *fw)
+static int coda_hw_init(struct coda_dev *dev)
 {
 	u16 product, major, minor, release;
 	u32 data;
@@ -1518,21 +1677,27 @@ static int coda_hw_init(struct coda_dev *dev, const struct firmware *fw)
 	clk_prepare_enable(dev->clk_per);
 	clk_prepare_enable(dev->clk_ahb);
 
-	/* Copy the whole firmware image to the code buffer */
-	memcpy(dev->codebuf.vaddr, fw->data, fw->size);
 	/*
 	 * Copy the first CODA_ISRAM_SIZE in the internal SRAM.
-	 * This memory seems to be big-endian here, which is weird, since
-	 * the internal ARM processor of the coda is little endian.
+	 * The 16-bit chars in the code buffer are in memory access
+	 * order, re-sort them to CODA order for register download.
 	 * Data in this SRAM survives a reboot.
 	 */
-	p = (u16 *)fw->data;
-	for (i = 0; i < (CODA_ISRAM_SIZE / 2); i++)  {
-		data = CODA_DOWN_ADDRESS_SET(i) |
-			CODA_DOWN_DATA_SET(p[i ^ 1]);
-		coda_write(dev, data, CODA_REG_BIT_CODE_DOWN);
+	p = (u16 *)dev->codebuf.vaddr;
+	if (dev->devtype->product == CODA_DX6) {
+		for (i = 0; i < (CODA_ISRAM_SIZE / 2); i++)  {
+			data = CODA_DOWN_ADDRESS_SET(i) |
+				CODA_DOWN_DATA_SET(p[i ^ 1]);
+			coda_write(dev, data, CODA_REG_BIT_CODE_DOWN);
+		}
+	} else {
+		for (i = 0; i < (CODA_ISRAM_SIZE / 2); i++) {
+			data = CODA_DOWN_ADDRESS_SET(i) |
+				CODA_DOWN_DATA_SET(p[round_down(i, 4) +
+							3 - (i % 4)]);
+			coda_write(dev, data, CODA_REG_BIT_CODE_DOWN);
+		}
 	}
-	release_firmware(fw);
 
 	/* Tell the BIT where to find everything it needs */
 	coda_write(dev, dev->workbuf.paddr,
@@ -1550,6 +1715,10 @@ static int coda_hw_init(struct coda_dev *dev, const struct firmware *fw)
 		coda_write(dev, CODA7_STREAM_BUF_PIC_FLUSH, CODA_REG_BIT_STREAM_CTRL);
 	}
 	coda_write(dev, 0, CODA_REG_BIT_FRAME_MEM_CTRL);
+
+	if (dev->devtype->product != CODA_DX6)
+		coda_write(dev, 0, CODA7_REG_BIT_AXI_SRAM_USE);
+
 	coda_write(dev, CODA_INT_INTERRUPT_ENABLE,
 		      CODA_REG_BIT_INT_ENABLE);
 
@@ -1628,7 +1797,11 @@ static void coda_fw_callback(const struct firmware *fw, void *context)
 		return;
 	}
 
-	ret = coda_hw_init(dev, fw);
+	/* Copy the whole firmware image to the code buffer */
+	memcpy(dev->codebuf.vaddr, fw->data, fw->size);
+	release_firmware(fw);
+
+	ret = coda_hw_init(dev);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "HW initialization failed\n");
 		return;
@@ -1639,6 +1812,7 @@ static void coda_fw_callback(const struct firmware *fw, void *context)
 	dev->vfd.release	= video_device_release_empty,
 	dev->vfd.lock	= &dev->dev_mutex;
 	dev->vfd.v4l2_dev	= &dev->v4l2_dev;
+	dev->vfd.vfl_dir	= VFL_DIR_M2M;
 	snprintf(dev->vfd.name, sizeof(dev->vfd.name), "%s", CODA_NAME);
 	video_set_drvdata(&dev->vfd, dev);
 
@@ -1683,6 +1857,7 @@ static int coda_firmware_request(struct coda_dev *dev)
 
 enum coda_platform {
 	CODA_IMX27,
+	CODA_IMX53,
 };
 
 static const struct coda_devtype coda_devdata[] = {
@@ -1692,10 +1867,17 @@ static const struct coda_devtype coda_devdata[] = {
 		.formats     = codadx6_formats,
 		.num_formats = ARRAY_SIZE(codadx6_formats),
 	},
+	[CODA_IMX53] = {
+		.firmware    = "v4l-coda7541-imx53.bin",
+		.product     = CODA_7541,
+		.formats     = coda7_formats,
+		.num_formats = ARRAY_SIZE(coda7_formats),
+	},
 };
 
 static struct platform_device_id coda_platform_ids[] = {
 	{ .name = "coda-imx27", .driver_data = CODA_IMX27 },
+	{ .name = "coda-imx53", .driver_data = CODA_7541 },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(platform, coda_platform_ids);
@@ -1703,6 +1885,7 @@ MODULE_DEVICE_TABLE(platform, coda_platform_ids);
 #ifdef CONFIG_OF
 static const struct of_device_id coda_dt_ids[] = {
 	{ .compatible = "fsl,imx27-vpu", .data = &coda_platform_ids[CODA_IMX27] },
+	{ .compatible = "fsl,imx53-vpu", .data = &coda_devdata[CODA_IMX53] },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, coda_dt_ids);
@@ -1725,6 +1908,10 @@ static int __devinit coda_probe(struct platform_device *pdev)
 	}
 
 	spin_lock_init(&dev->irqlock);
+	INIT_LIST_HEAD(&dev->instances);
+	INIT_DELAYED_WORK(&dev->timeout, coda_timeout);
+	init_completion(&dev->done);
+	complete(&dev->done);
 
 	dev->plat_dev = pdev;
 	dev->clk_per = devm_clk_get(&pdev->dev, "per");
@@ -1805,6 +1992,19 @@ static int __devinit coda_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	if (dev->devtype->product == CODA_DX6) {
+		dev->iram_paddr = 0xffff4c00;
+	} else {
+		void __iomem *iram_vaddr;
+
+		iram_vaddr = iram_alloc(CODA7_IRAM_SIZE,
+					&dev->iram_paddr);
+		if (!iram_vaddr) {
+			dev_err(&pdev->dev, "unable to alloc iram\n");
+			return -ENOMEM;
+		}
+	}
+
 	platform_set_drvdata(pdev, dev);
 
 	return coda_firmware_request(dev);
@@ -1820,6 +2020,8 @@ static int coda_remove(struct platform_device *pdev)
 	if (dev->alloc_ctx)
 		vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 	v4l2_device_unregister(&dev->v4l2_dev);
+	if (dev->iram_paddr)
+		iram_free(dev->iram_paddr, CODA7_IRAM_SIZE);
 	if (dev->codebuf.vaddr)
 		dma_free_coherent(&pdev->dev, dev->codebuf.size,
 				  &dev->codebuf.vaddr, dev->codebuf.paddr);

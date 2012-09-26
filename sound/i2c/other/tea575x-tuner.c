@@ -357,7 +357,7 @@ static int vidioc_s_frequency(struct file *file, void *priv,
 }
 
 static int vidioc_s_hw_freq_seek(struct file *file, void *fh,
-					struct v4l2_hw_freq_seek *a)
+					const struct v4l2_hw_freq_seek *a)
 {
 	struct snd_tea575x *tea = video_drvdata(file);
 	unsigned long timeout;
@@ -367,6 +367,9 @@ static int vidioc_s_hw_freq_seek(struct file *file, void *fh,
 		return -ENOTTY;
 	if (a->tuner || a->wrap_around)
 		return -EINVAL;
+
+	if (file->f_flags & O_NONBLOCK)
+		return -EWOULDBLOCK;
 
 	if (a->rangelow || a->rangehigh) {
 		for (i = 0; i < ARRAY_SIZE(bands); i++) {

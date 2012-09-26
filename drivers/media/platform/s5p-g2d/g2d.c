@@ -526,7 +526,7 @@ static int vidioc_try_crop(struct file *file, void *prv, struct v4l2_crop *cr)
 	return 0;
 }
 
-static int vidioc_s_crop(struct file *file, void *prv, struct v4l2_crop *cr)
+static int vidioc_s_crop(struct file *file, void *prv, const struct v4l2_crop *cr)
 {
 	struct g2d_ctx *ctx = prv;
 	struct g2d_frame *f;
@@ -680,6 +680,7 @@ static struct video_device g2d_videodev = {
 	.ioctl_ops	= &g2d_ioctl_ops,
 	.minor		= -1,
 	.release	= video_device_release,
+	.vfl_dir	= VFL_DIR_M2M,
 };
 
 static struct v4l2_m2m_ops g2d_m2m_ops = {

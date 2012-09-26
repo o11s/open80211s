@@ -456,8 +456,13 @@ static int vidioc_querycap(struct file *file, void *priv,
 	strlcpy(cap->driver, MEM2MEM_NAME, sizeof(cap->driver));
 	strlcpy(cap->card, MEM2MEM_NAME, sizeof(cap->card));
 	strlcpy(cap->bus_info, MEM2MEM_NAME, sizeof(cap->card));
-	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT
-			  | V4L2_CAP_STREAMING;
+	/*
+	 * This is only a mem-to-mem video device. The capture and output
+	 * device capability flags are left only for backward compatibility
+	 * and are scheduled for removal.
+	 */
+	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_OUTPUT |
+			   V4L2_CAP_VIDEO_M2M | V4L2_CAP_STREAMING;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
@@ -980,6 +985,7 @@ static struct video_device deinterlace_videodev = {
 	.ioctl_ops	= &deinterlace_ioctl_ops,
 	.minor		= -1,
 	.release	= video_device_release,
+	.vfl_dir	= VFL_DIR_M2M,
 };
 
 static struct v4l2_m2m_ops m2m_ops = {
