@@ -28,6 +28,7 @@
 #include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/ktime.h>
+#include <linux/random.h>
 #include <net/genetlink.h>
 #include "mac80211_hwsim.h"
 
@@ -47,6 +48,10 @@ MODULE_PARM_DESC(radios, "Number of simulated radios");
 static bool fake_hw_scan;
 module_param(fake_hw_scan, bool, 0444);
 MODULE_PARM_DESC(fake_hw_scan, "Install fake (no-op) hw-scan handler");
+
+static u8 loss_prob;
+module_param(loss_prob, byte, 0644);
+MODULE_PARM_DESC(loss_prob, "Loss probability for each transmission (0 to 255)");
 
 /**
  * enum hwsim_regtest - the type of regulatory tests we offer
@@ -715,8 +720,12 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 	bool ack;
 	struct ieee80211_tx_info *txi;
 	u32 _pid;
+	u8 dice;
 
-	mac80211_hwsim_monitor_rx(hw, skb);
+	get_random_bytes(&dice, 1);
+
+	if (dice >= loss_prob)
+		mac80211_hwsim_monitor_rx(hw, skb);
 
 	if (skb->len < 10) {
 		/* Should not happen; just a sanity check for addr1 use */
@@ -731,7 +740,10 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		return mac80211_hwsim_tx_frame_nl(hw, skb, _pid);
 
 	/* NO wmediumd detected, perfect medium simulation */
-	ack = mac80211_hwsim_tx_frame_no_nl(hw, skb);
+	if (dice >= loss_prob)
+		ack = mac80211_hwsim_tx_frame_no_nl(hw, skb);
+	else
+		ack = false;
 
 	if (ack && skb->len >= 16) {
 		struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
@@ -819,6 +831,9 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 	struct sk_buff *skb;
 	struct ieee80211_tx_info *info;
 	u32 _pid;
+	u8 dice;
+
+	get_random_bytes(&dice, 1);
 
 	hwsim_check_magic(vif);
 
@@ -839,8 +854,8 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 
 	if (_pid)
 		return mac80211_hwsim_tx_frame_nl(hw, skb, _pid);
-
-	mac80211_hwsim_tx_frame_no_nl(hw, skb);
+	if (dice >= loss_prob)
+		mac80211_hwsim_tx_frame_no_nl(hw, skb);
 	dev_kfree_skb(skb);
 }
 
