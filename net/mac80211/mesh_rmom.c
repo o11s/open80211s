@@ -44,16 +44,12 @@ bool is_rmom_range_addr(const u8 *addr)
 void mesh_rmom_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			  struct ieee80211s_hdr *mesh_hdr, u8 *da)
 {
-	if (is_multicast_ether_addr(da)) {
-		__le32 sn = cpu_to_le32(sdata->u.mesh.mesh_mseqnum);
-		put_unaligned(sn, &mesh_hdr->seqnum);
-		sdata->u.mesh.mesh_mseqnum++;
-	} else {
-		__le32 sn = cpu_to_le32(sdata->u.mesh.mesh_seqnum);
-		put_unaligned(sn, &mesh_hdr->seqnum);
-		sdata->u.mesh.mesh_seqnum++;
-	}
-	return;
+	if (is_multicast_ether_addr(da))
+		put_unaligned_le32(sdata->u.mesh.mesh_mseqnum++,
+				   &mesh_hdr->seqnum);
+	else
+		put_unaligned_le32(sdata->u.mesh.mesh_seqnum++,
+				   &mesh_hdr->seqnum);
 }
 
 /**
