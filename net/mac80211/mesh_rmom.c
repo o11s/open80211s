@@ -235,7 +235,7 @@ void mesh_rmom_rx_nack(struct ieee80211_sub_if_data *sdata,
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
 				ieee80211_hdrlen(hdr->frame_control));
-		seqnum = le32_to_cpu(get_unaligned(&mesh_hdr->seqnum));
+		seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
 
 		/* Only if seqnum and sa matches */
 		if (seqnum != nak_sn ||
@@ -445,7 +445,7 @@ void mesh_rmom_handle_frame(struct ieee80211_sub_if_data *sdata,
 	int ret;
 	u32 seqnum;
 	u32 range[2] = {};
-	seqnum = le32_to_cpu(get_unaligned(&mesh_hdr->seqnum));
+	seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
 
 	ret = update_exp_seqnum(sdata, p, seqnum, range);
 

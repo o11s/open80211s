@@ -306,7 +306,7 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 	u8 idx;
 	struct rmc_entry *p, *n;
 
-	seqnum = le32_to_cpu(get_unaligned(&mesh_hdr->seqnum));
+	seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
 
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
@@ -612,8 +612,7 @@ static void set_seqnum(struct ieee80211s_hdr *meshhdr,
                mesh_rmom_ops.set_seqnum(sdata, meshhdr, da);
                return;
        }
-       put_unaligned(cpu_to_le32(sdata->u.mesh.mesh_seqnum), &meshhdr->seqnum);
-       sdata->u.mesh.mesh_seqnum++;
+       put_unaligned_le32(sdata->u.mesh.mesh_seqnum++, &meshhdr->seqnum);
 }
 
 /**
