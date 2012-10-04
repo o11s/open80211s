@@ -89,6 +89,13 @@ config MAC80211_MESH
 	 possible, as drafts leave a number of identifiers to be defined after
 	 ratification.  For more information visit http://o11s.org/.
 
+config MAC80211_MESH_RMOM
+	bool "Reliable Multicast over Mesh"
+	depends on MAC80211_MESH
+	---help---
+	  Selecting this option will enable a protocol that increases the
+	  reliablility of multicast traffic over mesh.
+
 config MAC80211_LEDS
 	bool "Enable LED triggers"
 	depends on MAC80211
@@ -196,6 +203,21 @@ config MAC80211_VERBOSE_MPL_DEBUG
 	  is taking part in a mesh network).
 	  It should not be selected on production systems as those
 	  messages are remotely triggerable.
+
+	  Do not select this option.
+
+config MAC80211_RMOM_DEBUG
+	bool "Verbose reliable multicast over mesh debugging"
+	depends on MAC80211_DEBUG_MENU
+	depends on MAC80211_MESH_RMOM
+	---help---
+	  Selecting this option causes mac80211 to print out
+	  very verbose debugging messages to assist debugging
+	  of the reliable multicast protocol over mesh.
+	  Messages are only printed when mac80211 is taking
+	  part in a mesh network.  It should not be selected
+	  on production systems as those messages are
+	  remotely triggerable.
 
 	  Do not select this option.
 

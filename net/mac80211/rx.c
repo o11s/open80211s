@@ -502,6 +502,11 @@ ieee80211_rx_mesh_check(struct ieee80211_rx_data *rx)
 		}
 	}
 
+	if (ieee80211_is_action_no_ack(hdr->frame_control)) {
+		//printk (KERN_INFO "Getting a action_no_ack frame\n");
+		return RX_CONTINUE;
+	}
+
 	/* If there is not an established peer link and this is not a peer link
 	 * establisment frame, beacon or probe, drop the frame.
 	 */
@@ -1894,14 +1899,13 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	hdrlen = ieee80211_hdrlen(hdr->frame_control);
 	mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
 
-	/* frame is in RMC, don't forward */
-	if (ieee80211_is_data(hdr->frame_control) &&
-	    is_multicast_ether_addr(hdr->addr1) &&
-	    mesh_rmc_check(hdr->addr3, mesh_hdr, rx->sdata))
-		return RX_DROP_MONITOR;
-
 	if (!ieee80211_is_data(hdr->frame_control))
 		return RX_CONTINUE;
+
+	/* frame is in RMC, don't forward */
+	if (is_multicast_ether_addr(hdr->addr1) &&
+	    mesh_rmc_check(hdr->addr3, hdr, mesh_hdr, rx->sdata))
+		return RX_DROP_MONITOR;
 
 	if (!mesh_hdr->ttl)
 		return RX_DROP_MONITOR;
@@ -1965,6 +1969,9 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	fwd_hdr =  (struct ieee80211_hdr *) fwd_skb->data;
 	info = IEEE80211_SKB_CB(fwd_skb);
 	memset(info, 0, sizeof(*info));
+#ifdef CONFIG_MAC80211_MESH_RMOM
+	fwd_skb->dev = sdata->dev;
+#endif
 	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 	info->control.vif = &rx->sdata->vif;
 	info->control.jiffies = jiffies;
@@ -2196,6 +2203,36 @@ ieee80211_rx_h_mgmt_check(struct ieee80211_rx_data *rx)
 	if (ieee80211_drop_unencrypted_mgmt(rx))
 		return RX_DROP_UNUSABLE;
 
+	return RX_CONTINUE;
+}
+
+static ieee80211_rx_result debug_noinline
+ieee80211_rx_h_action_no_ack(struct ieee80211_rx_data *rx)
+{
+	struct ieee80211_local *local = rx->local;
+	struct ieee80211_sub_if_data *sdata = rx->sdata;
+	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) rx->skb->data;
+	int len = rx->skb->len;
+
+	if (!ieee80211_is_action_no_ack(mgmt->frame_control))
+		return RX_CONTINUE;
+
+	/* drop too small frames */
+	if (len < IEEE80211_MIN_ACTION_SIZE)
+		return RX_DROP_UNUSABLE;
+
+	switch (mgmt->u.action.category) {
+	case WLAN_CATEGORY_VENDOR_SPECIFIC:
+		if (sdata->vif.type != NL80211_IFTYPE_MESH_POINT)
+			break;
+
+		rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
+		skb_queue_tail(&sdata->skb_queue, rx->skb);
+		ieee80211_queue_work(&local->hw, &sdata->work);
+		if (rx->sta)
+			rx->sta->rx_packets++;
+		return RX_QUEUED;
+	}
 	return RX_CONTINUE;
 }
 
@@ -2689,6 +2726,7 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx)
 		CALL_RXH(ieee80211_rx_h_ctrl);
 		CALL_RXH(ieee80211_rx_h_mgmt_check)
 		CALL_RXH(ieee80211_rx_h_action)
+		CALL_RXH(ieee80211_rx_h_action_no_ack)
 		CALL_RXH(ieee80211_rx_h_userspace_mgmt)
 		CALL_RXH(ieee80211_rx_h_action_return)
 		CALL_RXH(ieee80211_rx_h_mgmt)

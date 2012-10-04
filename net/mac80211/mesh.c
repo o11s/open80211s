@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2008, 2009 open80211s Ltd.
  * Authors:    Luis Carlos Cobo <luisca@cozybit.com>
@@ -12,6 +13,7 @@
 #include <asm/unaligned.h>
 #include "ieee80211_i.h"
 #include "mesh.h"
+#include "mesh_rmom.h"
 
 #define TMR_RUNNING_HK	0
 #define TMR_RUNNING_MP	1
@@ -20,16 +22,31 @@
 int mesh_allocated;
 static struct kmem_cache *rm_cache;
 
-#ifdef CONFIG_MAC80211_MESH
+struct mesh_rmom_operations mesh_rmom_ops = {
+#ifdef CONFIG_MAC80211_MESH_RMOM
+	.set_seqnum = mesh_rmom_set_seqnum,
+	.handle_frame = mesh_rmom_handle_frame,
+	.handle_nack = NULL,
+#else
+	0
+#endif
+};
+
+
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
 			WLAN_MESH_ACTION_HWMP_PATH_SELECTION);
 }
-#else
-bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
-{ return false; }
-#endif
+
+bool mesh_action_is_rmom(struct ieee80211_mgmt *mgmt)
+{
+	return (mgmt->u.action.category ==
+				WLAN_CATEGORY_VENDOR_SPECIFIC &&
+				mgmt->u.action.u.mesh_rmom_nak.oid[0] == 0x4C &&
+				mgmt->u.action.u.mesh_rmom_nak.oid[1] == 0x22 &&
+				mgmt->u.action.u.mesh_rmom_nak.oid[2] == 0x58);
+}
 
 void ieee80211s_init(void)
 {
@@ -43,6 +60,19 @@ void ieee80211s_stop(void)
 {
 	mesh_pathtbl_unregister();
 	kmem_cache_destroy(rm_cache);
+}
+
+static void rmom_handler(struct ieee80211_sub_if_data *sdata,
+			 struct rmc_entry *p, struct ieee80211_hdr *hdr,
+			 struct ieee80211s_hdr *mesh_hdr)
+{
+	__le16 fc = hdr->frame_control;
+	if (!mesh_rmom_ops.handle_frame)
+		return;
+	if (ieee80211_is_data(fc) && mesh_hdr)
+		mesh_rmom_ops.handle_frame(sdata, p, hdr, mesh_hdr);
+	else if (ieee80211_is_mgmt(fc) && mesh_rmom_ops.handle_nack)
+		mesh_rmom_ops.handle_nack(sdata, p, hdr);
 }
 
 static void ieee80211_mesh_housekeeping_timer(unsigned long data)
@@ -185,19 +215,89 @@ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
 	sdata->u.mesh.rmc = NULL;
 }
 
+static int check_for_dups(u32 seqnum, struct rmc_entry *p)
+{
+	int i;
+	u8 idx, num, ridx;
+
+	lockdep_assert_held(&p->lock);
+
+	idx = p->seqnum_idx;
+	num = p->num_seqnums;
+
+	for (i = 0; i < num; i++) {
+		/* checking in reverse order than addition */
+		ridx = (idx - i - 1) & (RMC_MAX_SEQNUMS - 1);
+		if (p->seqnum[ridx] == seqnum)
+			return 1;
+	}
+	return 0;
+}
+
+bool mesh_rmom_remove_nack(struct ieee80211_sub_if_data *sdata,
+			   u8 *sa, u32 seqnum)
+{
+	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	struct rmc_entry *p;
+	u8 idx;
+
+	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
+
+	list_for_each_entry(p, &rmc->bucket[idx].list, list) {
+		spin_lock_bh(&p->lock);
+		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
+			remove_incoming_nack(sdata, p , seqnum);
+			spin_unlock_bh(&p->lock);
+			return true;
+		}
+		spin_unlock_bh(&p->lock);
+	}
+	return false;
+}
+
+bool mesh_rmom_add_nack(struct ieee80211_sub_if_data *sdata,
+			struct ieee80211_mgmt *mgmt)
+{
+	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	u8 idx;
+	struct rmc_entry *p, *n;
+
+	/* TODO: check for buffer (truncated frame) out of bounds access */
+
+	idx = (mgmt->sa[3] ^ mgmt->sa[4] ^ mgmt->sa[5]) & rmc->idx_mask;
+
+	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
+		spin_lock_bh(&p->lock);
+		if (memcmp(mgmt->sa, p->sa, ETH_ALEN) == 0) {
+			mesh_rmom_rx_nack(sdata, mgmt, p);
+			spin_unlock_bh(&p->lock);
+			return true;
+		}
+		spin_unlock_bh(&p->lock);
+	}
+	return false;
+}
+
+
+
+
 /**
  * mesh_rmc_check - Check frame in recent multicast cache and add if absent.
  *
  * @sa:		source address
  * @mesh_hdr:	mesh_header
  *
- * Returns: 0 if the frame is not in the cache, nonzero otherwise.
+ * Checks the source address and the mesh sequence number to determine if we
+ * have received this frame lately. If the frame is not in the cache, it is
+ * added to it.
  *
- * Checks using the source address and the mesh sequence number if we have
- * received this frame lately. If the frame is not in the cache, it is added to
- * it.
+ * When RMoM is enabled, this function will also trigger NAKs for frames
+ * that were missing.
+ *
+ * Returns: 1 if the frame is a duplicate and should be dropped. 0 otherwise.
  */
-int mesh_rmc_check(u8 *sa, struct ieee80211s_hdr *mesh_hdr,
+int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
+		   struct ieee80211s_hdr *mesh_hdr,
 		   struct ieee80211_sub_if_data *sdata)
 {
 	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
@@ -206,28 +306,50 @@ int mesh_rmc_check(u8 *sa, struct ieee80211s_hdr *mesh_hdr,
 	u8 idx;
 	struct rmc_entry *p, *n;
 
-	/* Don't care about endianness since only match matters */
-	memcpy(&seqnum, &mesh_hdr->seqnum, sizeof(mesh_hdr->seqnum));
-	idx = le32_to_cpu(mesh_hdr->seqnum) & rmc->idx_mask;
+	seqnum = le32_to_cpu(get_unaligned(&mesh_hdr->seqnum));
+	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
+
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		++entries;
+		spin_lock(&p->lock);
 		if (time_after(jiffies, p->exp_time) ||
 				(entries == RMC_QUEUE_MAX_LEN)) {
 			list_del(&p->list);
+			spin_unlock(&p->lock);
 			kmem_cache_free(rm_cache, p);
 			--entries;
-		} else if ((seqnum == p->seqnum) &&
-			   (ether_addr_equal(sa, p->sa)))
-			return -1;
+			continue;
+		} else if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
+			if (check_for_dups(seqnum, p)) {
+				spin_unlock(&p->lock);
+				return 1;  /* dup */
+			}
+
+			/* record this sequence number */
+			p->seqnum[p->seqnum_idx++] = seqnum;
+			p->seqnum_idx &= (RMC_MAX_SEQNUMS - 1);
+			p->num_seqnums = min(++p->num_seqnums,
+					     RMC_MAX_SEQNUMS);
+			rmom_handler(sdata, p, hdr, mesh_hdr);
+			spin_unlock(&p->lock);
+			return 0;
+		}
+		spin_unlock(&p->lock);
 	}
 
 	p = kmem_cache_alloc(rm_cache, GFP_ATOMIC);
 	if (!p)
 		return 0;
 
-	p->seqnum = seqnum;
+	p->seqnum[0] = seqnum;
+	p->seqnum_idx = p->num_seqnums = 1;
 	p->exp_time = jiffies + RMC_TIMEOUT;
+	p->rmom.exp_seqnum = seqnum + 1;
 	memcpy(p->sa, sa, ETH_ALEN);
+	INIT_LIST_HEAD(&p->rmom.in.list);
+	INIT_LIST_HEAD(&p->rmom.out.list);
+	spin_lock_init(&p->lock);
+	spin_lock_init(&p->in_nack_lock);
 	list_add(&p->list, &rmc->bucket[idx].list);
 	return 0;
 }
@@ -483,10 +605,22 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 	}
 }
 
+static void set_seqnum(struct ieee80211s_hdr *meshhdr,
+		       struct ieee80211_sub_if_data *sdata, u8* da)
+{
+       if (mesh_rmom_ops.set_seqnum) {
+               mesh_rmom_ops.set_seqnum(sdata, meshhdr, da);
+               return;
+       }
+       put_unaligned(cpu_to_le32(sdata->u.mesh.mesh_seqnum), &meshhdr->seqnum);
+       sdata->u.mesh.mesh_seqnum++;
+}
+
 /**
  * ieee80211_new_mesh_header - create a new mesh header
  * @meshhdr:    uninitialized mesh header
  * @sdata:	mesh interface to be used
+ * @da:		destination address
  * @addr4or5:   1st address in the ae header, which may correspond to address 4
  *              (if addr6 is NULL) or address 5 (if addr6 is present). It may
  *              be NULL.
@@ -496,15 +630,15 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
  * Return the header length.
  */
 int ieee80211_new_mesh_header(struct ieee80211s_hdr *meshhdr,
-		struct ieee80211_sub_if_data *sdata, char *addr4or5,
+		struct ieee80211_sub_if_data *sdata, char *da, char *addr4or5,
 		char *addr6)
 {
 	int aelen = 0;
 	BUG_ON(!addr4or5 && addr6);
 	memset(meshhdr, 0, sizeof(*meshhdr));
 	meshhdr->ttl = sdata->u.mesh.mshcfg.dot11MeshTTL;
-	put_unaligned(cpu_to_le32(sdata->u.mesh.mesh_seqnum), &meshhdr->seqnum);
-	sdata->u.mesh.mesh_seqnum++;
+	set_seqnum(meshhdr, sdata, da);
+
 	if (addr4or5 && !addr6) {
 		meshhdr->flags |= MESH_FLAGS_AE_A4;
 		aelen += ETH_ALEN;
@@ -703,6 +837,11 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 		if (mesh_action_is_path_sel(mgmt))
 			mesh_rx_path_sel_frame(sdata, mgmt, len);
 		break;
+	case WLAN_CATEGORY_VENDOR_SPECIFIC:
+		if (mesh_action_is_rmom(mgmt)) {
+			mesh_rmom_add_nack(sdata, mgmt);
+		}
+		break;
 	}
 }
 
@@ -724,6 +863,7 @@ void ieee80211_mesh_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 					    rx_status);
 		break;
 	case IEEE80211_STYPE_ACTION:
+	case IEEE80211_STYPE_ACTION_NO_ACK:
 		ieee80211_mesh_rx_mgmt_action(sdata, mgmt, skb->len, rx_status);
 		break;
 	}

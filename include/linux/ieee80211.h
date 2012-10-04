@@ -68,6 +68,7 @@
 #define IEEE80211_STYPE_AUTH		0x00B0
 #define IEEE80211_STYPE_DEAUTH		0x00C0
 #define IEEE80211_STYPE_ACTION		0x00D0
+#define IEEE80211_STYPE_ACTION_NO_ACK	0x00E0
 
 /* control */
 #define IEEE80211_STYPE_BACK_REQ	0x0080
@@ -445,6 +446,16 @@ static inline int ieee80211_is_action(__le16 fc)
 }
 
 /**
+ * ieee80211_is_action_no_ack - check if IEEE80211_FTYPE_MGMT && IEEE80211_STYPE_ACTION_NO_ACK
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline int ieee80211_is_action_no_ack(__le16 fc)
+{
+	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
+	       cpu_to_le16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_ACTION_NO_ACK);
+}
+
+/**
  * ieee80211_is_back_req - check if IEEE80211_FTYPE_CTL && IEEE80211_STYPE_BACK_REQ
  * @fc: frame control bytes in little-endian byteorder
  */
@@ -775,6 +786,15 @@ struct ieee80211_mgmt {
 					__le16 capability;
 					u8 variable[0];
 				} __packed tdls_discover_resp;
+				struct {
+					u8 oid[3];
+					u8 eid;
+					u8 len;
+					__le32 missed_sn;
+					u8 retry;
+					u8 sa[6];
+					u8 ta[6];
+				} __packed mesh_rmom_nak;
 			} u;
 		} __attribute__ ((packed)) action;
 	} u;

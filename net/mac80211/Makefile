@@ -41,6 +41,9 @@ mac80211-$(CONFIG_MAC80211_MESH) += \
 	mesh_hwmp.o \
 	mesh_sync.o
 
+mac80211-$(CONFIG_MAC80211_MESH_RMOM) += \
+	mesh_rmom.o
+
 mac80211-$(CONFIG_PM) += pm.o
 
 CFLAGS_driver-trace.o := -I$(src)

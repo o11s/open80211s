@@ -611,6 +611,8 @@ struct ieee80211_if_mesh {
 	struct mesh_stats mshstats;
 	struct mesh_config mshcfg;
 	u32 mesh_seqnum;
+	/* Sequence number for multicast traffic (only used by RMoM) */
+	u32 mesh_mseqnum;
 	bool accepting_plinks;
 	int num_gates;
 	const u8 *ie;
@@ -934,6 +936,8 @@ struct ieee80211_local {
 	 */
 	struct sk_buff_head rx_skb_queue;
 	bool running_rx_handler;	/* protected by rx_skb_queue.lock */
+
+	struct sk_buff_head mcast_rexmit_skb_queue;
 
 	/* Station data */
 	/*

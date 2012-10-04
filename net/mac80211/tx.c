@@ -1821,7 +1821,7 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 					skb->data, skb->data + ETH_ALEN);
 			rcu_read_unlock();
 			meshhdrlen = ieee80211_new_mesh_header(&mesh_hdr,
-					sdata, NULL, NULL);
+					sdata, skb->data, NULL, NULL);
 		} else {
 			int is_mesh_mcast = 1;
 			const u8 *mesh_da;
@@ -1848,12 +1848,14 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 				meshhdrlen =
 					ieee80211_new_mesh_header(&mesh_hdr,
 							sdata,
+							skb->data,
 							skb->data + ETH_ALEN,
 							NULL);
 			else
 				meshhdrlen =
 					ieee80211_new_mesh_header(&mesh_hdr,
 							sdata,
+							skb->data,
 							skb->data,
 							skb->data + ETH_ALEN);
 
