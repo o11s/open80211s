@@ -28,6 +28,7 @@
 #include <media/videobuf-vmalloc.h>
 #include <media/tuner.h>
 #include "tuner-simple.h"
+#include <linux/gpio.h>
 
 #include "lgdt330x.h"
 #include "lgdt3305.h"
@@ -80,6 +81,7 @@ struct em28xx_dvb {
 	int (*gate_ctrl)(struct dvb_frontend *, int);
 	struct semaphore      pll_mutex;
 	bool			dont_attach_fe1;
+	int			lna_gpio;
 };
 
 
@@ -316,6 +318,7 @@ static struct drxk_config terratec_h5_drxk = {
 	.no_i2c_bridge = 1,
 	.microcode_name = "dvb-usb-terratec-h5-drxk.fw",
 	.qam_demod_parameter_count = 2,
+	.load_firmware_sync = true,
 };
 
 static struct drxk_config hauppauge_930c_drxk = {
@@ -325,6 +328,7 @@ static struct drxk_config hauppauge_930c_drxk = {
 	.microcode_name = "dvb-usb-hauppauge-hvr930c-drxk.fw",
 	.chunk_size = 56,
 	.qam_demod_parameter_count = 2,
+	.load_firmware_sync = true,
 };
 
 struct drxk_config terratec_htc_stick_drxk = {
@@ -338,12 +342,14 @@ struct drxk_config terratec_htc_stick_drxk = {
 	.antenna_dvbt = true,
 	/* The windows driver uses the same. This will disable LNA. */
 	.antenna_gpio = 0x6,
+	.load_firmware_sync = true,
 };
 
 static struct drxk_config maxmedia_ub425_tc_drxk = {
 	.adr = 0x29,
 	.single_master = 1,
 	.no_i2c_bridge = 1,
+	.load_firmware_sync = true,
 };
 
 static struct drxk_config pctv_520e_drxk = {
@@ -354,6 +360,7 @@ static struct drxk_config pctv_520e_drxk = {
 	.chunk_size = 58,
 	.antenna_dvbt = true, /* disable LNA */
 	.antenna_gpio = (1 << 2), /* disable LNA */
+	.load_firmware_sync = true,
 };
 
 static int drxk_gate_ctrl(struct dvb_frontend *fe, int enable)
@@ -567,6 +574,33 @@ static void pctv_520e_init(struct em28xx *dev)
 		i2c_master_send(&dev->i2c_client, regs[i].r, regs[i].len);
 };
 
+static int em28xx_pctv_290e_set_lna(struct dvb_frontend *fe, int val)
+{
+	struct em28xx *dev = fe->dvb->priv;
+#ifdef CONFIG_GPIOLIB
+	struct em28xx_dvb *dvb = dev->dvb;
+	int ret;
+	unsigned long flags;
+
+	if (val)
+		flags = GPIOF_OUT_INIT_LOW;
+	else
+		flags = GPIOF_OUT_INIT_HIGH;
+
+	ret = gpio_request_one(dvb->lna_gpio, flags, NULL);
+	if (ret)
+		em28xx_errdev("gpio request failed %d\n", ret);
+	else
+		gpio_free(dvb->lna_gpio);
+
+	return ret;
+#else
+	dev_warn(&dev->udev->dev, "%s: LNA control is disabled\n",
+			KBUILD_MODNAME);
+	return 0;
+#endif
+}
+
 static int em28xx_mt352_terratec_xs_init(struct dvb_frontend *fe)
 {
 	/* Values extracted from a USB trace of the Terratec Windows driver */
@@ -610,11 +644,6 @@ static struct tda10023_config em28xx_tda10023_config = {
 static struct cxd2820r_config em28xx_cxd2820r_config = {
 	.i2c_address = (0xd8 >> 1),
 	.ts_mode = CXD2820R_TS_SERIAL,
-
-	/* enable LNA for DVB-T, DVB-T2 and DVB-C */
-	.gpio_dvbt[0] = CXD2820R_GPIO_E | CXD2820R_GPIO_O | CXD2820R_GPIO_L,
-	.gpio_dvbt2[0] = CXD2820R_GPIO_E | CXD2820R_GPIO_O | CXD2820R_GPIO_L,
-	.gpio_dvbc[0] = CXD2820R_GPIO_E | CXD2820R_GPIO_O | CXD2820R_GPIO_L,
 };
 
 static struct tda18271_config em28xx_cxd2820r_tda18271_config = {
@@ -959,9 +988,13 @@ static int em28xx_dvb_init(struct em28xx *dev)
 				   &dev->i2c_adap, &kworld_a340_config);
 		break;
 	case EM28174_BOARD_PCTV_290E:
+		/* set default GPIO0 for LNA, used if GPIOLIB is undefined */
+		dvb->lna_gpio = CXD2820R_GPIO_E | CXD2820R_GPIO_O |
+				CXD2820R_GPIO_L;
 		dvb->fe[0] = dvb_attach(cxd2820r_attach,
 					&em28xx_cxd2820r_config,
-					&dev->i2c_adap);
+					&dev->i2c_adap,
+					&dvb->lna_gpio);
 		if (dvb->fe[0]) {
 			/* FE 0 attach tuner */
 			if (!dvb_attach(tda18271_attach,
@@ -974,7 +1007,22 @@ static int em28xx_dvb_init(struct em28xx *dev)
 				result = -EINVAL;
 				goto out_free;
 			}
+
+#ifdef CONFIG_GPIOLIB
+			/* enable LNA for DVB-T, DVB-T2 and DVB-C */
+			result = gpio_request_one(dvb->lna_gpio,
+					GPIOF_OUT_INIT_LOW, NULL);
+			if (result)
+				em28xx_errdev("gpio request failed %d\n",
+						result);
+			else
+				gpio_free(dvb->lna_gpio);
+
+			result = 0; /* continue even set LNA fails */
+#endif
+			dvb->fe[0]->ops.set_lna = em28xx_pctv_290e_set_lna;
 		}
+
 		break;
 	case EM2884_BOARD_HAUPPAUGE_WINTV_HVR_930C:
 	{

@@ -115,7 +115,7 @@ static int fc2580_set_params(struct dvb_frontend *fe)
 {
 	struct fc2580_priv *priv = fe->tuner_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-	int ret, i;
+	int ret = 0, i;
 	unsigned int r_val, n_val, k_val, k_val_reg, f_ref;
 	u8 tmp_val, r18_val;
 	u64 f_vco;
@@ -147,7 +147,7 @@ static int fc2580_set_params(struct dvb_frontend *fe)
 	f_vco = c->frequency;
 	f_vco *= fc2580_pll_lut[i].div;
 
-	if (f_vco >= 2600000000)
+	if (f_vco >= 2600000000UL)
 		tmp_val = 0x0e | fc2580_pll_lut[i].band;
 	else
 		tmp_val = 0x06 | fc2580_pll_lut[i].band;
@@ -168,8 +168,7 @@ static int fc2580_set_params(struct dvb_frontend *fe)
 	}
 
 	f_ref = 2UL * priv->cfg->clock / r_val;
-	n_val = f_vco / f_ref;
-	k_val = f_vco % f_ref;
+	n_val = div_u64_rem(f_vco, f_ref, &k_val);
 	k_val_reg = 1UL * k_val * (1 << 20) / f_ref;
 
 	ret = fc2580_wr_reg(priv, 0x18, r18_val | ((k_val_reg >> 16) & 0xff));
@@ -487,9 +486,6 @@ struct dvb_frontend *fc2580_attach(struct dvb_frontend *fe,
 
 	priv->cfg = cfg;
 	priv->i2c = i2c;
-	fe->tuner_priv = priv;
-	memcpy(&fe->ops.tuner_ops, &fc2580_tuner_ops,
-			sizeof(struct dvb_tuner_ops));
 
 	/* check if the tuner is there */
 	ret = fc2580_rd_reg(priv, 0x01, &chip_id);
@@ -498,12 +494,21 @@ struct dvb_frontend *fc2580_attach(struct dvb_frontend *fe,
 
 	dev_dbg(&priv->i2c->dev, "%s: chip_id=%02x\n", __func__, chip_id);
 
-	if (chip_id != 0x56)
+	switch (chip_id) {
+	case 0x56:
+	case 0x5a:
+		break;
+	default:
 		goto err;
+	}
 
 	dev_info(&priv->i2c->dev,
 			"%s: FCI FC2580 successfully identified\n",
 			KBUILD_MODNAME);
+
+	fe->tuner_priv = priv;
+	memcpy(&fe->ops.tuner_ops, &fc2580_tuner_ops,
+			sizeof(struct dvb_tuner_ops));
 
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 0);

@@ -26,19 +26,7 @@
 #include "dvb_frontend.h"
 #include "dvb_math.h"
 #include "cxd2820r.h"
-
-#define LOG_PREFIX "cxd2820r"
-
-#undef dbg
-#define dbg(f, arg...) \
-	if (cxd2820r_debug) \
-		printk(KERN_INFO   LOG_PREFIX": " f "\n" , ## arg)
-#undef err
-#define err(f, arg...)  printk(KERN_ERR     LOG_PREFIX": " f "\n" , ## arg)
-#undef info
-#define info(f, arg...) printk(KERN_INFO    LOG_PREFIX": " f "\n" , ## arg)
-#undef warn
-#define warn(f, arg...) printk(KERN_WARNING LOG_PREFIX": " f "\n" , ## arg)
+#include <linux/gpio.h>
 
 struct reg_val_mask {
 	u32 reg;
@@ -54,7 +42,11 @@ struct cxd2820r_priv {
 	bool ber_running;
 
 	u8 bank[2];
-	u8 gpio[3];
+#define GPIO_COUNT 3
+	u8 gpio[GPIO_COUNT];
+#ifdef CONFIG_GPIOLIB
+	struct gpio_chip gpio_chip;
+#endif
 
 	fe_delivery_system_t delivery_system;
 	bool last_tune_failed; /* for switch between T and T2 tune */
@@ -64,7 +56,7 @@ struct cxd2820r_priv {
 
 extern int cxd2820r_debug;
 
-int cxd2820r_gpio(struct dvb_frontend *fe);
+int cxd2820r_gpio(struct dvb_frontend *fe, u8 *gpio);
 
 int cxd2820r_wr_reg_mask(struct cxd2820r_priv *priv, u32 reg, u8 val,
 	u8 mask);

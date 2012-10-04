@@ -314,6 +314,10 @@ static int af9033_init(struct dvb_frontend *fe)
 		len = ARRAY_SIZE(tuner_init_tda18218);
 		init = tuner_init_tda18218;
 		break;
+	case AF9033_TUNER_FC2580:
+		len = ARRAY_SIZE(tuner_init_fc2580);
+		init = tuner_init_fc2580;
+		break;
 	default:
 		dev_dbg(&state->i2c->dev, "%s: unsupported tuner ID=%d\n",
 				__func__, state->cfg.tuner);
@@ -908,6 +912,15 @@ struct dvb_frontend *af9033_attach(const struct af9033_config *config,
 	dev_info(&state->i2c->dev, "%s: firmware version: LINK=%d.%d.%d.%d " \
 			"OFDM=%d.%d.%d.%d\n", KBUILD_MODNAME, buf[0], buf[1],
 			buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
+
+	/* sleep */
+	ret = af9033_wr_reg(state, 0x80004c, 1);
+	if (ret < 0)
+		goto err;
+
+	ret = af9033_wr_reg(state, 0x800000, 0);
+	if (ret < 0)
+		goto err;
 
 	/* configure internal TS mode */
 	switch (state->cfg.ts_mode) {

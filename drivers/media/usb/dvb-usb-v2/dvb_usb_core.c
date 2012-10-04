@@ -265,7 +265,6 @@ static inline int dvb_usb_ctrl_feed(struct dvb_demux_feed *dvbdmxfeed,
 	/* stop feeding if it is last pid */
 	if (adap->feed_count == 0) {
 		dev_dbg(&d->udev->dev, "%s: stop feeding\n", __func__);
-		usb_urb_killv2(&adap->stream);
 
 		if (d->props->streaming_ctrl) {
 			ret = d->props->streaming_ctrl(
@@ -274,9 +273,11 @@ static inline int dvb_usb_ctrl_feed(struct dvb_demux_feed *dvbdmxfeed,
 				dev_err(&d->udev->dev, "%s: streaming_ctrl() " \
 						"failed=%d\n", KBUILD_MODNAME,
 						ret);
+				usb_urb_killv2(&adap->stream);
 				goto err_mutex_unlock;
 			}
 		}
+		usb_urb_killv2(&adap->stream);
 		mutex_unlock(&adap->sync_mutex);
 	}
 
@@ -611,8 +612,10 @@ err_dvb_unregister_frontend:
 
 err_dvb_frontend_detach:
 	for (i = MAX_NO_OF_FE_PER_ADAP - 1; i >= 0; i--) {
-		if (adap->fe[i])
+		if (adap->fe[i]) {
 			dvb_frontend_detach(adap->fe[i]);
+			adap->fe[i] = NULL;
+		}
 	}
 
 err:

@@ -47,12 +47,8 @@ int cxd2820r_set_frontend_c(struct dvb_frontend *fe)
 		{ 0x10070, priv->cfg.ts_mode, 0xff },
 	};
 
-	dbg("%s: RF=%d SR=%d", __func__, c->frequency, c->symbol_rate);
-
-	/* update GPIOs */
-	ret = cxd2820r_gpio(fe);
-	if (ret)
-		goto error;
+	dev_dbg(&priv->i2c->dev, "%s: frequency=%d symbol_rate=%d\n", __func__,
+			c->frequency, c->symbol_rate);
 
 	/* program tuner */
 	if (fe->ops.tuner_ops.set_params)
@@ -78,7 +74,7 @@ int cxd2820r_set_frontend_c(struct dvb_frontend *fe)
 	} else
 		if_freq = 0;
 
-	dbg("%s: if_freq=%d", __func__, if_freq);
+	dev_dbg(&priv->i2c->dev, "%s: if_freq=%d\n", __func__, if_freq);
 
 	num = if_freq / 1000; /* Hz => kHz */
 	num *= 0x4000;
@@ -100,7 +96,7 @@ int cxd2820r_set_frontend_c(struct dvb_frontend *fe)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -150,7 +146,7 @@ int cxd2820r_get_frontend_c(struct dvb_frontend *fe)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -184,7 +180,7 @@ int cxd2820r_read_ber_c(struct dvb_frontend *fe, u32 *ber)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -214,7 +210,7 @@ int cxd2820r_read_signal_strength_c(struct dvb_frontend *fe,
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -251,7 +247,7 @@ int cxd2820r_read_snr_c(struct dvb_frontend *fe, u16 *snr)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -283,11 +279,12 @@ int cxd2820r_read_status_c(struct dvb_frontend *fe, fe_status_t *status)
 		}
 	}
 
-	dbg("%s: lock=%02x %02x", __func__, buf[0], buf[1]);
+	dev_dbg(&priv->i2c->dev, "%s: lock=%02x %02x\n", __func__, buf[0],
+			buf[1]);
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -302,7 +299,7 @@ int cxd2820r_init_c(struct dvb_frontend *fe)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 
@@ -318,7 +315,7 @@ int cxd2820r_sleep_c(struct dvb_frontend *fe)
 		{ 0x00080, 0x00, 0xff },
 	};
 
-	dbg("%s", __func__);
+	dev_dbg(&priv->i2c->dev, "%s\n", __func__);
 
 	priv->delivery_system = SYS_UNDEFINED;
 
@@ -331,7 +328,7 @@ int cxd2820r_sleep_c(struct dvb_frontend *fe)
 
 	return ret;
 error:
-	dbg("%s: failed:%d", __func__, ret);
+	dev_dbg(&priv->i2c->dev, "%s: failed=%d\n", __func__, ret);
 	return ret;
 }
 

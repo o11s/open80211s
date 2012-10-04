@@ -17,7 +17,7 @@
 #include <linux/types.h>
 #include <linux/videodev2.h>
 #include <linux/io.h>
-#include <asm/sizes.h>
+#include <linux/sizes.h>
 
 #include <media/media-entity.h>
 #include <media/videobuf2-core.h>
@@ -440,6 +440,7 @@ struct fimc_dev {
 	unsigned long			state;
 	struct vb2_alloc_ctx		*alloc_ctx;
 	struct fimc_pipeline		pipeline;
+	const struct fimc_pipeline_ops	*pipeline_ops;
 };
 
 /**

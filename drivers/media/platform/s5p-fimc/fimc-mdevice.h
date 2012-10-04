@@ -51,7 +51,7 @@ struct fimc_camclk_info {
  * This data structure applies to image sensor and the writeback subdevs.
  */
 struct fimc_sensor_info {
-	struct s5p_fimc_isp_info *pdata;
+	struct s5p_fimc_isp_info pdata;
 	struct v4l2_subdev *subdev;
 	struct fimc_dev *host;
 };
@@ -108,11 +108,5 @@ static inline void fimc_md_graph_unlock(struct fimc_dev *fimc)
 }
 
 int fimc_md_set_camclk(struct v4l2_subdev *sd, bool on);
-void fimc_pipeline_prepare(struct fimc_pipeline *p, struct media_entity *me);
-int fimc_pipeline_initialize(struct fimc_pipeline *p, struct media_entity *me,
-			     bool resume);
-int fimc_pipeline_shutdown(struct fimc_pipeline *p);
-int fimc_pipeline_s_power(struct fimc_pipeline *p, bool state);
-int fimc_pipeline_s_stream(struct fimc_pipeline *p, bool state);
 
 #endif

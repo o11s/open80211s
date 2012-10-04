@@ -19,6 +19,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
+#include <media/v4l2-event.h>
 #include <linux/workqueue.h>
 #include <media/videobuf2-core.h>
 #include "regs-mfc.h"
@@ -40,14 +41,47 @@ module_param(debug, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "Debug level - higher value produces more verbose messages");
 
 /* Helper functions for interrupt processing */
+
 /* Remove from hw execution round robin */
-static void clear_work_bit(struct s5p_mfc_ctx *ctx)
+void clear_work_bit(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 
 	spin_lock(&dev->condlock);
-	clear_bit(ctx->num, &dev->ctx_work_bits);
+	__clear_bit(ctx->num, &dev->ctx_work_bits);
 	spin_unlock(&dev->condlock);
+}
+
+/* Add to hw execution round robin */
+void set_work_bit(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+
+	spin_lock(&dev->condlock);
+	__set_bit(ctx->num, &dev->ctx_work_bits);
+	spin_unlock(&dev->condlock);
+}
+
+/* Remove from hw execution round robin */
+void clear_work_bit_irqsave(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->condlock, flags);
+	__clear_bit(ctx->num, &dev->ctx_work_bits);
+	spin_unlock_irqrestore(&dev->condlock, flags);
+}
+
+/* Add to hw execution round robin */
+void set_work_bit_irqsave(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->condlock, flags);
+	__set_bit(ctx->num, &dev->ctx_work_bits);
+	spin_unlock_irqrestore(&dev->condlock, flags);
 }
 
 /* Wake up context wait_queue */
@@ -503,9 +537,7 @@ static void s5p_mfc_handle_init_buffers(struct s5p_mfc_ctx *ctx,
 	ctx->int_type = reason;
 	ctx->int_err = err;
 	ctx->int_cond = 1;
-	spin_lock(&dev->condlock);
-	clear_bit(ctx->num, &dev->ctx_work_bits);
-	spin_unlock(&dev->condlock);
+	clear_work_bit(ctx);
 	if (err == 0) {
 		ctx->state = MFCINST_RUNNING;
 		if (!ctx->dpb_flush_flag) {
@@ -537,6 +569,40 @@ static void s5p_mfc_handle_init_buffers(struct s5p_mfc_ctx *ctx,
 
 		wake_up(&ctx->queue);
 	}
+}
+
+static void s5p_mfc_handle_stream_complete(struct s5p_mfc_ctx *ctx,
+				 unsigned int reason, unsigned int err)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	struct s5p_mfc_buf *mb_entry;
+
+	mfc_debug(2, "Stream completed");
+
+	s5p_mfc_clear_int_flags(dev);
+	ctx->int_type = reason;
+	ctx->int_err = err;
+	ctx->state = MFCINST_FINISHED;
+
+	spin_lock(&dev->irqlock);
+	if (!list_empty(&ctx->dst_queue)) {
+		mb_entry = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf,
+									list);
+		list_del(&mb_entry->list);
+		ctx->dst_queue_cnt--;
+		vb2_set_plane_payload(mb_entry->b, 0, 0);
+		vb2_buffer_done(mb_entry->b, VB2_BUF_STATE_DONE);
+	}
+	spin_unlock(&dev->irqlock);
+
+	clear_work_bit(ctx);
+
+	if (test_and_clear_bit(0, &dev->hw_lock) == 0)
+		WARN_ON(1);
+
+	s5p_mfc_clock_off();
+	wake_up(&ctx->queue);
+	s5p_mfc_try_run(dev);
 }
 
 /* Interrupt processing */
@@ -614,6 +680,11 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	case S5P_FIMV_R2H_CMD_INIT_BUFFERS_RET:
 		s5p_mfc_handle_init_buffers(ctx, reason, err);
 		break;
+
+	case S5P_FIMV_R2H_CMD_ENC_COMPLETE_RET:
+		s5p_mfc_handle_stream_complete(ctx, reason, err);
+		break;
+
 	default:
 		mfc_debug(2, "Unknown int reason\n");
 		s5p_mfc_clear_int_flags(dev);
@@ -641,7 +712,6 @@ static int s5p_mfc_open(struct file *file)
 	struct s5p_mfc_dev *dev = video_drvdata(file);
 	struct s5p_mfc_ctx *ctx = NULL;
 	struct vb2_queue *q;
-	unsigned long flags;
 	int ret = 0;
 
 	mfc_debug_enter();
@@ -649,7 +719,7 @@ static int s5p_mfc_open(struct file *file)
 		return -ERESTARTSYS;
 	dev->num_inst++;	/* It is guarded by mfc_mutex in vfd */
 	/* Allocate memory for context */
-	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx) {
 		mfc_err("Not enough memory\n");
 		ret = -ENOMEM;
@@ -674,9 +744,7 @@ static int s5p_mfc_open(struct file *file)
 		}
 	}
 	/* Mark context as idle */
-	spin_lock_irqsave(&dev->condlock, flags);
-	clear_bit(ctx->num, &dev->ctx_work_bits);
-	spin_unlock_irqrestore(&dev->condlock, flags);
+	clear_work_bit_irqsave(ctx);
 	dev->ctx[ctx->num] = ctx;
 	if (s5p_mfc_get_node_type(file) == MFCNODE_DECODER) {
 		ctx->type = MFCINST_DECODER;
@@ -803,7 +871,6 @@ static int s5p_mfc_release(struct file *file)
 {
 	struct s5p_mfc_ctx *ctx = fh_to_ctx(file->private_data);
 	struct s5p_mfc_dev *dev = ctx->dev;
-	unsigned long flags;
 
 	mfc_debug_enter();
 	mutex_lock(&dev->mfc_mutex);
@@ -811,17 +878,13 @@ static int s5p_mfc_release(struct file *file)
 	vb2_queue_release(&ctx->vq_src);
 	vb2_queue_release(&ctx->vq_dst);
 	/* Mark context as idle */
-	spin_lock_irqsave(&dev->condlock, flags);
-	clear_bit(ctx->num, &dev->ctx_work_bits);
-	spin_unlock_irqrestore(&dev->condlock, flags);
+	clear_work_bit_irqsave(ctx);
 	/* If instance was initialised then
 	 * return instance and free reosurces */
 	if (ctx->inst_no != MFC_NO_INSTANCE_SET) {
 		mfc_debug(2, "Has to free instance\n");
 		ctx->state = MFCINST_RETURN_INST;
-		spin_lock_irqsave(&dev->condlock, flags);
-		set_bit(ctx->num, &dev->ctx_work_bits);
-		spin_unlock_irqrestore(&dev->condlock, flags);
+		set_work_bit_irqsave(ctx);
 		s5p_mfc_clean_ctx_int_flags(ctx);
 		s5p_mfc_try_run(dev);
 		/* Wait until instance is returned or timeout occured */
@@ -889,9 +952,12 @@ static unsigned int s5p_mfc_poll(struct file *file,
 		goto end;
 	}
 	mutex_unlock(&dev->mfc_mutex);
+	poll_wait(file, &ctx->fh.wait, wait);
 	poll_wait(file, &src_q->done_wq, wait);
 	poll_wait(file, &dst_q->done_wq, wait);
 	mutex_lock(&dev->mfc_mutex);
+	if (v4l2_event_pending(&ctx->fh))
+		rc |= POLLPRI;
 	spin_lock_irqsave(&src_q->done_lock, flags);
 	if (!list_empty(&src_q->done_list))
 		src_vb = list_first_entry(&src_q->done_list, struct vb2_buffer,
@@ -961,7 +1027,7 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 	int ret;
 
 	pr_debug("%s++\n", __func__);
-	dev = devm_kzalloc(&pdev->dev, sizeof *dev, GFP_KERNEL);
+	dev = devm_kzalloc(&pdev->dev, sizeof(*dev), GFP_KERNEL);
 	if (!dev) {
 		dev_err(&pdev->dev, "Not enough memory for MFC device\n");
 		return -ENOMEM;
@@ -1149,7 +1215,7 @@ static int s5p_mfc_suspend(struct device *dev)
 
 	if (m_dev->num_inst == 0)
 		return 0;
-	return s5p_mfc_sleep(m_dev);
+
 	if (test_and_set_bit(0, &m_dev->enter_suspend) != 0) {
 		mfc_err("Error: going to suspend for a second time\n");
 		return -EIO;
@@ -1168,7 +1234,8 @@ static int s5p_mfc_suspend(struct device *dev)
 			return -EIO;
 		}
 	}
-	return 0;
+
+	return s5p_mfc_sleep(m_dev);
 }
 
 static int s5p_mfc_resume(struct device *dev)

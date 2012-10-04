@@ -513,6 +513,7 @@ static int af9035_read_config(struct dvb_usb_device *d)
 		case AF9033_TUNER_FC0011:
 		case AF9033_TUNER_MXL5007T:
 		case AF9033_TUNER_TDA18218:
+		case AF9033_TUNER_FC2580:
 			state->af9033_config[i].spec_inv = 1;
 			break;
 		default:
@@ -582,6 +583,52 @@ err:
 
 	return ret;
 }
+
+static int af9035_tua9001_tuner_callback(struct dvb_usb_device *d,
+		int cmd, int arg)
+{
+	int ret;
+	u8 val;
+
+	dev_dbg(&d->udev->dev, "%s: cmd=%d arg=%d\n", __func__, cmd, arg);
+
+	/*
+	 * CEN     always enabled by hardware wiring
+	 * RESETN  GPIOT3
+	 * RXEN    GPIOT2
+	 */
+
+	switch (cmd) {
+	case TUA9001_CMD_RESETN:
+		if (arg)
+			val = 0x00;
+		else
+			val = 0x01;
+
+		ret = af9035_wr_reg_mask(d, 0x00d8e7, val, 0x01);
+		if (ret < 0)
+			goto err;
+		break;
+	case TUA9001_CMD_RXEN:
+		if (arg)
+			val = 0x01;
+		else
+			val = 0x00;
+
+		ret = af9035_wr_reg_mask(d, 0x00d8eb, val, 0x01);
+		if (ret < 0)
+			goto err;
+		break;
+	}
+
+	return 0;
+
+err:
+	dev_dbg(&d->udev->dev, "%s: failed=%d\n", __func__, ret);
+
+	return ret;
+}
+
 
 static int af9035_fc0011_tuner_callback(struct dvb_usb_device *d,
 		int cmd, int arg)
@@ -655,6 +702,8 @@ static int af9035_tuner_callback(struct dvb_usb_device *d, int cmd, int arg)
 	switch (state->af9033_config[0].tuner) {
 	case AF9033_TUNER_FC0011:
 		return af9035_fc0011_tuner_callback(d, cmd, arg);
+	case AF9033_TUNER_TUA9001:
+		return af9035_tua9001_tuner_callback(d, cmd, arg);
 	default:
 		break;
 	}
@@ -750,6 +799,11 @@ static struct tda18218_config af9035_tda18218_config = {
 	.i2c_wr_max = 21,
 };
 
+static const struct fc2580_config af9035_fc2580_config = {
+	.i2c_addr = 0x56,
+	.clock = 16384000,
+};
+
 static int af9035_tuner_attach(struct dvb_usb_adapter *adap)
 {
 	struct state *state = adap_to_priv(adap);
@@ -776,23 +830,6 @@ static int af9035_tuner_attach(struct dvb_usb_adapter *adap)
 			goto err;
 
 		ret = af9035_wr_reg_mask(d, 0x00d8e9, 0x01, 0x01);
-		if (ret < 0)
-			goto err;
-
-		/* reset tuner */
-		ret = af9035_wr_reg_mask(d, 0x00d8e7, 0x00, 0x01);
-		if (ret < 0)
-			goto err;
-
-		usleep_range(2000, 20000);
-
-		ret = af9035_wr_reg_mask(d, 0x00d8e7, 0x01, 0x01);
-		if (ret < 0)
-			goto err;
-
-		/* activate tuner RX */
-		/* TODO: use callback for TUA9001 RXEN */
-		ret = af9035_wr_reg_mask(d, 0x00d8eb, 0x01, 0x01);
 		if (ret < 0)
 			goto err;
 
@@ -850,6 +887,25 @@ static int af9035_tuner_attach(struct dvb_usb_adapter *adap)
 		/* attach tuner */
 		fe = dvb_attach(tda18218_attach, adap->fe[0],
 				&d->i2c_adap, &af9035_tda18218_config);
+		break;
+	case AF9033_TUNER_FC2580:
+		/* Tuner enable using gpiot2_o, gpiot2_en and gpiot2_on  */
+		ret = af9035_wr_reg_mask(d, 0xd8eb, 0x01, 0x01);
+		if (ret < 0)
+			goto err;
+
+		ret = af9035_wr_reg_mask(d, 0xd8ec, 0x01, 0x01);
+		if (ret < 0)
+			goto err;
+
+		ret = af9035_wr_reg_mask(d, 0xd8ed, 0x01, 0x01);
+		if (ret < 0)
+			goto err;
+
+		usleep_range(10000, 50000);
+		/* attach tuner */
+		fe = dvb_attach(fc2580_attach, adap->fe[0],
+				&d->i2c_adap, &af9035_fc2580_config);
 		break;
 	default:
 		fe = NULL;
@@ -1002,7 +1058,7 @@ static const struct dvb_usb_device_properties af9035_props = {
 	.generic_bulk_ctrl_endpoint_response = 0x81,
 
 	.identify_state = af9035_identify_state,
-	.firmware = "dvb-usb-af9035-02.fw",
+	.firmware = AF9035_FIRMWARE_AF9035,
 	.download_firmware = af9035_download_firmware,
 
 	.i2c_algo = &af9035_i2c_algo,
@@ -1032,7 +1088,7 @@ static const struct dvb_usb_device_properties it9135_props = {
 	.generic_bulk_ctrl_endpoint_response = 0x81,
 
 	.identify_state = af9035_identify_state,
-	.firmware = "dvb-usb-it9135-01.fw",
+	.firmware = AF9035_FIRMWARE_IT9135,
 	.download_firmware = af9035_download_firmware_it9135,
 
 	.i2c_algo = &af9035_i2c_algo,
@@ -1075,6 +1131,8 @@ static const struct usb_device_id af9035_id_table[] = {
 		&af9035_props, "AVerMedia HD Volar (A867)", NULL) },
 	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_TWINSTAR,
 		&af9035_props, "AVerMedia Twinstar (A825)", NULL) },
+	{ DVB_USB_DEVICE(USB_VID_ASUS, USB_PID_ASUS_U3100MINI_PLUS,
+		&af9035_props, "Asus U3100Mini Plus", NULL) },
 	{ }
 };
 MODULE_DEVICE_TABLE(usb, af9035_id_table);
@@ -1096,3 +1154,5 @@ module_usb_driver(af9035_usb_driver);
 MODULE_AUTHOR("Antti Palosaari <crope@iki.fi>");
 MODULE_DESCRIPTION("Afatech AF9035 driver");
 MODULE_LICENSE("GPL");
+MODULE_FIRMWARE(AF9035_FIRMWARE_AF9035);
+MODULE_FIRMWARE(AF9035_FIRMWARE_IT9135);

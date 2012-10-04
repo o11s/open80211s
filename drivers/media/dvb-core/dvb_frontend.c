@@ -1022,6 +1022,7 @@ static struct dtv_cmds_h dtv_cmds[DTV_MAX_COMMAND + 1] = {
 
 	_DTV_CMD(DTV_STREAM_ID, 1, 0),
 	_DTV_CMD(DTV_DVBT2_PLP_ID_LEGACY, 1, 0),
+	_DTV_CMD(DTV_LNA, 1, 0),
 
 	/* Get */
 	_DTV_CMD(DTV_DISEQC_SLAVE_REPLY, 0, 1),
@@ -1730,6 +1731,10 @@ static int dtv_property_process_set(struct dvb_frontend *fe,
 	case DTV_INTERLEAVING:
 		c->interleaving = tvp->u.data;
 		break;
+	case DTV_LNA:
+		if (fe->ops.set_lna)
+			r = fe->ops.set_lna(fe, tvp->u.data);
+		break;
 
 	/* ISDB-T Support here */
 	case DTV_ISDBT_PARTIAL_RECEPTION:
@@ -2131,26 +2136,42 @@ static int dvb_frontend_ioctl_legacy(struct file *file,
 			err = fe->ops.read_status(fe, status);
 		break;
 	}
+
 	case FE_READ_BER:
-		if (fe->ops.read_ber)
-			err = fe->ops.read_ber(fe, (__u32*) parg);
+		if (fe->ops.read_ber) {
+			if (fepriv->thread)
+				err = fe->ops.read_ber(fe, (__u32 *) parg);
+			else
+				err = -EAGAIN;
+		}
 		break;
 
 	case FE_READ_SIGNAL_STRENGTH:
-		if (fe->ops.read_signal_strength)
-			err = fe->ops.read_signal_strength(fe, (__u16*) parg);
+		if (fe->ops.read_signal_strength) {
+			if (fepriv->thread)
+				err = fe->ops.read_signal_strength(fe, (__u16 *) parg);
+			else
+				err = -EAGAIN;
+		}
 		break;
 
 	case FE_READ_SNR:
-		if (fe->ops.read_snr)
-			err = fe->ops.read_snr(fe, (__u16*) parg);
+		if (fe->ops.read_snr) {
+			if (fepriv->thread)
+				err = fe->ops.read_snr(fe, (__u16 *) parg);
+			else
+				err = -EAGAIN;
+		}
 		break;
 
 	case FE_READ_UNCORRECTED_BLOCKS:
-		if (fe->ops.read_ucblocks)
-			err = fe->ops.read_ucblocks(fe, (__u32*) parg);
+		if (fe->ops.read_ucblocks) {
+			if (fepriv->thread)
+				err = fe->ops.read_ucblocks(fe, (__u32 *) parg);
+			else
+				err = -EAGAIN;
+		}
 		break;
-
 
 	case FE_DISEQC_RESET_OVERLOAD:
 		if (fe->ops.diseqc_reset_overload) {

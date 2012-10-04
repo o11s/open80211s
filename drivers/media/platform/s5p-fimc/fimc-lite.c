@@ -28,9 +28,11 @@
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-contig.h>
+#include <media/s5p_fimc.h>
 
 #include "fimc-mdevice.h"
 #include "fimc-core.h"
+#include "fimc-lite.h"
 #include "fimc-lite-reg.h"
 
 static int debug;
@@ -133,7 +135,7 @@ static int fimc_lite_hw_init(struct fimc_lite *fimc)
 	sensor = v4l2_get_subdev_hostdata(pipeline->subdevs[IDX_SENSOR]);
 	spin_lock_irqsave(&fimc->slock, flags);
 
-	flite_hw_set_camera_bus(fimc, sensor->pdata);
+	flite_hw_set_camera_bus(fimc, &sensor->pdata);
 	flite_hw_set_source_format(fimc, &fimc->inp_frame);
 	flite_hw_set_window_offset(fimc, &fimc->inp_frame);
 	flite_hw_set_output_dma(fimc, &fimc->out_frame, true);
@@ -193,7 +195,7 @@ static int fimc_lite_reinit(struct fimc_lite *fimc, bool suspend)
 	if (!streaming)
 		return 0;
 
-	return fimc_pipeline_s_stream(&fimc->pipeline, 0);
+	return fimc_pipeline_call(fimc, set_stream, &fimc->pipeline, 0);
 }
 
 static int fimc_lite_stop_capture(struct fimc_lite *fimc, bool suspend)
@@ -307,7 +309,8 @@ static int start_streaming(struct vb2_queue *q, unsigned int count)
 		flite_hw_capture_start(fimc);
 
 		if (!test_and_set_bit(ST_SENSOR_STREAM, &fimc->state))
-			fimc_pipeline_s_stream(&fimc->pipeline, 1);
+			fimc_pipeline_call(fimc, set_stream,
+					   &fimc->pipeline, 1);
 	}
 	if (debug > 0)
 		flite_hw_dump_regs(fimc, __func__);
@@ -411,7 +414,8 @@ static void buffer_queue(struct vb2_buffer *vb)
 		spin_unlock_irqrestore(&fimc->slock, flags);
 
 		if (!test_and_set_bit(ST_SENSOR_STREAM, &fimc->state))
-			fimc_pipeline_s_stream(&fimc->pipeline, 1);
+			fimc_pipeline_call(fimc, set_stream,
+					   &fimc->pipeline, 1);
 		return;
 	}
 	spin_unlock_irqrestore(&fimc->slock, flags);
@@ -466,8 +470,8 @@ static int fimc_lite_open(struct file *file)
 		goto done;
 
 	if (++fimc->ref_count == 1 && fimc->out_path == FIMC_IO_DMA) {
-		ret = fimc_pipeline_initialize(&fimc->pipeline,
-					       &fimc->vfd.entity, true);
+		ret = fimc_pipeline_call(fimc, open, &fimc->pipeline,
+					 &fimc->vfd.entity, true);
 		if (ret < 0) {
 			pm_runtime_put_sync(&fimc->pdev->dev);
 			fimc->ref_count--;
@@ -493,7 +497,7 @@ static int fimc_lite_close(struct file *file)
 	if (--fimc->ref_count == 0 && fimc->out_path == FIMC_IO_DMA) {
 		clear_bit(ST_FLITE_IN_USE, &fimc->state);
 		fimc_lite_stop_capture(fimc, false);
-		fimc_pipeline_shutdown(&fimc->pipeline);
+		fimc_pipeline_call(fimc, close, &fimc->pipeline);
 		clear_bit(ST_FLITE_SUSPENDED, &fimc->state);
 	}
 
@@ -825,7 +829,7 @@ static int fimc_lite_reqbufs(struct file *file, void *priv,
 
 	reqbufs->count = max_t(u32, FLITE_REQ_BUFS_MIN, reqbufs->count);
 	ret = vb2_reqbufs(&fimc->vb_queue, reqbufs);
-	if (!ret < 0)
+	if (!ret)
 		fimc->reqbufs_count = reqbufs->count;
 
 	return ret;
@@ -1064,6 +1068,7 @@ static int fimc_lite_subdev_set_fmt(struct v4l2_subdev *sd,
 	struct fimc_lite *fimc = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *mf = &fmt->format;
 	struct flite_frame *sink = &fimc->inp_frame;
+	struct flite_frame *source = &fimc->out_frame;
 	const struct fimc_fmt *ffmt;
 
 	v4l2_dbg(1, debug, sd, "pad%d: code: 0x%x, %dx%d",
@@ -1097,8 +1102,10 @@ static int fimc_lite_subdev_set_fmt(struct v4l2_subdev *sd,
 		sink->rect.height = mf->height;
 		sink->rect.left = 0;
 		sink->rect.top = 0;
-		/* Reset source crop rectangle */
-		fimc->out_frame.rect = sink->rect;
+		/* Reset source format and crop rectangle */
+		source->rect = sink->rect;
+		source->f_width = mf->width;
+		source->f_height = mf->height;
 	} else {
 		/* Allow changing format only on sink pad */
 		mf->code = fimc->fmt->mbus_code;
@@ -1505,7 +1512,8 @@ static int fimc_lite_resume(struct device *dev)
 		return 0;
 
 	INIT_LIST_HEAD(&fimc->active_buf_q);
-	fimc_pipeline_initialize(&fimc->pipeline, &fimc->vfd.entity, false);
+	fimc_pipeline_call(fimc, open, &fimc->pipeline,
+			   &fimc->vfd.entity, false);
 	fimc_lite_hw_init(fimc);
 	clear_bit(ST_FLITE_SUSPENDED, &fimc->state);
 
@@ -1531,7 +1539,7 @@ static int fimc_lite_suspend(struct device *dev)
 	if (ret < 0 || !fimc_lite_active(fimc))
 		return ret;
 
-	return fimc_pipeline_shutdown(&fimc->pipeline);
+	return fimc_pipeline_call(fimc, close, &fimc->pipeline);
 }
 #endif /* CONFIG_PM_SLEEP */
 

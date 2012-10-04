@@ -1159,10 +1159,18 @@ static int tda18271_get_id(struct dvb_frontend *fe)
 	struct tda18271_priv *priv = fe->tuner_priv;
 	unsigned char *regs = priv->tda18271_regs;
 	char *name;
+	int ret;
 
 	mutex_lock(&priv->lock);
-	tda18271_read_regs(fe);
+	ret = tda18271_read_regs(fe);
 	mutex_unlock(&priv->lock);
+
+	if (ret) {
+		tda_info("Error reading device ID @ %d-%04x, bailing out.\n",
+			 i2c_adapter_id(priv->i2c_props.adap),
+			 priv->i2c_props.addr);
+		return -EIO;
+	}
 
 	switch (regs[R_ID] & 0x7f) {
 	case 3:
@@ -1278,12 +1286,21 @@ struct dvb_frontend *tda18271_attach(struct dvb_frontend *fe, u8 addr,
 		if (tda_fail(ret))
 			goto fail;
 
+		/* if delay_cal is set, delay IR & RF calibration until init()
+		 * module option 'cal' overrides this delay */
+		if ((cfg->delay_cal) && (!tda18271_need_cal_on_startup(cfg)))
+			break;
+
 		mutex_lock(&priv->lock);
 		tda18271_init_regs(fe);
 
 		if ((tda18271_need_cal_on_startup(cfg)) &&
 		    (priv->id == TDA18271HDC2))
 			tda18271c2_rf_cal_init(fe);
+
+		/* enter standby mode, with required output features enabled */
+		ret = tda18271_toggle_output(fe, 1);
+		tda_fail(ret);
 
 		mutex_unlock(&priv->lock);
 		break;

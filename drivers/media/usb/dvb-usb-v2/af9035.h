@@ -28,6 +28,7 @@
 #include "fc0011.h"
 #include "mxl5007t.h"
 #include "tda18218.h"
+#include "fc2580.h"
 
 struct reg_val {
 	u32 reg;
@@ -83,6 +84,9 @@ u32 clock_lut_it9135[] = {
 	24000000, /* 24.00 MHz */
 	22000000, /* 22.00 MHz */
 };
+
+#define AF9035_FIRMWARE_AF9035 "dvb-usb-af9035-02.fw"
+#define AF9035_FIRMWARE_IT9135 "dvb-usb-it9135-01.fw"
 
 /* EEPROM locations */
 #define EEPROM_IR_MODE            0x430d

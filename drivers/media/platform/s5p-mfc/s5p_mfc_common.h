@@ -146,6 +146,9 @@ enum s5p_mfc_decode_arg {
 	MFC_DEC_RES_CHANGE,
 };
 
+#define MFC_BUF_FLAG_USED	(1 << 0)
+#define MFC_BUF_FLAG_EOS	(1 << 1)
+
 struct s5p_mfc_ctx;
 
 /**
@@ -161,7 +164,7 @@ struct s5p_mfc_buf {
 		} raw;
 		size_t stream;
 	} cookie;
-	int used;
+	int flags;
 };
 
 /**
@@ -566,5 +569,10 @@ struct mfc_control {
 #define fh_to_ctx(__fh) container_of(__fh, struct s5p_mfc_ctx, fh)
 #define ctrl_to_ctx(__ctrl) \
 	container_of((__ctrl)->handler, struct s5p_mfc_ctx, ctrl_handler)
+
+void clear_work_bit(struct s5p_mfc_ctx *ctx);
+void set_work_bit(struct s5p_mfc_ctx *ctx);
+void clear_work_bit_irqsave(struct s5p_mfc_ctx *ctx);
+void set_work_bit_irqsave(struct s5p_mfc_ctx *ctx);
 
 #endif /* S5P_MFC_COMMON_H_ */
