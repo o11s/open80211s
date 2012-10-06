@@ -258,8 +258,9 @@ bool rate_control_send_low(struct ieee80211_sta *sta,
 			   struct ieee80211_tx_rate_control *txrc)
 {
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(txrc->skb);
+	struct ieee80211_hdr *hdr = (void *)txrc->skb->data;
 	struct ieee80211_supported_band *sband = txrc->sband;
-	int mcast_rate;
+	int mcast_rate, flags = 0;
 
 	if (!sta || !priv_sta || rc_no_data_or_no_ack_use_min(txrc)) {
 		if ((sband->band != IEEE80211_BAND_2GHZ) ||
@@ -274,8 +275,14 @@ bool rate_control_send_low(struct ieee80211_sta *sta,
 			1 : txrc->hw->max_rate_tries;
 		if (!sta && txrc->bss) {
 			mcast_rate = txrc->bss_conf->mcast_rate[sband->band];
+			flags = txrc->bss_conf->rate_flags;
 			if (mcast_rate > 0) {
-				info->control.rates[0].idx = mcast_rate - 1;
+				/* what? */
+				if (flags & IEEE80211_TX_RC_MCS)
+					info->control.rates[0].idx = mcast_rate;
+				else
+					info->control.rates[0].idx = mcast_rate - 1;
+				info->control.rates[0].flags |= flags;
 				return true;
 			}
 
