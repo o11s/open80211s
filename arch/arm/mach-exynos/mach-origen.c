@@ -35,8 +35,8 @@
 #include <plat/cpu.h>
 #include <plat/devs.h>
 #include <plat/sdhci.h>
-#include <plat/iic.h>
-#include <plat/ehci.h>
+#include <linux/platform_data/i2c-s3c2410.h>
+#include <linux/platform_data/usb-ehci-s5p.h>
 #include <plat/clock.h>
 #include <plat/gpio-cfg.h>
 #include <plat/backlight.h>
@@ -44,7 +44,7 @@
 #include <plat/mfc.h>
 #include <plat/hdmi.h>
 
-#include <mach/ohci.h>
+#include <linux/platform_data/usb-exynos.h>
 #include <mach/map.h>
 
 #include <drm/exynos_drm.h>
@@ -96,12 +96,12 @@ static struct s3c2410_uartcfg origen_uartcfgs[] __initdata = {
 };
 
 static struct regulator_consumer_supply __initdata ldo3_consumer[] = {
-	REGULATOR_SUPPLY("vdd11", "s5p-mipi-csis.0"), /* MIPI */
+	REGULATOR_SUPPLY("vddcore", "s5p-mipi-csis.0"), /* MIPI */
 	REGULATOR_SUPPLY("vdd", "exynos4-hdmi"), /* HDMI */
 	REGULATOR_SUPPLY("vdd_pll", "exynos4-hdmi"), /* HDMI */
 };
 static struct regulator_consumer_supply __initdata ldo6_consumer[] = {
-	REGULATOR_SUPPLY("vdd18", "s5p-mipi-csis.0"), /* MIPI */
+	REGULATOR_SUPPLY("vddio", "s5p-mipi-csis.0"), /* MIPI */
 };
 static struct regulator_consumer_supply __initdata ldo7_consumer[] = {
 	REGULATOR_SUPPLY("avdd", "alc5625"), /* Realtek ALC5625 */
