@@ -16,12 +16,13 @@
 #define rmom_dbg(fmt, args...)   do { (void)(0); } while (0)
 #endif
 
+/*
 #define RMOM_MAX_FLOWS 8
 #define RMOM_MAX_JUMP 8
 #define RMOM_MAX_FIFO_SIZE ( RMOM_MAX_JUMP * RMOM_MAX_FLOWS )
 #define RMOM_MAX_NACK_RETRIES 5
 #define RMOM_EXPIRY_WINDOW_SIZE 8
-
+*/
 
 
 int mesh_rmom_cache_init(struct ieee80211_sub_if_data *sdata);

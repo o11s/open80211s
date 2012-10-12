@@ -121,6 +121,7 @@ static int process_incoming_nack(struct ieee80211_sub_if_data *sdata,
 {
 	struct rmom_nack *nack;
 	int ret = 0;
+	u8 rmom_max_nack = sdata->u.mesh.mshcfg.dot11MeshRmomMaxRetries;
 
 	spin_lock_bh(&p->in_nack_lock);
 	list_for_each_entry(nack, &p->rmom.in.list, list) {
@@ -134,7 +135,7 @@ static int process_incoming_nack(struct ieee80211_sub_if_data *sdata,
 		}
 
 		nack->count = count;
-		if (nack->count == RMOM_MAX_NACK_RETRIES) {
+		if (nack->count == rmom_max_nack) {
 			/* final transmission, stop tracking this */
 			list_del(&nack->list);
 			kfree(nack);
@@ -283,12 +284,14 @@ static int add_outgoing_nack(struct ieee80211_sub_if_data *sdata,
 			     struct rmc_entry *p, u32 seqnum)
 {
 	struct rmom_nack *nack;
+	u8 rmom_expiry = sdata->u.mesh.mshcfg.dot11MeshRmomExpiryWindow;
+
 	nack = kmalloc(sizeof(struct rmom_nack), GFP_ATOMIC);
 	if (!nack)
 		return -ENOMEM;
 	/** TODO look for a valid offset for expiration */
 	nack->seqnum = seqnum;
-	nack->expiry_sn = p->rmom.exp_seqnum + RMOM_EXPIRY_WINDOW_SIZE;
+	nack->expiry_sn = p->rmom.exp_seqnum + rmom_expiry;
 	nack->count = 1;
 
 	/** Add the entry at the last position */
@@ -313,6 +316,8 @@ static void process_outgoing_nack(struct ieee80211_sub_if_data *sdata,
 				  struct ieee80211_hdr *hdr)
 {
 	struct rmom_nack *nack, *tmp;
+	u8 rmom_max_nack = sdata->u.mesh.mshcfg.dot11MeshRmomMaxRetries;
+	u8 rmom_expiry = sdata->u.mesh.mshcfg.dot11MeshRmomExpiryWindow;
 
 	list_for_each_entry_safe(nack, tmp, &p->rmom.out.list, list) {
 		/* As frames are ordered by expiration once we find
@@ -321,14 +326,14 @@ static void process_outgoing_nack(struct ieee80211_sub_if_data *sdata,
 			return;
 
 		/* TODO: constant / mesh parameter */
-		if (nack->count >= RMOM_MAX_NACK_RETRIES) {
+		if (nack->count >= rmom_max_nack) {
 			list_del(&nack->list);
 			kfree(nack);
 			continue;
 		}
 
 		/* Move expiry window */
-		nack->expiry_sn = p->rmom.exp_seqnum + RMOM_EXPIRY_WINDOW_SIZE;
+		nack->expiry_sn = p->rmom.exp_seqnum + rmom_expiry;
 		nack->count++;
 		rmom_dbg("Sending retry NACK %d for sn %x",
 			 nack->count, nack->seqnum);
@@ -404,16 +409,17 @@ static int update_exp_seqnum(struct ieee80211_sub_if_data *sdata,
 {
 	int ret = -1;
 	u32 exp_seqnum = p->rmom.exp_seqnum;
+	u8 rmom_max_jump = sdata->u.mesh.mshcfg.dot11MeshRmomMaxJump;
 
 	if ((s32) (seqnum - exp_seqnum) < 0) {
 		/* this is an old seqnum, don't update expected seqnum */
 		rmom_dbg("old seqnum: %x < %x", seqnum, exp_seqnum);
 		ret = 2;
 	} else if (seqnum == exp_seqnum ||
-		   (s32) (seqnum - exp_seqnum) > RMOM_MAX_JUMP) {
+		   (s32) (seqnum - exp_seqnum) > rmom_max_jump) {
 		exp_seqnum = seqnum + 1;
 		ret = 0;
-	} else if ((s32) (seqnum - exp_seqnum) <= RMOM_MAX_JUMP) {
+	} else if ((s32) (seqnum - exp_seqnum) <= rmom_max_jump) {
 		rmom_dbg("missed range: %x:%x", exp_seqnum, seqnum - 1);
 		if (range) {
 			range[0] = exp_seqnum;

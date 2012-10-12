@@ -822,6 +822,10 @@ struct mesh_config {
 	bool dot11MeshForwarding;
 	s32 rssi_threshold;
 	u16 ht_opmode;
+	u8 dot11MeshRmomMaxRetries;
+	u8 dot11MeshRmomExpiryWindow;
+	u8 dot11MeshRmomMaxJump;
+	u8 dot11MeshRmomMaxFlows;
 };
 
 /**

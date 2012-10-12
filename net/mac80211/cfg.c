@@ -1544,6 +1544,23 @@ static int ieee80211_update_mesh_config(struct wiphy *wiphy,
 		sdata->vif.bss_conf.ht_operation_mode = nconf->ht_opmode;
 		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_HT);
 	}
+	if (_chg_mesh_attr(NL80211_MESHCONF_RMOM_MAX_NACK_RETRIES, mask))
+		conf->dot11MeshRmomMaxRetries = nconf->dot11MeshRmomMaxRetries;
+	if (_chg_mesh_attr(NL80211_MESHCONF_RMOM_EXPIRY_WINDOW_SIZE, mask))
+		conf->dot11MeshRmomExpiryWindow = nconf->dot11MeshRmomExpiryWindow;
+	if (_chg_mesh_attr(NL80211_MESHCONF_RMOM_MAX_JUMP, mask)) {
+		conf->dot11MeshRmomMaxJump = nconf->dot11MeshRmomMaxJump;
+        	sdata->local->mcast_rexmit_skb_max_size =
+                	nconf->dot11MeshRmomMaxJump *
+                	conf->dot11MeshRmomMaxFlows;
+	}
+	if (_chg_mesh_attr(NL80211_MESHCONF_RMOM_MAX_FLOWS, mask)) {
+		conf->dot11MeshRmomMaxFlows = nconf->dot11MeshRmomMaxFlows;
+                sdata->local->mcast_rexmit_skb_max_size =
+                        conf->dot11MeshRmomMaxJump *
+                        nconf->dot11MeshRmomMaxFlows;
+	}
+
 	return 0;
 }
 

@@ -3413,7 +3413,15 @@ static int nl80211_get_mesh_config(struct sk_buff *skb,
 	    nla_put_u32(msg, NL80211_MESHCONF_RSSI_THRESHOLD,
 			cur_params.rssi_threshold) ||
 	    nla_put_u32(msg, NL80211_MESHCONF_HT_OPMODE,
-			cur_params.ht_opmode))
+			cur_params.ht_opmode) ||
+	    nla_put_u8(msg, NL80211_MESHCONF_RMOM_MAX_NACK_RETRIES,
+			cur_params.dot11MeshRmomMaxRetries) ||
+	    nla_put_u8(msg, NL80211_MESHCONF_RMOM_EXPIRY_WINDOW_SIZE,
+			cur_params.dot11MeshRmomExpiryWindow) ||
+	    nla_put_u8(msg, NL80211_MESHCONF_RMOM_MAX_JUMP,
+			cur_params.dot11MeshRmomMaxJump) ||
+	    nla_put_u8(msg, NL80211_MESHCONF_RMOM_MAX_FLOWS,
+			cur_params.dot11MeshRmomMaxFlows))
 		goto nla_put_failure;
 	nla_nest_end(msg, pinfoattr);
 	genlmsg_end(msg, hdr);
@@ -3450,6 +3458,10 @@ static const struct nla_policy nl80211_meshconf_params_policy[NL80211_MESHCONF_A
 	[NL80211_MESHCONF_FORWARDING] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_RSSI_THRESHOLD] = { .type = NLA_U32},
 	[NL80211_MESHCONF_HT_OPMODE] = { .type = NLA_U16},
+	[NL80211_MESHCONF_RMOM_MAX_NACK_RETRIES] = { .type = NLA_U8 },
+	[NL80211_MESHCONF_RMOM_EXPIRY_WINDOW_SIZE] = { .type = NLA_U8 },
+	[NL80211_MESHCONF_RMOM_MAX_JUMP] = { .type = NLA_U8 },
+	[NL80211_MESHCONF_RMOM_MAX_FLOWS] = { .type = NLA_U8 },
 };
 
 static const struct nla_policy
@@ -3549,6 +3561,22 @@ do {\
 			mask, NL80211_MESHCONF_RSSI_THRESHOLD, nla_get_u32);
 	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, ht_opmode,
 			mask, NL80211_MESHCONF_HT_OPMODE, nla_get_u16);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg,
+			dot11MeshRmomMaxRetries, mask,
+			NL80211_MESHCONF_RMOM_MAX_NACK_RETRIES,
+			nla_get_u8);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg,
+			dot11MeshRmomExpiryWindow, mask,
+			NL80211_MESHCONF_RMOM_EXPIRY_WINDOW_SIZE,
+			nla_get_u8);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg,
+			dot11MeshRmomMaxJump, mask,
+			NL80211_MESHCONF_RMOM_MAX_JUMP,
+			nla_get_u8);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg,
+			dot11MeshRmomMaxFlows, mask,
+			NL80211_MESHCONF_RMOM_MAX_FLOWS,
+			nla_get_u8);
 	if (mask_out)
 		*mask_out = mask;
 

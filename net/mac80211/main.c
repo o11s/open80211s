@@ -664,6 +664,8 @@ struct ieee80211_hw *ieee80211_alloc_hw(size_t priv_data_len,
 	skb_queue_head_init(&local->skb_queue);
 	skb_queue_head_init(&local->skb_queue_unreliable);
 	skb_queue_head_init(&local->mcast_rexmit_skb_queue);
+	// Default size to zero, value overrided on mesh setup
+	local->mcast_rexmit_skb_max_size = 0;
 
 	/* init dummy netdev for use w/ NAPI */
 	init_dummy_netdev(&local->napi_dev);

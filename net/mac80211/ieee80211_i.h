@@ -938,6 +938,7 @@ struct ieee80211_local {
 	bool running_rx_handler;	/* protected by rx_skb_queue.lock */
 
 	struct sk_buff_head mcast_rexmit_skb_queue;
+	int mcast_rexmit_skb_max_size;
 
 	/* Station data */
 	/*

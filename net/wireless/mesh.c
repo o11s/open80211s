@@ -40,6 +40,11 @@
 
 #define MESH_SYNC_NEIGHBOR_OFFSET_MAX 50
 
+#define RMOM_MAX_NACK_RETRIES 5
+#define RMOM_EXPIRY_WINDOW_SIZE 8
+#define RMOM_MAX_FLOWS 8
+#define RMOM_MAX_JUMP 8
+
 const struct mesh_config default_mesh_config = {
 	.dot11MeshRetryTimeout = MESH_RET_T,
 	.dot11MeshConfirmTimeout = MESH_CONF_T,
@@ -62,6 +67,10 @@ const struct mesh_config default_mesh_config = {
 	.dot11MeshForwarding = true,
 	.rssi_threshold = MESH_RSSI_THRESHOLD,
 	.ht_opmode = IEEE80211_HT_OP_MODE_PROTECTION_NONHT_MIXED,
+	.dot11MeshRmomMaxRetries = RMOM_MAX_NACK_RETRIES,
+	.dot11MeshRmomExpiryWindow = RMOM_EXPIRY_WINDOW_SIZE,
+	.dot11MeshRmomMaxJump = RMOM_MAX_JUMP,
+	.dot11MeshRmomMaxFlows = RMOM_MAX_FLOWS,
 };
 
 const struct mesh_setup default_mesh_setup = {

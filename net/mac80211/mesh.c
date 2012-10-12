@@ -736,6 +736,10 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 					  sdata->local->hw.conf.channel->band);
+	local->mcast_rexmit_skb_max_size =
+		(sdata->u.mesh.mshcfg.dot11MeshRmomMaxJump *
+		sdata->u.mesh.mshcfg.dot11MeshRmomMaxFlows);
+
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
 						BSS_CHANGED_HT |

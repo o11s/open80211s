@@ -587,7 +587,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 		!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
 
 		skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
-		if (local->mcast_rexmit_skb_queue.qlen < RMOM_MAX_FIFO_SIZE) {
+		if (local->mcast_rexmit_skb_queue.qlen < local->mcast_rexmit_skb_max_size) {
 			/*  enqueued, so no need to free or do anything else with this skb */
 			return;
 		} else {
