@@ -274,6 +274,16 @@ struct physdev_dbgp_op {
     } u;
 };
 
+#define PHYSDEVOP_map_iomem        30
+struct physdev_map_iomem {
+    /* IN */
+    uint64_t first_gfn;
+    uint64_t first_mfn;
+    uint32_t nr_mfns;
+    uint32_t add_mapping; /* 1 == add mapping;  0 == unmap */
+
+};
+
 /*
  * Notify that some PIRQ-bound event channels have been unmasked.
  * ** This command is obsolete since interface version 0x00030202 and is **

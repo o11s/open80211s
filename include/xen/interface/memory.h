@@ -175,7 +175,10 @@ struct xen_add_to_physmap {
     uint16_t    size;
 
     /* Source mapping space. */
-    unsigned int space;
+    uint16_t space;
+    domid_t foreign_domid;         /* IFF XENMAPSPACE_gmfn_foreign */
+
+#define XENMAPIDX_grant_table_status 0x80000000
 
     /* Index into source mapping space. */
     xen_ulong_t idx;
