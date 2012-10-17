@@ -23,4 +23,6 @@ unsigned long xen_read_cr2_direct(void);
 
 extern void xen_init_mmu_ops(void);
 extern void xen_hvm_init_mmu_ops(void);
+extern void xen_set_clr_mmio_pvh_pte(unsigned long pfn, unsigned long mfn,
+				     int nr_mfns, int add_mapping);
 #endif	/* _XEN_MMU_H */
