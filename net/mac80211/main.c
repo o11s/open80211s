@@ -35,11 +35,28 @@
 
 static struct lock_class_key ieee80211_rx_skb_queue_class;
 
+static u64 get_mc_list_hash(struct ieee80211_hw *hw,
+			    struct netdev_hw_addr_list *mc_list)
+{
+	struct netdev_hw_addr *ha;
+	u64 mchash;
+
+	/* always get broadcast frames */
+	mchash = 1ULL << (0xff >> 2);
+
+	netdev_hw_addr_list_for_each(ha, mc_list)
+		mchash |= 1ULL << (ha->addr[5] >> 2);
+
+	return mchash;
+}
+
 void ieee80211_configure_filter(struct ieee80211_local *local)
 {
 	u64 mc;
+	struct ieee80211_sub_if_data *sdata;
 	unsigned int changed_flags;
 	unsigned int new_flags = 0;
+	u8 bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 	if (atomic_read(&local->iff_promiscs))
 		new_flags |= FIF_PROMISC_IN_BSS;
@@ -72,8 +89,45 @@ void ieee80211_configure_filter(struct ieee80211_local *local)
 	spin_lock_bh(&local->filter_lock);
 	changed_flags = local->filter_flags ^ new_flags;
 
+	/* add local->mc_list_hash value re-compute mc_list_hash and compare
+	 * with prev if different, send a Group Membership Response broadcast
+	 * mgmt frame to all our peers announcing the current multicast list to
+	 * all immediate peers.
+	 *
+	 * Cfr. 10.23.15.3.2
+	 *
+	 * Implementation note: For now, this request is not propagated beyond
+	 * 1-hop.
+	 */
+
+	/* Somewhere in the receive path, process GMResp and stores (per
+         * sta) the current list of subscribed addresses */
+
+	/* local keeps a list of known mcast addresses, with a list of sta's
+         * hanging from each address */
+
 	mc = drv_prepare_multicast(local, &local->mc_list);
+
 	spin_unlock_bh(&local->filter_lock);
+
+	/* TODO : I'm reusing mc as hash */
+	if (mc != local->mc_list_hash) {
+		/* Update mc_list_hash */
+		local->mc_list_hash = mc;
+
+		/* Send unsolicited gcm response */
+		rcu_read_lock();
+		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+			if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
+				if (!ieee80211_sdata_running(sdata))
+					continue;
+				ieee80211aa_gcm_frame_tx(sdata,
+					WLAN_AV_ROBUST_ACTION_GM_REQUEST,
+					bc_addr, 0);
+			}
+		}
+		rcu_read_unlock();
+	}
 
 	/* be a bit nasty */
 	new_flags |= (1<<31);

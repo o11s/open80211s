@@ -353,6 +353,14 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,
 			 struct ieee80211_mgmt *mgmt, size_t len,
 			 struct ieee80211_rx_status *rx_status);
 
+/* ieee80211aa definitions */
+int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
+			     enum ieee80211_robust_av_actioncode action,
+			     u8 *da, u8 dialog_token);
+void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
+			      struct ieee80211_mgmt *mgmt,
+			      size_t len, struct ieee80211_rx_status *rx_status);
+
 /* Private interfaces */
 /* Mesh tables */
 void mesh_mpath_table_grow(void);

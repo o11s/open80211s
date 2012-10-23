@@ -465,3 +465,132 @@ void mesh_rmom_handle_frame(struct ieee80211_sub_if_data *sdata,
 	/* We always check for any expired nack entry*/
 	process_outgoing_nack(sdata, p, hdr);
 }
+
+static void set_mcast_list_on_mgmt(struct sk_buff *skb,
+				   struct ieee80211_mgmt *mgmt,
+				   struct netdev_hw_addr_list *mc_list)
+{
+	struct netdev_hw_addr *ha;
+	int count = mc_list->count;
+	u8 *pos;
+
+	printk(KERN_DEBUG "mc_list=%d\n", count);
+
+	/* skb_put for mc_list */
+	pos = skb_put(skb, ETH_ALEN * count);
+	mgmt->u.action.u.robust_av_resp.address_count = count;
+
+	list_for_each_entry(ha, &mc_list->list, list) {
+		printk(KERN_DEBUG "HW:%pM\n", ha->addr);
+		memcpy(pos, ha->addr, ETH_ALEN);
+                pos += ETH_ALEN;
+	}
+
+}
+
+int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
+				    enum ieee80211_robust_av_actioncode action,
+				    u8 *da, u8 dialog_token)
+{
+	struct ieee80211_local *local = sdata->local;
+	struct sk_buff *skb;
+	struct ieee80211_mgmt *mgmt;
+
+	if (action == WLAN_AV_ROBUST_ACTION_GM_REQUEST) {
+		int hdr_len = offsetof(struct ieee80211_mgmt,
+				       u.action.u.robust_av_req) +
+				       sizeof(mgmt->u.action.u.robust_av_req);
+
+		skb = dev_alloc_skb(local->tx_headroom + hdr_len);
+		if (!skb)
+			return -1;
+
+		skb_reserve(skb, local->tx_headroom);
+		mgmt = (struct ieee80211_mgmt *) skb_put(skb, hdr_len);
+		memset(mgmt, 0, hdr_len);
+		mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT |
+						  IEEE80211_STYPE_ACTION);
+		memcpy(mgmt->da, da, ETH_ALEN);
+		memcpy(mgmt->sa, sdata->vif.addr, ETH_ALEN);
+		memcpy(mgmt->bssid, sdata->vif.addr, ETH_ALEN);
+		mgmt->u.action.category = WLAN_CATEGORY_ROBUST_AV_STREAMING;
+		mgmt->u.action.u.robust_av_req.action = action;
+
+		while (mgmt->u.action.u.robust_av_req.dialog_token == 0)
+			get_random_bytes(
+				&mgmt->u.action.u.robust_av_req.dialog_token,
+				sizeof(u8));
+
+		ieee80211_tx_skb(sdata, skb);
+		return 0;
+
+	} else if (action == WLAN_AV_ROBUST_ACTION_GM_RESPONSE) {
+		int hdr_len = offsetof(struct ieee80211_mgmt,
+				       u.action.u.robust_av_resp) +
+				       sizeof(mgmt->u.action.u.robust_av_resp);
+
+		skb = dev_alloc_skb(local->tx_headroom +
+				    hdr_len +
+				    local->mc_list.count * ETH_ALEN);
+		if (!skb)
+			return -1;
+
+		skb_reserve(skb, local->tx_headroom);
+		mgmt = (struct ieee80211_mgmt *) skb_put(skb, hdr_len);
+		memset(mgmt, 0, hdr_len);
+		mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT |
+						  IEEE80211_STYPE_ACTION);
+		memcpy(mgmt->da, da, ETH_ALEN);
+		memcpy(mgmt->sa, sdata->vif.addr, ETH_ALEN);
+		memcpy(mgmt->bssid, sdata->vif.addr, ETH_ALEN);
+		mgmt->u.action.category = WLAN_CATEGORY_ROBUST_AV_STREAMING;
+		mgmt->u.action.u.robust_av_resp.action = action;
+		mgmt->u.action.u.robust_av_resp.dialog_token = dialog_token;
+		set_mcast_list_on_mgmt(skb, mgmt, &local->mc_list);
+
+		ieee80211_tx_skb(sdata, skb);
+		return 0;
+	}
+	return -1;
+}
+
+void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
+			      struct ieee80211_mgmt *mgmt,
+			      size_t len, struct ieee80211_rx_status *rx_status)
+{
+	struct sta_info *sta;
+
+	/* need action_code, aux */
+	if (len < IEEE80211_MIN_ACTION_SIZE)
+		return;
+
+	rcu_read_lock();
+
+	sta = sta_info_get(sdata, mgmt->sa);
+	if (!sta) {
+		printk(KERN_DEBUG "GCast frame from unknown peer\n");
+		rcu_read_unlock();
+		return;
+	}
+
+	if (mgmt->u.action.u.robust_av_req.action ==
+						WLAN_AV_ROBUST_ACTION_GM_REQUEST) {
+
+		u8 dialog_token = mgmt->u.action.u.robust_av_req.dialog_token;
+
+		/** If non-zero dialog token */
+		if (dialog_token > 0)
+			ieee80211aa_gcm_frame_tx(sdata,
+						 WLAN_AV_ROBUST_ACTION_GM_RESPONSE,
+						 sta->sta.addr,
+						 dialog_token);
+	} else if (mgmt->u.action.u.robust_av_resp.action ==
+						WLAN_AV_ROBUST_ACTION_GM_RESPONSE) {
+		/** For now just set gcm_enabled to true */
+		if (!sta->gcm_enabled) {
+			printk(KERN_DEBUG "%pM has GCM enabled\n", sta->sta.addr);
+			sta->gcm_enabled = true;
+		}
+	}
+	rcu_read_unlock();
+}

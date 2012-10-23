@@ -840,6 +840,15 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 		if (mesh_action_is_path_sel(mgmt))
 			mesh_rx_path_sel_frame(sdata, mgmt, len);
 		break;
+	case WLAN_CATEGORY_ROBUST_AV_STREAMING:
+		switch (mgmt->u.action.u.robust_av_req.action){
+		case WLAN_AV_ROBUST_ACTION_GM_REQUEST:
+		case WLAN_AV_ROBUST_ACTION_GM_RESPONSE:
+			ieee80211aa_rx_gcm_frame(sdata, mgmt, len, rx_status);
+			break;
+		}
+
+		break;
 	case WLAN_CATEGORY_VENDOR_SPECIFIC:
 		if (mesh_action_is_rmom(mgmt)) {
 			mesh_rmom_add_nack(sdata, mgmt);
