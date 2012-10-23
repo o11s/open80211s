@@ -369,6 +369,7 @@ struct sta_info {
 	s64 t_offset_setpoint;
 	enum nl80211_channel_type ch_type;
 #endif
+	bool gcm_enabled;
 
 #ifdef CONFIG_MAC80211_DEBUGFS
 	struct sta_info_debugfsdentries {

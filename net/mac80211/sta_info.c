@@ -287,6 +287,7 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 	init_timer(&sta->plink_timer);
 #endif
 
+	sta->gcm_enabled = false;
 	return sta;
 }
 
