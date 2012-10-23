@@ -795,6 +795,16 @@ struct ieee80211_mgmt {
 					u8 sa[6];
 					u8 ta[6];
 				} __packed mesh_rmom_nak;
+				struct {
+					u8 action;
+					u8 dialog_token;
+				} __packed robust_av_req;
+				struct {
+					u8 action;
+					u8 dialog_token;
+					u8 address_count;
+					u8 address_list[0];
+				} __packed robust_av_resp;
 			} u;
 		} __attribute__ ((packed)) action;
 	} u;
@@ -905,10 +915,32 @@ struct ieee80211_bar {
 	__le16 start_seq_num;
 } __attribute__((packed));
 
+struct ieee80211_bar_gcr {
+	__le16 frame_control;
+	__le16 duration;
+	__u8 ra[6];
+	__u8 ta[6];
+	__le16 control;
+	__le16 start_seq_num;
+	__u8 gcr_ga[6];
+} __attribute__((packed));
+
+struct ieee80211_ba_gcr {
+__le16 frame_control;
+	__le16 duration;
+	__u8 ra[6];
+	__u8 ta[6];
+	__le16 control;
+	__le16 start_seq_num;
+	__u8 gcr_ga[6];
+	__u8 bitmap[8];
+} __attribute__((packed));
+
 /* 802.11 BAR control masks */
 #define IEEE80211_BAR_CTRL_ACK_POLICY_NORMAL	0x0000
 #define IEEE80211_BAR_CTRL_MULTI_TID		0x0002
 #define IEEE80211_BAR_CTRL_CBMTID_COMPRESSED_BA	0x0004
+#define IEEE80211_BAR_CTRL_GCR			0x0008
 #define IEEE80211_BAR_CTRL_TID_INFO_MASK	0xf000
 #define IEEE80211_BAR_CTRL_TID_INFO_SHIFT	12
 
@@ -1369,6 +1401,7 @@ enum ieee80211_category {
 	WLAN_CATEGORY_MULTIHOP_ACTION = 14,
 	WLAN_CATEGORY_SELF_PROTECTED = 15,
 	WLAN_CATEGORY_WMM = 17,
+	WLAN_CATEGORY_ROBUST_AV_STREAMING = 19,
 	WLAN_CATEGORY_VENDOR_SPECIFIC_PROTECTED = 126,
 	WLAN_CATEGORY_VENDOR_SPECIFIC = 127,
 };
@@ -1417,6 +1450,13 @@ enum ieee80211_mesh_actioncode {
 	WLAN_MESH_ACTION_MCCA_TEARDOWN,
 	WLAN_MESH_ACTION_TBTT_ADJUSTMENT_REQUEST,
 	WLAN_MESH_ACTION_TBTT_ADJUSTMENT_RESPONSE,
+};
+
+enum ieee80211_robust_av_actioncode {
+	WLAN_AV_ROBUST_ACTION_SCS_REQUEST,
+	WLAN_AV_ROBUST_ACTION_SCS_RESPONSE,
+	WLAN_AV_ROBUST_ACTION_GM_REQUEST,
+	WLAN_AV_ROBUST_ACTION_GM_RESPONSE,
 };
 
 /* Security key length */
