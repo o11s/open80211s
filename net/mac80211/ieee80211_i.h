@@ -886,6 +886,8 @@ struct ieee80211_local {
 
 	/* aggregated multicast list */
 	struct netdev_hw_addr_list mc_list;
+	/* multicast list_hash */
+	u64 mc_list_hash;
 
 	bool tim_in_locked_section; /* see ieee80211_beacon_get() */
 
