@@ -1822,6 +1822,8 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			rcu_read_unlock();
 			meshhdrlen = ieee80211_new_mesh_header(&mesh_hdr,
 					sdata, skb->data, NULL, NULL);
+			// Add this frame to the rmc
+			mesh_rmc_check(sdata->vif.addr, &hdr, &mesh_hdr, sdata);
 		} else {
 			int is_mesh_mcast = 1;
 			const u8 *mesh_da;
