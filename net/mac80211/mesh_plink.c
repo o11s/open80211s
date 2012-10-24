@@ -858,6 +858,10 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 			changed |= BSS_CHANGED_BEACON;
 			mpl_dbg("Mesh plink with %pM ESTABLISHED\n",
 				sta->sta.addr);
+			/* TODO if 80211aa enabled */
+			ieee80211aa_gcm_frame_tx(sdata,
+						 WLAN_AV_ROBUST_ACTION_GM_REQUEST,
+						 sta->sta.addr, 0);
 			break;
 		default:
 			spin_unlock_bh(&sta->lock);
@@ -897,6 +901,11 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 			mesh_plink_frame_tx(sdata,
 					    WLAN_SP_MESH_PEERING_CONFIRM,
 					    sta->sta.addr, llid, plid, 0);
+			/* TODO if 80211aa enabled */
+			ieee80211aa_gcm_frame_tx(sdata,
+						 WLAN_AV_ROBUST_ACTION_GM_REQUEST,
+						 sta->sta.addr, 0);
+
 			break;
 		default:
 			spin_unlock_bh(&sta->lock);
@@ -966,3 +975,5 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 	if (changed)
 		ieee80211_bss_info_change_notify(sdata, changed);
 }
+
+
