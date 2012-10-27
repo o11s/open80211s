@@ -933,7 +933,7 @@ __le16 frame_control;
 	__le16 control;
 	__le16 start_seq_num;
 	__u8 gcr_ga[6];
-	__u8 bitmap[8];
+	__u64 bitmap;
 } __attribute__((packed));
 
 /* 802.11 BAR control masks */
