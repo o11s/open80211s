@@ -12,22 +12,9 @@
 #include "mesh.h"
 #include "mesh_rmom.h"
 
-/**
- * is_rmom_range_addr - Check if addr is RMoM range addr
- *
- * @addr:	Checked mac address
- *
- * Returns: true if is a RMoM address, false if not.
- *
- * This function checks for a valid RMoM address.
- */
-bool is_rmom_range_addr(const u8 *addr)
-{
-	return !(addr[3] | addr[4] | addr[5]);
-}
 
 /**
- * mesh_rmom_setseqnum - Set sequence number
+ * ieee80211aa_set_seqnum - Set sequence number
  *
  * @sdata:     subif data
  * @mesh_hdr:  mesh_header
@@ -41,7 +28,7 @@ bool is_rmom_range_addr(const u8 *addr)
  * seqnum for unicast traffic is used.
  *
  */
-void mesh_rmom_set_seqnum(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			  struct ieee80211s_hdr *mesh_hdr, u8 *da)
 {
 	if (is_multicast_ether_addr(da))
@@ -52,420 +39,6 @@ void mesh_rmom_set_seqnum(struct ieee80211_sub_if_data *sdata,
 				   &mesh_hdr->seqnum);
 }
 
-/**
- * mesh_rmom_tx_nack - TX a NAK frame for given seqnum
- *
- * @sdata: 	ieee80211 interface data
- * @hdr:	frame header for missing frame source
- * @seqnum:	sequence number of missing frame requested on the nak
- * @retry:	NACK retry value
- *
- * This function creates a NAK frame with given parameters.
- *
- */
-static int mesh_rmom_tx_nack(struct ieee80211_sub_if_data *sdata,
-			     struct ieee80211_hdr *hdr, u32 seqnum, u8 retry)
-{
-	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb;
-	struct ieee80211_mgmt *mgmt;
-	int len = offsetof(struct ieee80211_mgmt, u.action.u.mesh_rmom_nak) +
-		sizeof(mgmt->u.action.u.mesh_rmom_nak);
-
-	skb = dev_alloc_skb(local->hw.extra_tx_headroom + len);
-
-	if (!skb)
-		return -1;
-
-	skb_reserve(skb, local->hw.extra_tx_headroom);
-	mgmt = (struct ieee80211_mgmt *) skb_put(skb, len);
-	memset(mgmt, 0, len);
-	mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT |
-					  IEEE80211_STYPE_ACTION_NO_ACK);
-	memcpy(mgmt->da, hdr->addr1, ETH_ALEN);
-	memcpy(mgmt->sa, sdata->vif.addr, ETH_ALEN);
-	memcpy(mgmt->bssid, sdata->vif.addr, ETH_ALEN);
-	mgmt->u.action.category = WLAN_CATEGORY_VENDOR_SPECIFIC;
-	mgmt->u.action.u.mesh_rmom_nak.oid[0] = 0x4C;
-	mgmt->u.action.u.mesh_rmom_nak.oid[1] = 0x22;
-	mgmt->u.action.u.mesh_rmom_nak.oid[2] = 0x58;
-	mgmt->u.action.u.mesh_rmom_nak.eid = 0xff;
-	mgmt->u.action.u.mesh_rmom_nak.len = 0x11;
-	mgmt->u.action.u.mesh_rmom_nak.missed_sn = cpu_to_le32(seqnum);
-	mgmt->u.action.u.mesh_rmom_nak.retry = retry;
-	memcpy(mgmt->u.action.u.mesh_rmom_nak.sa, hdr->addr3, ETH_ALEN);
-	memcpy(mgmt->u.action.u.mesh_rmom_nak.ta, hdr->addr2, ETH_ALEN);
-
-	ieee80211_tx_skb(sdata, skb);
-	return 0;
-}
-
-/**
- * process_incoming_nack - Process an incoming NACK
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @seqnum:	sequence number of missing frame requested on the nak
- * @count:	retry counter for incoming NACK
- *
- * Returns:
- *	-1: duplicate NACK
- *	 0: OK, NACK tracked.
- *	 1: NACK retry limit reached
- *
- * This function is called everytime a nack is received, if entry exists it
- * gets updated, if not it's created and stored on the incoming nack list.
- */
-static int process_incoming_nack(struct ieee80211_sub_if_data *sdata,
-				 struct rmc_entry *p, u32 seqnum, u8 count)
-{
-	struct rmom_nack *nack;
-	int ret = 0;
-	u8 rmom_max_nack = sdata->u.mesh.mshcfg.dot11MeshRmomMaxRetries;
-
-	spin_lock_bh(&p->in_nack_lock);
-	list_for_each_entry(nack, &p->rmom.in.list, list) {
-		if (nack->seqnum != seqnum)
-			continue;
-
-		if (count <= nack->count) {
-			/* Old nack counter, ignore */
-			ret = -1;
-			goto out;
-		}
-
-		nack->count = count;
-		if (nack->count == rmom_max_nack) {
-			/* final transmission, stop tracking this */
-			list_del(&nack->list);
-			kfree(nack);
-			ret = 1;
-		}
-		/* Retransmit and store frame */
-		goto out;
-	}
-	spin_unlock_bh(&p->in_nack_lock);
-
-	/* Nack seqnum not found: create new incoming nack */
-	nack = kmalloc(sizeof(struct rmom_nack), GFP_ATOMIC);
-	if (!nack)
-		return -ENOMEM;
-	nack->seqnum = seqnum;
-	nack->count = count;
-
-	/** Add the entry at the first position */
-	spin_lock_bh(&p->in_nack_lock);
-	list_add(&nack->list, &p->rmom.in.list);
-out:
-	spin_unlock_bh(&p->in_nack_lock);
-	return ret;
-}
-
-/**
- * remove_incoming_nack - Removes an incoming nack entry
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @seqnum:	sequence number of missing frame requested on the nak
- *
- * Returns: True if removed, false if not
- *
- * Iterates the incoming nack list to remove any incoming
- * nack entry with given sequence number.
- */
-bool remove_incoming_nack(struct ieee80211_sub_if_data *sdata,
-			  struct rmc_entry *p, u32 seqnum)
-{
-	struct rmom_nack *nack;
-	bool removed = false;
-
-	spin_lock_bh(&p->in_nack_lock);
-	list_for_each_entry(nack, &p->rmom.in.list, list) {
-		if (nack->seqnum == seqnum) {
-			list_del(&nack->list);
-			kfree(nack);
-			rmom_dbg("Removed an in nack entry in sn %x", seqnum);
-			removed = true;
-			break;
-		}
-	}
-	spin_unlock_bh(&p->in_nack_lock);
-	return removed;
-}
-
-/**
- * mesh_rmom_rx_nack - Process an incoming NACK for this stream
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @seqnum:	sequence number of missing frame requested on the nak
- *
- * Returns: Nothing
- *
- * This function is called when a NACK is received by a mesh interface,
- * if frame is saved on rmom queue, frames is dequeued and sent over the air.
- * If NACK is not for this TA, is expired, or we don't have the frame queued,
- * ignore it.
- */
-void mesh_rmom_rx_nack(struct ieee80211_sub_if_data *sdata,
-		       struct ieee80211_mgmt *mgmt,
-		       struct rmc_entry *p)
-{
-	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb, *tmp;
-	struct ieee80211_hdr *hdr;
-	struct ieee80211s_hdr *mesh_hdr;
-	u32 nak_sn, seqnum;
-	u8 retry;
-	int ret;
-	unsigned long flags;
-
-
-	/* TODO: check for buffer (truncated frame) out of bounds access */
-	nak_sn = le32_to_cpu(mgmt->u.action.u.mesh_rmom_nak.missed_sn);
-	retry = mgmt->u.action.u.mesh_rmom_nak.retry;
-
-	if (memcmp(mgmt->u.action.u.mesh_rmom_nak.ta, sdata->vif.addr, ETH_ALEN))
-		/* If NAK is for another TA, just ignore it for now */
-		return;
-
-	/* NACK is requesting one of our frames */
-	spin_lock_irqsave(&local->mcast_rexmit_skb_queue.lock, flags);
-	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
-		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
-		hdr = (struct ieee80211_hdr *) skb->data;
-		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
-				ieee80211_hdrlen(hdr->frame_control));
-		seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
-
-		/* Only if seqnum and sa matches */
-		if (seqnum != nak_sn ||
-		    memcmp(mgmt->u.action.u.mesh_rmom_nak.sa,
-			   hdr->addr3, ETH_ALEN))
-			continue;
-
-		/* This frame is already waiting on final rexmit */
-		if (info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)
-			break;
-
-		ret = process_incoming_nack(sdata, p, seqnum, retry);
-
-		/* old nack */
-		if (ret < 0)
-			break;
-
-		if (ret == 1) {
-			/* Retransmit the skb over the air
-			 * but don't enqueue it anymore */
-			IEEE80211_SKB_CB(skb)->flags |=
-				IEEE80211_TX_INTFL_RETRANSMISSION;
-		}
-		rmom_dbg("Re-tx frame %x on retry %d (ret=%d)",
-			 seqnum, retry, ret);
-		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
-		ieee80211_tx_skb(sdata, skb);
-		break;
-	}
-	spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
-}
-
-/*
- * add_outgoing_nack - Adds a nack entry to the queue
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @seqnum:	sequence number of missing frame requested on the nak
- *
- * Returns: 0 if correctly added.
- *
- * Adds an outgoing nack to the nack list
- */
-static int add_outgoing_nack(struct ieee80211_sub_if_data *sdata,
-			     struct rmc_entry *p, u32 seqnum)
-{
-	struct rmom_nack *nack;
-	u8 rmom_expiry = sdata->u.mesh.mshcfg.dot11MeshRmomExpiryWindow;
-
-	nack = kmalloc(sizeof(struct rmom_nack), GFP_ATOMIC);
-	if (!nack)
-		return -ENOMEM;
-	/** TODO look for a valid offset for expiration */
-	nack->seqnum = seqnum;
-	nack->expiry_sn = p->rmom.exp_seqnum + rmom_expiry;
-	nack->count = 1;
-
-	/** Add the entry at the last position */
-	list_add_tail(&nack->list, &p->rmom.out.list);
-
-	return 0;
-}
-
-/**
- * process_outgoing_nack - Process an outgoing nack
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @hdr:	ieee80211 header
- *
- * Returns: Nothing
- *
- * Traverse the outgoing nack list, resend or remove NACKs as needed.
- */
-static void process_outgoing_nack(struct ieee80211_sub_if_data *sdata,
-				  struct rmc_entry *p,
-				  struct ieee80211_hdr *hdr)
-{
-	struct rmom_nack *nack, *tmp;
-	u8 rmom_max_nack = sdata->u.mesh.mshcfg.dot11MeshRmomMaxRetries;
-	u8 rmom_expiry = sdata->u.mesh.mshcfg.dot11MeshRmomExpiryWindow;
-
-	list_for_each_entry_safe(nack, tmp, &p->rmom.out.list, list) {
-		/* As frames are ordered by expiration once we find
-		 * the first non expired, we stop traversing the list */
-		if (nack->expiry_sn > p->rmom.exp_seqnum)
-			return;
-
-		/* TODO: constant / mesh parameter */
-		if (nack->count >= rmom_max_nack) {
-			list_del(&nack->list);
-			kfree(nack);
-			continue;
-		}
-
-		/* Move expiry window */
-		nack->expiry_sn = p->rmom.exp_seqnum + rmom_expiry;
-		nack->count++;
-		rmom_dbg("Sending retry NACK %d for sn %x",
-			 nack->count, nack->seqnum);
-		mesh_rmom_tx_nack(sdata, hdr, nack->seqnum, nack->count);
-		list_move_tail(&nack->list, &p->rmom.out.list);
-	}
-}
-
-/**
- * remove_outgoing_nack - removes a nack entry by seqnum
- *
- * @sdata: 	ieee80211 interface data
- * @p:		rmc_entry for this sa
- * @seqnum:	sequence number of missing frame requested on the nak
- *
- * Returns: Nothing
- *
- * Traverses the outgoing nack list and removes any entry that matches
- * the given sequence number.
- */
-static void remove_outgoing_nack(struct ieee80211_sub_if_data *sdata,
-				 struct rmc_entry *p, u32 seqnum)
-{
-	struct rmom_nack *nack;
-
-	list_for_each_entry(nack, &p->rmom.out.list, list) {
-		if (nack->seqnum != seqnum)
-			continue;
-
-		list_del(&nack->list);
-		kfree(nack);
-		rmom_dbg("Removed an out nack entry for sn %x", seqnum);
-		return;
-	}
-}
-
-/**
- * iterate_nack_range - Send NACKs for the range of missing seq numbers
- *
- * @sdata: 	ieee80211 interface data
- * @p:		RMC entry of mcast source
- * @hdr:	802.11 header
- * @range:	range of sequence numbers representing missing frames
- *
- * This function is invoked when frame loss is detected. The function
- * will requeste a NAK frame TX for each lost frame.
- */
-static void iterate_nack_range(struct ieee80211_sub_if_data *sdata,
-			       struct rmc_entry *p, struct ieee80211_hdr *hdr,
-			       u32 *range)
-{
-	int i;
-
-	for (i = range[0]; i <= range[1] ; i++) {
-		add_outgoing_nack(sdata, p, i);
-		mesh_rmom_tx_nack(sdata, hdr, i, 1);
-	}
-}
-
-/*  updates exp seqnum and returns next values:
- *
- * @p:		RMC entry for this mcast source
- * @seqnum:	current frame sequence number
- * @range:	range of lost sequence numbers. Filled if nacks are required.
- *
- *  	0 if no losses or big jump detected (no further action).
- *  	1 losses are detected, nacks required.
- *  	2 old seqnum detected, update nack queue.
- *	-1 if any error
- */
-static int update_exp_seqnum(struct ieee80211_sub_if_data *sdata,
-			     struct rmc_entry *p, u32 seqnum, u32 *range)
-{
-	int ret = -1;
-	u32 exp_seqnum = p->rmom.exp_seqnum;
-	u8 rmom_max_jump = sdata->u.mesh.mshcfg.dot11MeshRmomMaxJump;
-
-	if ((s32) (seqnum - exp_seqnum) < 0) {
-		/* this is an old seqnum, don't update expected seqnum */
-		rmom_dbg("old seqnum: %x < %x", seqnum, exp_seqnum);
-		ret = 2;
-	} else if (seqnum == exp_seqnum ||
-		   (s32) (seqnum - exp_seqnum) > rmom_max_jump) {
-		exp_seqnum = seqnum + 1;
-		ret = 0;
-	} else if ((s32) (seqnum - exp_seqnum) <= rmom_max_jump) {
-		rmom_dbg("missed range: %x:%x", exp_seqnum, seqnum - 1);
-		if (range) {
-			range[0] = exp_seqnum;
-			range[1] = seqnum - 1;
-		}
-		exp_seqnum = seqnum + 1;
-		ret = 1;
-	}
-
-	p->rmom.exp_seqnum = exp_seqnum;
-	BUG_ON(ret < 0);
-	return ret;
-}
-
-/**
- * mesh_rmom_handle_frame - Detect losses and send NAKs
- *
- * @p:		RMC entry for frame mcast source
- * @hdr:	802.11 header of current frame
- * @mesh_hdr:	802.11 mesh header of current frame
- *
- * Detect sequence number jumps, and, if small trigger NACKs for the missing
- * frames.
- */
-void mesh_rmom_handle_frame(struct ieee80211_sub_if_data *sdata,
-			    struct rmc_entry *p, struct ieee80211_hdr *hdr,
-		            struct ieee80211s_hdr *mesh_hdr)
-{
-	int ret;
-	u32 seqnum;
-	u32 range[2] = {};
-	seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
-
-	ret = update_exp_seqnum(sdata, p, seqnum, range);
-
-	/* If we detect missing frames */
-	if (ret == 1 && is_rmom_range_addr(hdr->addr1))
-		iterate_nack_range(sdata, p, hdr, range);
-	/* If old frames are received */
-	else if (ret == 2)
-		remove_outgoing_nack(sdata, p, seqnum);
-
-	/* We always check for any expired nack entry*/
-	process_outgoing_nack(sdata, p, hdr);
-}
-
 static void set_mcast_list_on_mgmt(struct sk_buff *skb,
 				   struct ieee80211_mgmt *mgmt,
 				   struct netdev_hw_addr_list *mc_list)
@@ -474,14 +47,11 @@ static void set_mcast_list_on_mgmt(struct sk_buff *skb,
 	int count = mc_list->count;
 	u8 *pos;
 
-	printk(KERN_DEBUG "mc_list=%d\n", count);
-
 	/* skb_put for mc_list */
 	pos = skb_put(skb, ETH_ALEN * count);
 	mgmt->u.action.u.robust_av_resp.address_count = count;
 
 	list_for_each_entry(ha, &mc_list->list, list) {
-		printk(KERN_DEBUG "HW:%pM\n", ha->addr);
 		memcpy(pos, ha->addr, ETH_ALEN);
                 pos += ETH_ALEN;
 	}
@@ -568,7 +138,7 @@ void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 
 	sta = sta_info_get(sdata, mgmt->sa);
 	if (!sta) {
-		printk(KERN_DEBUG "GCast frame from unknown peer\n");
+		rmom_dbg("GCast frame from unknown peer");
 		rcu_read_unlock();
 		return;
 	}
@@ -588,9 +158,352 @@ void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 						WLAN_AV_ROBUST_ACTION_GM_RESPONSE) {
 		/** For now just set gcm_enabled to true */
 		if (!sta->gcm_enabled) {
-			printk(KERN_DEBUG "%pM has GCM enabled\n", sta->sta.addr);
+			rmom_dbg("%pM has GCM enabled", sta->sta.addr);
 			sta->gcm_enabled = true;
 		}
 	}
 	rcu_read_unlock();
+}
+
+static u16 calculate_window_start(u32 seqnum)
+{
+	/* By design the values window values are 64s multiples,
+	 * so Wstart will be always 0, 64, 128, 192, 254 …
+	 */
+	int window_start = (seqnum / GCR_WIN_SIZE) * GCR_WIN_SIZE;
+	return (u16)(window_start % 65536);
+}
+
+void ieee80211aa_set_sender(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum)
+{
+	u16 window_start = calculate_window_start(seqnum);
+//	rmom_dbg("Init structs with window_start=%d", window_start);
+	p->sender.s_window_start = window_start;
+	p->sender.r_window_start = window_start;
+	p->receiver.window_start = window_start;
+	bitmap_zero(p->sender.scoreboard,
+		    GCR_WIN_SIZE);
+	bitmap_zero(p->receiver.scoreboard,
+		    GCR_WIN_SIZE_RCV);
+}
+
+void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
+			    u8 *sa, u16 ssn)
+{
+	struct ieee80211_local *local = sdata->local;
+	struct sk_buff *skb;
+	struct ieee80211_bar_gcr *bar;
+	u16 bar_control = 0;
+
+	skb = dev_alloc_skb(sizeof(*bar) + local->hw.extra_tx_headroom);
+	if (!skb)
+		return;
+
+	skb_reserve(skb, local->hw.extra_tx_headroom);
+	bar = (struct ieee80211_bar_gcr *)skb_put(skb, sizeof(*bar));
+	memset(bar, 0, sizeof(*bar));
+	bar->frame_control = cpu_to_le16(IEEE80211_FTYPE_CTL |
+					 IEEE80211_STYPE_BACK_REQ);
+	memcpy(bar->ra, ra, ETH_ALEN);
+	memcpy(bar->ta, sdata->vif.addr, ETH_ALEN);
+	bar_control |= (u16)IEEE80211_BAR_CTRL_ACK_POLICY_NORMAL;
+	bar_control |= (u16)IEEE80211_BAR_CTRL_CBMTID_COMPRESSED_BA;
+	bar_control |= (u16)IEEE80211_BAR_CTRL_GCR;
+	bar->control = cpu_to_le16(bar_control);
+	bar->start_seq_num = cpu_to_le16(ssn);
+	memcpy(bar->gcr_ga, sa, ETH_ALEN);
+
+	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
+	ieee80211_tx_skb(sdata, skb);
+}
+
+void ieee80211_send_ba_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
+			   u8 *sa, u16 ssn, u64 bitmap)
+{
+	struct ieee80211_local *local = sdata->local;
+	struct sk_buff *skb;
+	struct ieee80211_ba_gcr *ba;
+	u16 ba_control = 0;
+
+	skb = dev_alloc_skb(sizeof(*ba) + local->hw.extra_tx_headroom);
+	if (!skb)
+		return;
+
+	skb_reserve(skb, local->hw.extra_tx_headroom);
+	ba = (struct ieee80211_ba_gcr *)skb_put(skb, sizeof(*ba));
+	memset(ba, 0, sizeof(*ba));
+	ba->frame_control = cpu_to_le16(IEEE80211_FTYPE_CTL |
+					 IEEE80211_STYPE_BACK);
+	memcpy(ba->ra, ra, ETH_ALEN);
+	memcpy(ba->ta, sdata->vif.addr, ETH_ALEN);
+	/* TODO BAR -> BA */
+	ba_control |= (u16)IEEE80211_BAR_CTRL_ACK_POLICY_NORMAL;
+	ba_control |= (u16)IEEE80211_BAR_CTRL_CBMTID_COMPRESSED_BA;
+	ba_control |= (u16)IEEE80211_BAR_CTRL_GCR;
+	ba->control = cpu_to_le16(ba_control);
+	ba->start_seq_num = cpu_to_le16(ssn);
+	/* TODO for this first impl we use sa instead of da */
+	memcpy(ba->gcr_ga, sa, ETH_ALEN);
+	ba->bitmap = bitmap;
+	//memcpy(ba->bitmap, bitmap, sizeof(bitmap));
+
+	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
+	ieee80211_tx_skb(sdata, skb);
+}
+
+int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
+			  u8 *sa, u16 window_start)
+{
+	struct sta_info *sta;
+	int count = 0;
+	/* For each gcr enabled sta */
+        rcu_read_lock();
+        list_for_each_entry_rcu(sta, &sdata->local->sta_list, list) {
+                if (sdata != sta->sdata ||
+                    sta->gcm_enabled != true)
+                        continue;
+		rmom_dbg("Sent BAR to %pM with Ws=%d",
+			 sta->sta.addr,
+			 window_start);
+
+		ieee80211_send_bar_gcr(sdata,
+				       sta->sta.addr,
+				       sa,
+				       window_start);
+		count++;
+	}
+        rcu_read_unlock();
+	return count;
+}
+
+void ieee80211aa_update_sender(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum)
+{
+	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
+		u16 window_start = calculate_window_start(seqnum);
+
+		/* Overwrite info for re-tx */
+		p->sender.rcv_ba_count = 0;
+		p->sender.exp_rcv_ba = ieee80211aa_send_bar(
+					sdata,
+					p->sa,
+					p->sender.s_window_start);
+
+
+		if (p->sender.exp_rcv_ba > 0)
+			p->sender.rtx_sn_thr = p->sender.s_window_start + 24;
+		else
+			/* zero is a non-valid threshold value */
+			p->sender.rtx_sn_thr = 0;
+		/* We expect to receive ba from just bar */
+		p->sender.r_window_start = p->sender.s_window_start;
+		/* We update sending window to next value */
+		p->sender.s_window_start = window_start;
+	}
+}
+
+void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
+				   struct ieee80211aa_receiver *r,
+				   u16 window_start)
+{
+	/* |window_start = 0
+	 * |W0.........W1..........|
+	 * |window_start = 64
+	 * |W1.........W2..........|
+	 * |window_start = 128
+	 * |W2.........W3..........|
+	 */
+
+	/* Calculate the number of bits we need shift */
+	int shift = window_start - r->window_start;
+	/* Should never happen... No shifting for negative values */
+	if (shift <= 0)
+		return;
+	rmom_dbg("Shifting %d bits to r->window_start %d", shift, window_start);
+	/* Left shift N positions */
+	bitmap_shift_left(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
+	/* Store new window */
+	r->window_start = window_start;
+}
+
+void ieee80211aa_update_receiver_scoreboard(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum)
+{
+
+	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
+		/* Current scoreboard doesn't have access to this bit
+ 		 * Note:
+		 * This is not very nice but in this case want to keep
+ 		 * at least a window of valuable data, this tries to...
+ 		 * */
+		ieee80211aa_flush_scoreboard(sdata, &p->receiver,
+			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
+	}
+	//rmom_dbg("[%pM] set bit %d", p->sa, seqnum - p->receiver.window_start);
+
+	//bitmap_fill(p->receiver.scoreboard, GCR_WIN_SIZE_RCV);
+	set_bit(seqnum - p->receiver.window_start,
+		p->receiver.scoreboard);
+}
+
+void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
+			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
+{
+	rmom_dbg("Sent BA to %pM with Ws=%d", ta, r->window_start);
+	/* Get the first 64 bits from the scoreboard on a buff */
+	//bitmap_scnprintf(bitmap, sizeof(bitmap), r->scoreboard, GCR_WIN_SIZE);
+	/* Send a ba frame to the ta */
+	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
+}
+
+void ieee80211aa_update_receiver(struct ieee80211_sub_if_data *sdata,
+				 struct rmc_entry *p, u8 *ta,
+				 u8 *sa, u16 window_start)
+{
+	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
+		rmom_dbg("New window on BAR: %d previous was:%d", window_start, p->receiver.window_start);
+		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
+		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
+	} else if (window_start == p->receiver.window_start) {
+		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
+	} else {
+		rmom_dbg("Old window on BAR: %d previous was:%d", window_start, p->receiver.window_start);
+		//send_ba(bitmap,window_start)
+	}
+
+}
+
+bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+			struct ieee80211_bar_gcr *bar)
+{
+	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	u8 idx;
+	struct rmc_entry *p, *n;
+	u16 window_start = le16_to_cpu(bar->start_seq_num);
+
+	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & rmc->idx_mask;
+
+	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
+		spin_lock_bh(&p->lock);
+		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
+			ieee80211aa_update_receiver(sdata, p, bar->ta,
+						    bar->gcr_ga, window_start);
+			spin_unlock_bh(&p->lock);
+			return true;
+		}
+		spin_unlock_bh(&p->lock);
+	}
+	return false;
+}
+bool ieee80211aa_check_window_start(struct ieee80211_sub_if_data *sdata,
+				    struct rmc_entry *p, u16 window_start)
+{
+	if (window_start < p->sender.r_window_start) {
+		rmom_dbg("Old ba window_start %d expected %d",
+			 window_start, p->sender.r_window_start);
+		return false;
+	} else if (window_start > p->sender.r_window_start) {
+		rmom_dbg("Future ba window_start %d expected %d",
+			 window_start, p->sender.r_window_start);
+		return false;
+	}
+	return true;
+}
+
+void ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
+				  u8 *sa, u16 req_sn)
+{
+	struct ieee80211_local *local = sdata->local;
+	struct sk_buff *skb, *tmp;
+	struct ieee80211_hdr *hdr;
+	struct ieee80211s_hdr *mesh_hdr;
+	unsigned long flags;
+	u16 seqnum;
+
+	/* NACK is requesting one of our frames */
+	spin_lock_irqsave(&local->mcast_rexmit_skb_queue.lock, flags);
+	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
+		hdr = (struct ieee80211_hdr *) skb->data;
+		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
+				ieee80211_hdrlen(hdr->frame_control));
+		/* TODO Check for errors
+		 * we are doing a module 2^16 and
+		 * collisions could happen if
+		 * seq_num are close enough
+		 */
+		seqnum = (get_unaligned_le32(&mesh_hdr->seqnum) % 65536);
+
+		/* Only if seqnum and sa matches */
+		if (seqnum != req_sn ||
+		    memcmp(sa, hdr->addr3, ETH_ALEN))
+			continue;
+
+		//rmom_dbg("Re-tx frame %d",req_sn);
+		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
+		ieee80211_tx_skb(sdata, skb);
+		break;
+	}
+	spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
+}
+
+void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
+			    struct ieee80211aa_sender *s, u8 *ga)
+{
+	int count;
+	// Foreach bit set to 0 ask for retransmission
+	int result = find_first_zero_bit(s->scoreboard, GCR_WIN_SIZE);
+	count = 0;
+
+	while (result < GCR_WIN_SIZE) {
+		u16 req_sn = s->r_window_start + result;
+		ieee80211aa_retransmit_frame(sdata, ga, req_sn);
+		result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
+		count++;
+	}
+	rmom_dbg("retransmited %d frames", count);
+	// TODO if frames have been retransmited send a new BAR
+}
+
+void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
+				      struct ieee80211aa_sender *s,
+				      u8* ga, u64 bitmap)
+{
+	bitmap_xor(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
+	s->rcv_ba_count++;
+	if (s->rcv_ba_count >= s->exp_rcv_ba)
+		ieee80211aa_retransmit(sdata, s, ga);
+}
+
+bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+			    struct ieee80211_ba_gcr *ba) {
+	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	u8 idx;
+	struct rmc_entry *p, *n;
+	u16 window_start = le16_to_cpu(ba->start_seq_num);
+
+	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & rmc->idx_mask;
+
+	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
+		spin_lock_bh(&p->lock);
+		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
+			if (ieee80211aa_check_window_start(sdata,
+							   p,
+							   window_start))
+			{
+				//Process this BA
+				ieee80211aa_apply_ba_scoreboard(sdata,
+								&p->sender,
+								ba->gcr_ga,
+								ba->bitmap);
+				spin_unlock_bh(&p->lock);
+				return true;
+			}
+		}
+		spin_unlock_bh(&p->lock);
+	}
+	return false;
 }

@@ -35,21 +35,6 @@
 
 static struct lock_class_key ieee80211_rx_skb_queue_class;
 
-static u64 get_mc_list_hash(struct ieee80211_hw *hw,
-			    struct netdev_hw_addr_list *mc_list)
-{
-	struct netdev_hw_addr *ha;
-	u64 mchash;
-
-	/* always get broadcast frames */
-	mchash = 1ULL << (0xff >> 2);
-
-	netdev_hw_addr_list_for_each(ha, mc_list)
-		mchash |= 1ULL << (ha->addr[5] >> 2);
-
-	return mchash;
-}
-
 void ieee80211_configure_filter(struct ieee80211_local *local)
 {
 	u64 mc;

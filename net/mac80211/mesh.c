@@ -22,17 +22,6 @@
 int mesh_allocated;
 static struct kmem_cache *rm_cache;
 
-struct mesh_rmom_operations mesh_rmom_ops = {
-#ifdef CONFIG_MAC80211_MESH_RMOM
-	.set_seqnum = mesh_rmom_set_seqnum,
-	.handle_frame = mesh_rmom_handle_frame,
-	.handle_nack = NULL,
-#else
-	0
-#endif
-};
-
-
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
@@ -60,19 +49,6 @@ void ieee80211s_stop(void)
 {
 	mesh_pathtbl_unregister();
 	kmem_cache_destroy(rm_cache);
-}
-
-static void rmom_handler(struct ieee80211_sub_if_data *sdata,
-			 struct rmc_entry *p, struct ieee80211_hdr *hdr,
-			 struct ieee80211s_hdr *mesh_hdr)
-{
-	__le16 fc = hdr->frame_control;
-	if (!mesh_rmom_ops.handle_frame)
-		return;
-	if (ieee80211_is_data(fc) && mesh_hdr)
-		mesh_rmom_ops.handle_frame(sdata, p, hdr, mesh_hdr);
-	else if (ieee80211_is_mgmt(fc) && mesh_rmom_ops.handle_nack)
-		mesh_rmom_ops.handle_nack(sdata, p, hdr);
 }
 
 static void ieee80211_mesh_housekeeping_timer(unsigned long data)
@@ -234,53 +210,6 @@ static int check_for_dups(u32 seqnum, struct rmc_entry *p)
 	return 0;
 }
 
-bool mesh_rmom_remove_nack(struct ieee80211_sub_if_data *sdata,
-			   u8 *sa, u32 seqnum)
-{
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
-	struct rmc_entry *p;
-	u8 idx;
-
-	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
-
-	list_for_each_entry(p, &rmc->bucket[idx].list, list) {
-		spin_lock_bh(&p->lock);
-		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			remove_incoming_nack(sdata, p , seqnum);
-			spin_unlock_bh(&p->lock);
-			return true;
-		}
-		spin_unlock_bh(&p->lock);
-	}
-	return false;
-}
-
-bool mesh_rmom_add_nack(struct ieee80211_sub_if_data *sdata,
-			struct ieee80211_mgmt *mgmt)
-{
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
-	u8 idx;
-	struct rmc_entry *p, *n;
-
-	/* TODO: check for buffer (truncated frame) out of bounds access */
-
-	idx = (mgmt->sa[3] ^ mgmt->sa[4] ^ mgmt->sa[5]) & rmc->idx_mask;
-
-	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
-		spin_lock_bh(&p->lock);
-		if (memcmp(mgmt->sa, p->sa, ETH_ALEN) == 0) {
-			mesh_rmom_rx_nack(sdata, mgmt, p);
-			spin_unlock_bh(&p->lock);
-			return true;
-		}
-		spin_unlock_bh(&p->lock);
-	}
-	return false;
-}
-
-
-
-
 /**
  * mesh_rmc_check - Check frame in recent multicast cache and add if absent.
  *
@@ -330,7 +259,9 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 			p->seqnum_idx &= (RMC_MAX_SEQNUMS - 1);
 			p->num_seqnums = min(++p->num_seqnums,
 					     RMC_MAX_SEQNUMS);
-			rmom_handler(sdata, p, hdr, mesh_hdr);
+			p->exp_time = jiffies + RMC_TIMEOUT;
+			ieee80211aa_update_sender(sdata, p, seqnum);
+			ieee80211aa_update_receiver_scoreboard(sdata, p, seqnum);
 			spin_unlock(&p->lock);
 			return 0;
 		}
@@ -344,12 +275,10 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 	p->seqnum[0] = seqnum;
 	p->seqnum_idx = p->num_seqnums = 1;
 	p->exp_time = jiffies + RMC_TIMEOUT;
-	p->rmom.exp_seqnum = seqnum + 1;
 	memcpy(p->sa, sa, ETH_ALEN);
-	INIT_LIST_HEAD(&p->rmom.in.list);
-	INIT_LIST_HEAD(&p->rmom.out.list);
+	/* TODO Only if ieee80211aa */
+	ieee80211aa_set_sender(sdata, p, seqnum);
 	spin_lock_init(&p->lock);
-	spin_lock_init(&p->in_nack_lock);
 	list_add(&p->list, &rmc->bucket[idx].list);
 	return 0;
 }
@@ -608,11 +537,12 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 static void set_seqnum(struct ieee80211s_hdr *meshhdr,
 		       struct ieee80211_sub_if_data *sdata, u8* da)
 {
-       if (mesh_rmom_ops.set_seqnum) {
-               mesh_rmom_ops.set_seqnum(sdata, meshhdr, da);
-               return;
-       }
-       put_unaligned_le32(sdata->u.mesh.mesh_seqnum++, &meshhdr->seqnum);
+	// TODO Rewrite using operations approach
+	if (true) {
+		ieee80211aa_set_seqnum(sdata, meshhdr, da);
+		return;
+	}
+       	put_unaligned_le32(sdata->u.mesh.mesh_seqnum++, &meshhdr->seqnum);
 }
 
 /**
@@ -849,12 +779,27 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 		}
 
 		break;
-	case WLAN_CATEGORY_VENDOR_SPECIFIC:
-		if (mesh_action_is_rmom(mgmt)) {
-			mesh_rmom_add_nack(sdata, mgmt);
-		}
-		break;
 	}
+}
+
+void ieee80211_mesh_rx_queued_ctl(struct ieee80211_sub_if_data *sdata,
+				   struct sk_buff *skb)
+{
+	struct ieee80211_rx_status *rx_status;
+	struct ieee80211_bar_gcr *bar;
+
+	/* TODO we only need fc and bar control to identify the frame */
+	rx_status = IEEE80211_SKB_RXCB(skb);
+	bar = (struct ieee80211_bar_gcr *)skb->data;
+
+	/* Only handle ieee80211aa bar */
+	if (ieee80211_is_back_req(bar->frame_control) &&
+	    bar->control & IEEE80211_BAR_CTRL_GCR)
+		ieee80211aa_handle_bar(sdata, bar);
+	if (ieee80211_is_back(bar->frame_control) &&
+	    bar->control & IEEE80211_BAR_CTRL_GCR)
+		ieee80211aa_handle_ba(sdata, (struct ieee80211_ba_gcr*)bar);
+
 }
 
 void ieee80211_mesh_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,

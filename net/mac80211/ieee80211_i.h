@@ -1261,6 +1261,9 @@ void ieee80211_ibss_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata);
 void ieee80211_mesh_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 				   struct sk_buff *skb);
+void ieee80211_mesh_rx_queued_ctl(struct ieee80211_sub_if_data *sdata,
+				   struct sk_buff *skb);
+
 
 /* scan/BSS handling */
 void ieee80211_scan_work(struct work_struct *work);

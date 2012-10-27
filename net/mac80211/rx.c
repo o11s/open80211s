@@ -66,7 +66,8 @@ static inline int should_drop_frame(struct sk_buff *skb,
 		return 1;
 	if (ieee80211_is_ctl(hdr->frame_control) &&
 	    !ieee80211_is_pspoll(hdr->frame_control) &&
-	    !ieee80211_is_back_req(hdr->frame_control))
+	    !ieee80211_is_back_req(hdr->frame_control) &&
+	    !ieee80211_is_back(hdr->frame_control))
 		return 1;
 	return 0;
 }
@@ -502,10 +503,10 @@ ieee80211_rx_mesh_check(struct ieee80211_rx_data *rx)
 		}
 	}
 
-	if (ieee80211_is_action_no_ack(hdr->frame_control)) {
-		//printk (KERN_INFO "Getting a action_no_ack frame\n");
+	/* TODO Is this the correct place? */
+	if (ieee80211_is_back_req(hdr->frame_control) ||
+	    ieee80211_is_back(hdr->frame_control))
 		return RX_CONTINUE;
-	}
 
 	/* If there is not an established peer link and this is not a peer link
 	 * establisment frame, beacon or probe, drop the frame.
@@ -1474,6 +1475,16 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 	sc = le16_to_cpu(hdr->seq_ctrl);
 	frag = sc & IEEE80211_SCTL_FRAG;
 
+	/*
+	 * 8.2.4.4.1 Sequence Control field structure
+	 * The Sequence Control field is 16 bits in length and consists of two subfields, the Sequence Number and the
+	 * Fragment Number. The format of the Sequence Control field is illustrated in Figure 8-3. The sequence
+	 * Control field is not present in control frames.
+	*/
+	if (ieee80211_is_ctl(fc)) {
+		goto out;
+	}
+
 	if (likely((!ieee80211_has_morefrags(fc) && frag == 0) ||
 		   (rx->skb)->len < 24 ||
 		   is_multicast_ether_addr(hdr->addr1))) {
@@ -1508,6 +1519,7 @@ ieee80211_rx_h_defragment(struct ieee80211_rx_data *rx)
 			       CCMP_PN_LEN);
 		}
 		return RX_QUEUED;
+
 	}
 
 	/* This is a fragment for a frame that should already be pending in
@@ -2069,6 +2081,7 @@ static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_ctrl(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_local *local = rx->local;
+	struct ieee80211_sub_if_data *sdata = rx->sdata;
 	struct ieee80211_hw *hw = &local->hw;
 	struct sk_buff *skb = rx->skb;
 	struct ieee80211_bar *bar = (struct ieee80211_bar *)skb->data;
@@ -2079,15 +2092,20 @@ ieee80211_rx_h_ctrl(struct ieee80211_rx_data *rx)
 	if (likely(!ieee80211_is_ctl(bar->frame_control)))
 		return RX_CONTINUE;
 
-	if (ieee80211_is_back(bar->frame_control))
-		printk("BlockAck RECEIVED!!\n");
-
+	if (ieee80211_is_back(bar->frame_control)) {
+		if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT &&
+		    bar->control & IEEE80211_BAR_CTRL_GCR) {
+			/* Enqueue the frame for later processing */
+			rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
+			skb_queue_tail(&sdata->skb_queue, rx->skb);
+			ieee80211_queue_work(&local->hw, &sdata->work);
+			return RX_QUEUED;
+                }
+	}
 	if (ieee80211_is_back_req(bar->frame_control)) {
 		struct {
 			__le16 control, start_seq_num;
 		} __packed bar_data;
-
-		printk("BlockAckReq RECEIVED!!\n");
 
 		if (!rx->sta)
 			return RX_DROP_MONITOR;
@@ -2095,6 +2113,15 @@ ieee80211_rx_h_ctrl(struct ieee80211_rx_data *rx)
 		if (skb_copy_bits(skb, offsetof(struct ieee80211_bar, control),
 				  &bar_data, sizeof(bar_data)))
 			return RX_DROP_MONITOR;
+
+		if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT &&
+		    bar_data.control & IEEE80211_BAR_CTRL_GCR) {
+			/* Enqueue the frame for later processing */
+			rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
+			skb_queue_tail(&sdata->skb_queue, rx->skb);
+			ieee80211_queue_work(&local->hw, &sdata->work);
+			return RX_QUEUED;
+		}
 
 		tid = le16_to_cpu(bar_data.control) >> 12;
 
@@ -2211,36 +2238,6 @@ ieee80211_rx_h_mgmt_check(struct ieee80211_rx_data *rx)
 	if (ieee80211_drop_unencrypted_mgmt(rx))
 		return RX_DROP_UNUSABLE;
 
-	return RX_CONTINUE;
-}
-
-static ieee80211_rx_result debug_noinline
-ieee80211_rx_h_action_no_ack(struct ieee80211_rx_data *rx)
-{
-	struct ieee80211_local *local = rx->local;
-	struct ieee80211_sub_if_data *sdata = rx->sdata;
-	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *) rx->skb->data;
-	int len = rx->skb->len;
-
-	if (!ieee80211_is_action_no_ack(mgmt->frame_control))
-		return RX_CONTINUE;
-
-	/* drop too small frames */
-	if (len < IEEE80211_MIN_ACTION_SIZE)
-		return RX_DROP_UNUSABLE;
-
-	switch (mgmt->u.action.category) {
-	case WLAN_CATEGORY_VENDOR_SPECIFIC:
-		if (sdata->vif.type != NL80211_IFTYPE_MESH_POINT)
-			break;
-
-		rx->skb->pkt_type = IEEE80211_SDATA_QUEUE_TYPE_FRAME;
-		skb_queue_tail(&sdata->skb_queue, rx->skb);
-		ieee80211_queue_work(&local->hw, &sdata->work);
-		if (rx->sta)
-			rx->sta->rx_packets++;
-		return RX_QUEUED;
-	}
 	return RX_CONTINUE;
 }
 
@@ -2739,7 +2736,6 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx)
 		CALL_RXH(ieee80211_rx_h_ctrl);
 		CALL_RXH(ieee80211_rx_h_mgmt_check)
 		CALL_RXH(ieee80211_rx_h_action)
-		CALL_RXH(ieee80211_rx_h_action_no_ack)
 		CALL_RXH(ieee80211_rx_h_userspace_mgmt)
 		CALL_RXH(ieee80211_rx_h_action_return)
 		CALL_RXH(ieee80211_rx_h_mgmt)

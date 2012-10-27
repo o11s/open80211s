@@ -177,39 +177,31 @@ struct mesh_table {
 #define RMC_QUEUE_MAX_LEN	4
 /* RMC_MAX_SEQNUMS must be a power of 2, maximum 256 */
 #define RMC_MAX_SEQNUMS		((u8) 8)
-#define RMC_TIMEOUT		(3 * HZ)
+#define RMC_TIMEOUT		(30 * HZ)
 
-/* struct rmom_nack - entry on the requested NACKs list
- *
- * @seqnum: sequence number of the frame we're NACKing
- * @count: nack retransmission counter
- * @expiry_sn: sequence number when this nack expires, if
- * the requested frame has not been received a new NACK will
- * be sent to the TA.
- *
- * The nack_tx_entry will hold the information of a sent NACK.
- *
- * The counter and expires_at_sn value will be updated every time
- * the NACK frame has to be retransmited.
- */
-struct rmom_nack {
-	struct list_head list;
-	u32 seqnum;
-	u8 count;
-	u32 expiry_sn;
+/* ieee80211aa required fields */
+
+#define GCR_WIN_SIZE 64 /* Fixed to 64 positions by protocol */
+#define GCR_WIN_SIZE_RCV GCR_WIN_SIZE*2 /* Fixed to 64*N positions by protocol */
+
+struct ieee80211aa_sender {
+	/* Info for tx */
+	u32 s_window_start; /* current seq_num when the window start*/
+	/* Info for re-tx's */
+	u32 r_window_start; /* retx seq_num when the window start */
+	u32 rtx_sn_thr; /* Maximum seq_num count before the retransmissions are sent */
+	u8 exp_rcv_ba; /* Number of BA expected */
+	u8 rcv_ba_count; /* Number of BA received */
+	u32 window_start; // current seq_num when the window has started
+	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE)];
 };
 
-/**
- * struct rmom_info - RMoM metadata
- *
- * @out:	outgoing RMoM NACKs for missed frames from this mcast source
- * @exp_seqnum: expected next (mcast) sequence number from this mcast source
- */
-struct rmom_info {
-	struct rmom_nack out;
-	struct rmom_nack in;
-	u32 exp_seqnum;
+struct ieee80211aa_receiver {
+	/* info for rx */
+	u32 window_start; // current seq_num when the window has started
+	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE_RCV)];
 };
+
 
 /**
  * struct rmc_entry - entry in the Recent Multicast Cache
@@ -224,7 +216,6 @@ struct rmom_info {
  * @exp_seqnum: expected sequence number from this source
  * @exp_time: expiration time of the entry, in jiffies
  * @sa: source address of this transmitter
- * @rmom: RMoM info
  *
  * The Recent Multicast Cache keeps track of the latest multicast
  * sources and records the sequence numbers of the frames that have
@@ -241,25 +232,13 @@ struct rmc_entry {
 	u8 seqnum_idx;
 	unsigned long exp_time;
 	u8 sa[ETH_ALEN];
-	struct rmom_info rmom;
-	/* JC: document above what this lock is protecting against */
-	spinlock_t in_nack_lock;
+	struct ieee80211aa_sender sender;
+	struct ieee80211aa_receiver receiver;
 };
 
 struct mesh_rmc {
 	struct rmc_entry bucket[RMC_BUCKETS];
 	u32 idx_mask;
-};
-
-struct mesh_rmom_operations {
-	int (*init)(struct ieee80211_sub_if_data *sdata);
-	void (*set_seqnum)(struct ieee80211_sub_if_data *sdata,
-			   struct ieee80211s_hdr *mesh_hdr, u8 *da);
-	void (*handle_frame) (struct ieee80211_sub_if_data *sdata,
-			      struct rmc_entry *p, struct ieee80211_hdr *hdr,
-			      struct ieee80211s_hdr *mesh_hdr);
-	void (*handle_nack) (struct ieee80211_sub_if_data *sdata,
-			     struct rmc_entry *p, struct ieee80211_hdr *hdr);
 };
 
 #define IEEE80211_MESH_PEER_INACTIVITY_LIMIT (1800 * HZ)
@@ -282,8 +261,6 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 int ieee80211_new_mesh_header(struct ieee80211s_hdr *meshhdr,
 		struct ieee80211_sub_if_data *sdata, char *da, char *addr4or5,
 		char *addr6);
-bool mesh_rmom_remove_nack(struct ieee80211_sub_if_data *sdata,
-			  u8 *sa, u32 seqnum);
 int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr, struct ieee80211s_hdr *mesh_hdr,
 		struct ieee80211_sub_if_data *sdata);
 bool mesh_matches_local(struct ieee80211_sub_if_data *sdata,
@@ -360,6 +337,20 @@ int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_mgmt *mgmt,
 			      size_t len, struct ieee80211_rx_status *rx_status);
+void ieee80211aa_update_sender(struct ieee80211_sub_if_data *sdata,
+			       struct rmc_entry *p,
+			       u32 seqnum);
+void ieee80211aa_set_sender(struct ieee80211_sub_if_data *sdata,
+			    struct rmc_entry *p,
+			    u32 seqnum);
+bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+			    struct ieee80211_bar_gcr *bar);
+bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+			    struct ieee80211_ba_gcr *ba);
+void ieee80211aa_update_receiver_scoreboard(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum);
+void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,      				  struct ieee80211s_hdr *mesh_hdr, u8 *da);
 
 /* Private interfaces */
 /* Mesh tables */

@@ -947,7 +947,10 @@ static void ieee80211_iface_work(struct work_struct *work)
 		case NL80211_IFTYPE_MESH_POINT:
 			if (!ieee80211_vif_is_mesh(&sdata->vif))
 				break;
-			ieee80211_mesh_rx_queued_mgmt(sdata, skb);
+			if (ieee80211_is_ctl(mgmt->frame_control))
+				ieee80211_mesh_rx_queued_ctl(sdata, skb);
+			else
+				ieee80211_mesh_rx_queued_mgmt(sdata, skb);
 			break;
 		default:
 			WARN(1, "frame for unexpected interface type");
