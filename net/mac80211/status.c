@@ -356,8 +356,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	bool send_to_cooked;
 	bool acked;
 	struct ieee80211_bar *bar;
-	struct ieee80211s_hdr *mesh_hdr;
-	int rtap_len, hdrlen;
+	int rtap_len;
 
 	for (i = 0; i < IEEE80211_TX_MAX_RATES; i++) {
 		if ((info->flags & IEEE80211_TX_CTL_AMPDU) &&
@@ -592,23 +591,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			return;
 		} else {
 			skb = skb_dequeue(&local->mcast_rexmit_skb_queue);
-
-			/* Since this skb won't be available for
-			 * retransmissions, remove NACK tracker */
-			hdr = (struct ieee80211_hdr *) skb->data;
-			hdrlen = ieee80211_hdrlen(hdr->frame_control);
-			mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
-
-			rcu_read_lock();
-			list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-				if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
-					if (!ieee80211_sdata_running(sdata))
-						continue;
-					mesh_rmom_remove_nack(sdata,
-						hdr->addr3,
-						le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
-				}
-			}
 			rcu_read_unlock();
 		}
 	}
