@@ -42,7 +42,7 @@
 
 #define RMOM_MAX_NACK_RETRIES 5
 #define RMOM_EXPIRY_WINDOW_SIZE 8
-#define RMOM_MAX_FLOWS 8
+#define RMOM_MAX_FLOWS 32
 #define RMOM_MAX_JUMP 8
 
 const struct mesh_config default_mesh_config = {

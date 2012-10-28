@@ -179,12 +179,13 @@ void ieee80211aa_set_sender(
 		struct rmc_entry *p, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
-//	rmom_dbg("Init structs with window_start=%d", window_start);
 	p->sender.s_window_start = window_start;
 	p->sender.r_window_start = window_start;
 	p->receiver.window_start = window_start;
-	bitmap_zero(p->sender.scoreboard,
+	/* Fill with 1s*/
+	bitmap_fill(p->sender.scoreboard,
 		    GCR_WIN_SIZE);
+	/* Fill with 0s */
 	bitmap_zero(p->receiver.scoreboard,
 		    GCR_WIN_SIZE_RCV);
 }
@@ -247,7 +248,6 @@ void ieee80211_send_ba_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	/* TODO for this first impl we use sa instead of da */
 	memcpy(ba->gcr_ga, sa, ETH_ALEN);
 	ba->bitmap = bitmap;
-	//memcpy(ba->bitmap, bitmap, sizeof(bitmap));
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
 	ieee80211_tx_skb(sdata, skb);
@@ -300,6 +300,8 @@ void ieee80211aa_update_sender(
 			p->sender.rtx_sn_thr = 0;
 		/* We expect to receive ba from just bar */
 		p->sender.r_window_start = p->sender.s_window_start;
+		/* Overwrite scoreboard with 1s*/
+		bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
 		/* We update sending window to next value */
 		p->sender.s_window_start = window_start;
 	}
@@ -322,9 +324,8 @@ void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 	/* Should never happen... No shifting for negative values */
 	if (shift <= 0)
 		return;
-	rmom_dbg("Shifting %d bits to r->window_start %d", shift, window_start);
-	/* Left shift N positions */
-	bitmap_shift_left(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
+	/* Right shift N positions */
+	bitmap_shift_right(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
 	/* Store new window */
 	r->window_start = window_start;
 }
@@ -343,19 +344,16 @@ void ieee80211aa_update_receiver_scoreboard(
 		ieee80211aa_flush_scoreboard(sdata, &p->receiver,
 			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
 	}
-	//rmom_dbg("[%pM] set bit %d", p->sa, seqnum - p->receiver.window_start);
 
-	//bitmap_fill(p->receiver.scoreboard, GCR_WIN_SIZE_RCV);
-	set_bit(seqnum - p->receiver.window_start,
-		p->receiver.scoreboard);
+	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
+	rmom_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
 }
 
+/* Not very useful */
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
-	rmom_dbg("Sent BA to %pM with Ws=%d", ta, r->window_start);
-	/* Get the first 64 bits from the scoreboard on a buff */
-	//bitmap_scnprintf(bitmap, sizeof(bitmap), r->scoreboard, GCR_WIN_SIZE);
+	rmom_dbg("Sent BA to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
 	/* Send a ba frame to the ta */
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
@@ -372,7 +370,6 @@ void ieee80211aa_update_receiver(struct ieee80211_sub_if_data *sdata,
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else {
 		rmom_dbg("Old window on BAR: %d previous was:%d", window_start, p->receiver.window_start);
-		//send_ba(bitmap,window_start)
 	}
 
 }
@@ -414,7 +411,7 @@ bool ieee80211aa_check_window_start(struct ieee80211_sub_if_data *sdata,
 	return true;
 }
 
-void ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
+bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 				  u8 *sa, u16 req_sn)
 {
 	struct ieee80211_local *local = sdata->local;
@@ -445,9 +442,11 @@ void ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		//rmom_dbg("Re-tx frame %d",req_sn);
 		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
 		ieee80211_tx_skb(sdata, skb);
-		break;
+		spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
+		return true;
 	}
 	spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
+	return false;
 }
 
 void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
@@ -460,9 +459,10 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 	while (result < GCR_WIN_SIZE) {
 		u16 req_sn = s->r_window_start + result;
-		ieee80211aa_retransmit_frame(sdata, ga, req_sn);
+		if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
+			count++;
 		result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
-		count++;
+
 	}
 	rmom_dbg("retransmited %d frames", count);
 	// TODO if frames have been retransmited send a new BAR
@@ -472,7 +472,7 @@ void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 				      struct ieee80211aa_sender *s,
 				      u8* ga, u64 bitmap)
 {
-	bitmap_xor(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
+	bitmap_and(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
 	s->rcv_ba_count++;
 	if (s->rcv_ba_count >= s->exp_rcv_ba)
 		ieee80211aa_retransmit(sdata, s, ga);
