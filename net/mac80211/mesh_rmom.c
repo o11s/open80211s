@@ -296,6 +296,10 @@ void ieee80211aa_data_frame_tx(
 
 
 		if (p->sender.exp_rcv_ba > 0)
+			/*
+			 * TODO This should be referenced to
+			 * current sn instead to the window
+			 */
 			p->sender.rtx_sn_thr = p->sender.s_window_start + 24;
 		else
 			/* zero is a non-valid threshold value */
@@ -376,7 +380,7 @@ void ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else if (window_start == p->receiver.window_start) {
-		rmom_dbg("BAR received in current  window_start %d",
+		rmom_dbg("BAR received in current window_start %d",
 			 window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else {
@@ -458,18 +462,44 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	// Foreach bit set to 0 ask for retransmission
 	int result = find_first_zero_bit(s->scoreboard, GCR_WIN_SIZE);
 	count = 0;
-	rmom_dbg("BA contains %d missing frames",
-		 GCR_WIN_SIZE - bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
-	while (result < GCR_WIN_SIZE) {
-		u16 req_sn = s->r_window_start + result;
-		if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
-			count++;
-		result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
+	/* Only enter if at least one frame is missing */
+	if (result < GCR_WIN_SIZE) {
+		rmom_dbg("BA contains %d missing frames",
+			 GCR_WIN_SIZE - bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
+		while (result < GCR_WIN_SIZE) {
+			u16 req_sn = s->r_window_start + result;
+			if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
+				count++;
+			result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
+
+		}
+		rmom_dbg("BA caused %d retransmissions", count);
+		/* Only if retransmissions took place */
+		/* TODO Merge/Unify this code with the one at data frame tx */
+		if (count > 0) {
+			/* fill scoreboard with 1s */
+			/* send bar to all stations */
+			s->rcv_ba_count = 0;
+			s->exp_rcv_ba = ieee80211aa_send_bar(
+						sdata,
+						ga,
+						s->r_window_start);
+
+			if (s->exp_rcv_ba > 0)
+				/*
+				 * TODO This should be referenced to
+				 * current sn instead to the window
+				 */
+				s->rtx_sn_thr = s->r_window_start + 24;
+			else
+				/* zero is a non-valid threshold value */
+				s->rtx_sn_thr = 0;
+			/* Overwrite scoreboard with 1s */
+			bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
+		}
 	}
-	rmom_dbg("BA caused %d retransmissions", count);
-	// TODO if frames have been retransmited send a new BAR
 }
 
 void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
@@ -478,6 +508,11 @@ void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 {
 	bitmap_and(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
 	s->rcv_ba_count++;
+
+	/*
+	 * TODO Only call retransmit if we got all ba's or ba
+	 * transaction has expired AND there's any missing frame
+ 	 */
 	if (s->rcv_ba_count >= s->exp_rcv_ba)
 		ieee80211aa_retransmit(sdata, s, ga);
 }
@@ -496,7 +531,7 @@ void ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 			 window_start, p->sender.r_window_start);
 		return;
 	}
-	rmom_dbg("BA received in correct window_start %d", window_start);
+	rmom_dbg("BA received in current window_start %d", window_start);
 	ieee80211aa_apply_ba_scoreboard(sdata, &p->sender,
 					ba->gcr_ga, ba->bitmap);
 }
