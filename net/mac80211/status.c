@@ -355,8 +355,9 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	int rates_idx = -1;
 	bool send_to_cooked;
 	bool acked;
+	struct ieee80211s_hdr *mesh_hdr;
 	struct ieee80211_bar *bar;
-	int rtap_len;
+	int rtap_len, hdrlen;
 
 	for (i = 0; i < IEEE80211_TX_MAX_RATES; i++) {
 		if ((info->flags & IEEE80211_TX_CTL_AMPDU) &&
@@ -582,8 +583,29 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	if (skb->dev && skb->dev->ieee80211_ptr &&
 		skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
 		is_multicast_ether_addr(hdr->addr1) &&
-		!is_broadcast_ether_addr(hdr->addr1) &&
-		!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
+		!is_broadcast_ether_addr(hdr->addr1)) {
+
+		/* This will be called only on the original tx */
+		if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
+
+			hdr = (struct ieee80211_hdr *) skb->data;
+			hdrlen = ieee80211_hdrlen(hdr->frame_control);
+			mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
+
+			rcu_read_lock();
+			list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+				if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
+					if (!ieee80211_sdata_running(sdata))
+						continue;
+					/* Call the ieee80211aa_handle_data_tx*/
+					ieee80211aa_handle_data_tx(sdata, hdr->addr3,
+						le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+				}
+			}
+			rcu_read_unlock();
+			/* Mark as retransmission for next use */
+			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
+		}
 
 		skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
 		if (local->mcast_rexmit_skb_queue.qlen < local->mcast_rexmit_skb_max_size) {
