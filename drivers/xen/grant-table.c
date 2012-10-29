@@ -1029,14 +1029,20 @@ static void gnttab_unmap_frames_v2(void)
 static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 {
 	struct gnttab_setup_table setup;
+	unsigned long start_gpfn;
 	xen_pfn_t *frames;
 	unsigned int nr_gframes = end_idx + 1;
 	int rc;
 
-	if (xen_hvm_domain()) {
+	if (xen_hvm_domain() || xen_feature(XENFEAT_auto_translated_physmap)) {
 		struct xen_add_to_physmap xatp;
 		unsigned int i = end_idx;
 		rc = 0;
+
+		if (xen_hvm_domain())
+			start_gpfn = xen_hvm_resume_frames >> PAGE_SHIFT;
+		else
+			start_gpfn = virt_to_pfn(gnttab_shared.addr);
 		/*
 		 * Loop backwards, so that the first hypercall has the largest
 		 * index, ensuring that the table will grow only once.
@@ -1045,7 +1051,7 @@ static int gnttab_map(unsigned int start_idx, unsigned int end_idx)
 			xatp.domid = DOMID_SELF;
 			xatp.idx = i;
 			xatp.space = XENMAPSPACE_grant_table;
-			xatp.gpfn = (xen_hvm_resume_frames >> PAGE_SHIFT) + i;
+			xatp.gpfn = start_gpfn + i;
 			rc = HYPERVISOR_memory_op(XENMEM_add_to_physmap, &xatp);
 			if (rc != 0) {
 				printk(KERN_WARNING
@@ -1108,7 +1114,7 @@ static void gnttab_request_version(void)
 	int rc;
 	struct gnttab_set_version gsv;
 
-	if (xen_hvm_domain())
+	if (xen_hvm_domain() || xen_feature(XENFEAT_auto_translated_physmap))
 		gsv.version = 1;
 	else
 		gsv.version = 2;
@@ -1138,11 +1144,24 @@ static void gnttab_request_version(void)
 static int gnttab_setup(void)
 {
 	unsigned int max_nr_gframes;
+	char *kmsg = "Failed to kmalloc pages for pv in hvm grant frames\n";
 
 	max_nr_gframes = gnttab_max_grant_frames();
 	if (max_nr_gframes < nr_grant_frames)
 		return -ENOSYS;
 
+	/* PVH note: xen will free existing kmalloc'd mfn in
+	 * XENMEM_add_to_physmap. TBD/FIXME: use xen ballooning instead of
+	 * kmalloc(). */
+	if (xen_pv_domain() && xen_feature(XENFEAT_auto_translated_physmap) &&
+	    !gnttab_shared.addr) {
+		gnttab_shared.addr =
+			kmalloc(max_nr_gframes * PAGE_SIZE, GFP_KERNEL);
+		if (!gnttab_shared.addr) {
+			pr_warn("%s", kmsg);
+			return -ENOMEM;
+		}
+	}
 	if (xen_pv_domain())
 		return gnttab_map(0, nr_grant_frames - 1);
 
