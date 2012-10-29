@@ -337,7 +337,7 @@ int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_mgmt *mgmt,
 			      size_t len, struct ieee80211_rx_status *rx_status);
-void ieee80211aa_update_sender(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_data_frame_tx(struct ieee80211_sub_if_data *sdata,
 			       struct rmc_entry *p,
 			       u32 seqnum);
 void ieee80211aa_set_sender(struct ieee80211_sub_if_data *sdata,
@@ -347,7 +347,7 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar);
 bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba);
-void ieee80211aa_update_receiver_scoreboard(
+void ieee80211aa_data_frame_rx(
 		struct ieee80211_sub_if_data *sdata,
 		struct rmc_entry *p, u32 seqnum);
 void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,      				  struct ieee80211s_hdr *mesh_hdr, u8 *da);

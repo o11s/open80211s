@@ -260,8 +260,9 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 			p->num_seqnums = min(++p->num_seqnums,
 					     RMC_MAX_SEQNUMS);
 			p->exp_time = jiffies + RMC_TIMEOUT;
-			ieee80211aa_update_sender(sdata, p, seqnum);
-			ieee80211aa_update_receiver_scoreboard(sdata, p, seqnum);
+			/* TODO: Move next line (tx) to status.c */
+			ieee80211aa_data_frame_tx(sdata, p, seqnum);
+			ieee80211aa_data_frame_rx(sdata, p, seqnum);
 			spin_unlock(&p->lock);
 			return 0;
 		}

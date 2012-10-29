@@ -253,6 +253,8 @@ void ieee80211_send_ba_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	ieee80211_tx_skb(sdata, skb);
 }
 
+/* Data frame tx path */
+
 int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u16 window_start)
 {
@@ -278,7 +280,7 @@ int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 	return count;
 }
 
-void ieee80211aa_update_sender(
+void ieee80211aa_data_frame_tx(
 		struct ieee80211_sub_if_data *sdata,
 		struct rmc_entry *p, u32 seqnum)
 {
@@ -307,6 +309,8 @@ void ieee80211aa_update_sender(
 	}
 }
 
+/* Data frame rx path */
+
 void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 				   struct ieee80211aa_receiver *r,
 				   u16 window_start)
@@ -330,7 +334,7 @@ void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 	r->window_start = window_start;
 }
 
-void ieee80211aa_update_receiver_scoreboard(
+void ieee80211aa_data_frame_rx(
 		struct ieee80211_sub_if_data *sdata,
 		struct rmc_entry *p, u32 seqnum)
 {
@@ -346,30 +350,38 @@ void ieee80211aa_update_receiver_scoreboard(
 	}
 
 	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
-	rmom_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
+	//rmom_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
 }
 
-/* Not very useful */
+/* Handle BAR path */
+
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
-	rmom_dbg("Sent BA to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
+	rmom_dbg("BA request %d missing frames",
+		 GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
+	//rmom_dbg("BA sent to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
 	/* Send a ba frame to the ta */
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
 
-void ieee80211aa_update_receiver(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 				 struct rmc_entry *p, u8 *ta,
 				 u8 *sa, u16 window_start)
 {
+
 	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
-		rmom_dbg("New window on BAR: %d previous was:%d", window_start, p->receiver.window_start);
+		rmom_dbg("BAR received with new window_start %d previous was:%d",
+			 window_start, p->receiver.window_start);
 		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else if (window_start == p->receiver.window_start) {
+		rmom_dbg("BAR received in current  window_start %d",
+			 window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else {
-		rmom_dbg("Old window on BAR: %d previous was:%d", window_start, p->receiver.window_start);
+		rmom_dbg("BAR discarded due old window_start: %d expected:%d",
+			 window_start, p->receiver.window_start);
 	}
 
 }
@@ -387,7 +399,7 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		spin_lock_bh(&p->lock);
 		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
-			ieee80211aa_update_receiver(sdata, p, bar->ta,
+			ieee80211aa_process_bar(sdata, p, bar->ta,
 						    bar->gcr_ga, window_start);
 			spin_unlock_bh(&p->lock);
 			return true;
@@ -396,20 +408,8 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	}
 	return false;
 }
-bool ieee80211aa_check_window_start(struct ieee80211_sub_if_data *sdata,
-				    struct rmc_entry *p, u16 window_start)
-{
-	if (window_start < p->sender.r_window_start) {
-		rmom_dbg("Old ba window_start %d expected %d",
-			 window_start, p->sender.r_window_start);
-		return false;
-	} else if (window_start > p->sender.r_window_start) {
-		rmom_dbg("Future ba window_start %d expected %d",
-			 window_start, p->sender.r_window_start);
-		return false;
-	}
-	return true;
-}
+
+/** Handle BA path */
 
 bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 				  u8 *sa, u16 req_sn)
@@ -434,12 +434,14 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		 */
 		seqnum = (get_unaligned_le32(&mesh_hdr->seqnum) % 65536);
 
+
 		/* Only if seqnum and sa matches */
 		if (seqnum != req_sn ||
 		    memcmp(sa, hdr->addr3, ETH_ALEN))
 			continue;
 
-		//rmom_dbg("Re-tx frame %d",req_sn);
+		rmom_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
+			 req_sn, get_unaligned_le32(&mesh_hdr->seqnum), seqnum);
 		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
 		ieee80211_tx_skb(sdata, skb);
 		spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
@@ -456,6 +458,8 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	// Foreach bit set to 0 ask for retransmission
 	int result = find_first_zero_bit(s->scoreboard, GCR_WIN_SIZE);
 	count = 0;
+	rmom_dbg("BA contains %d missing frames",
+		 GCR_WIN_SIZE - bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
 	while (result < GCR_WIN_SIZE) {
 		u16 req_sn = s->r_window_start + result;
@@ -464,7 +468,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 		result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
 
 	}
-	rmom_dbg("retransmited %d frames", count);
+	rmom_dbg("BA caused %d retransmissions", count);
 	// TODO if frames have been retransmited send a new BAR
 }
 
@@ -476,6 +480,25 @@ void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 	s->rcv_ba_count++;
 	if (s->rcv_ba_count >= s->exp_rcv_ba)
 		ieee80211aa_retransmit(sdata, s, ga);
+}
+
+void ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
+			    struct rmc_entry *p,
+			    struct ieee80211_ba_gcr *ba,
+			    u16 window_start)
+{
+	if (window_start < p->sender.r_window_start) {
+		rmom_dbg("BA discarded due old window_start %d expected %d",
+			 window_start, p->sender.r_window_start);
+		return;
+	} else if (window_start > p->sender.r_window_start) {
+		rmom_dbg("BA discarded due future window_start %d expected %d",
+			 window_start, p->sender.r_window_start);
+		return;
+	}
+	rmom_dbg("BA received in correct window_start %d", window_start);
+	ieee80211aa_apply_ba_scoreboard(sdata, &p->sender,
+					ba->gcr_ga, ba->bitmap);
 }
 
 bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
@@ -490,18 +513,9 @@ bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		spin_lock_bh(&p->lock);
 		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
-			if (ieee80211aa_check_window_start(sdata,
-							   p,
-							   window_start))
-			{
-				//Process this BA
-				ieee80211aa_apply_ba_scoreboard(sdata,
-								&p->sender,
-								ba->gcr_ga,
-								ba->bitmap);
-				spin_unlock_bh(&p->lock);
-				return true;
-			}
+			ieee80211aa_process_ba(sdata, p, ba, window_start);
+			spin_unlock_bh(&p->lock);
+			return true;
 		}
 		spin_unlock_bh(&p->lock);
 	}
