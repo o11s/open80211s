@@ -10,7 +10,7 @@
 #include <asm/unaligned.h>
 #include "ieee80211_i.h"
 #include "mesh.h"
-#include "mesh_rmom.h"
+#include "mesh_11aa.h"
 
 
 /**
@@ -138,7 +138,7 @@ void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 
 	sta = sta_info_get(sdata, mgmt->sa);
 	if (!sta) {
-		rmom_dbg("GCast frame from unknown peer");
+		aa_dbg("GCast frame from unknown peer");
 		rcu_read_unlock();
 		return;
 	}
@@ -158,7 +158,7 @@ void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 						WLAN_AV_ROBUST_ACTION_GM_RESPONSE) {
 		/** For now just set gcm_enabled to true */
 		if (!sta->gcm_enabled) {
-			rmom_dbg("%pM has GCM enabled", sta->sta.addr);
+			aa_dbg("%pM has GCM enabled", sta->sta.addr);
 			sta->gcm_enabled = true;
 		}
 	}
@@ -266,7 +266,7 @@ int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
                 if (sdata != sta->sdata ||
                     sta->gcm_enabled != true)
                         continue;
-		rmom_dbg("Sent BAR to %pM with Ws=%d",
+		aa_dbg("Sent BAR to %pM with Ws=%d",
 			 sta->sta.addr,
 			 window_start);
 
@@ -354,7 +354,7 @@ void ieee80211aa_data_frame_rx(
 	}
 
 	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
-	//rmom_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
+	//aa_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
 }
 
 /* Handle BAR path */
@@ -362,9 +362,9 @@ void ieee80211aa_data_frame_rx(
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
-	rmom_dbg("BA request %d missing frames",
+	aa_dbg("BA request %d missing frames",
 		 GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
-	//rmom_dbg("BA sent to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
+	//aa_dbg("BA sent to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
 	/* Send a ba frame to the ta */
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
@@ -375,16 +375,16 @@ void ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 {
 
 	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
-		rmom_dbg("BAR received with new window_start %d previous was:%d",
+		aa_dbg("BAR received with new window_start %d previous was:%d",
 			 window_start, p->receiver.window_start);
 		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else if (window_start == p->receiver.window_start) {
-		rmom_dbg("BAR received in current window_start %d",
+		aa_dbg("BAR received in current window_start %d",
 			 window_start);
 		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
 	} else {
-		rmom_dbg("BAR discarded due old window_start: %d expected:%d",
+		aa_dbg("BAR discarded due old window_start: %d expected:%d",
 			 window_start, p->receiver.window_start);
 	}
 
@@ -444,7 +444,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		    memcmp(sa, hdr->addr3, ETH_ALEN))
 			continue;
 
-		rmom_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
+		aa_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
 			 req_sn, get_unaligned_le32(&mesh_hdr->seqnum), seqnum);
 		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
 		ieee80211_tx_skb(sdata, skb);
@@ -465,7 +465,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 	/* Only enter if at least one frame is missing */
 	if (result < GCR_WIN_SIZE) {
-		rmom_dbg("BA contains %d missing frames",
+		aa_dbg("BA contains %d missing frames",
 			 GCR_WIN_SIZE - bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
 		while (result < GCR_WIN_SIZE) {
@@ -475,7 +475,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 			result = find_next_zero_bit(s->scoreboard, GCR_WIN_SIZE, result+1);
 
 		}
-		rmom_dbg("BA caused %d retransmissions", count);
+		aa_dbg("BA caused %d retransmissions", count);
 		/* Only if retransmissions took place */
 		/* TODO Merge/Unify this code with the one at data frame tx */
 		if (count > 0) {
@@ -523,15 +523,15 @@ void ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 			    u16 window_start)
 {
 	if (window_start < p->sender.r_window_start) {
-		rmom_dbg("BA discarded due old window_start %d expected %d",
+		aa_dbg("BA discarded due old window_start %d expected %d",
 			 window_start, p->sender.r_window_start);
 		return;
 	} else if (window_start > p->sender.r_window_start) {
-		rmom_dbg("BA discarded due future window_start %d expected %d",
+		aa_dbg("BA discarded due future window_start %d expected %d",
 			 window_start, p->sender.r_window_start);
 		return;
 	}
-	rmom_dbg("BA received in current window_start %d", window_start);
+	aa_dbg("BA received in current window_start %d", window_start);
 	ieee80211aa_apply_ba_scoreboard(sdata, &p->sender,
 					ba->gcr_ga, ba->bitmap);
 }
