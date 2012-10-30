@@ -52,35 +52,35 @@ static inline bool ieee80211aa_enabled(void)
 {
 	return false;
 }
-int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
+static inline int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 			     enum ieee80211_robust_av_actioncode action,
 			     u8 *da, u8 dialog_token)
 {
 	return 0;
 }
-void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
+static void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_mgmt *mgmt,
 			      size_t len, struct ieee80211_rx_status *rx_status)
 {
 	return;
 }
-void ieee80211aa_set_sender(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_set_sender(struct ieee80211_sub_if_data *sdata,
 			    struct rmc_entry *p,
 			    u32 seqnum)
 {
 	return;
 }
-bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+static inline bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
 	return false;
 }
-bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+static inline bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba)
 {
 	return false;
 }
-void ieee80211aa_data_frame_tx(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_data_frame_tx(struct ieee80211_sub_if_data *sdata,
 			       struct rmc_entry *p, u32 seqnum)
 {
 	return;
@@ -90,12 +90,12 @@ void ieee80211aa_data_frame_tx(struct ieee80211_sub_if_data *sdata,
 {
 	return false;
 }*/
-void ieee80211aa_data_frame_rx(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_data_frame_rx(struct ieee80211_sub_if_data *sdata,
 			       struct rmc_entry *p, u32 seqnum)
 {
 	return;
 }
-void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da)
 {
 	return;
