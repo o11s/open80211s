@@ -89,12 +89,12 @@ config MAC80211_MESH
 	 possible, as drafts leave a number of identifiers to be defined after
 	 ratification.  For more information visit http://o11s.org/.
 
-config MAC80211_MESH_RMOM
-	bool "Reliable Multicast over Mesh"
+config MAC80211_MESH_11AA
+	bool "Robust A/V Streaming for mesh (802.11aa)"
 	depends on MAC80211_MESH
 	---help---
-	  Selecting this option will enable a protocol that increases the
-	  reliablility of multicast traffic over mesh.
+	  Selecting this option will enable a 802.11aa implementation that 
+	  increases the reliablility of multicast traffic over mesh.
 
 config MAC80211_LEDS
 	bool "Enable LED triggers"
@@ -206,10 +206,10 @@ config MAC80211_VERBOSE_MPL_DEBUG
 
 	  Do not select this option.
 
-config MAC80211_RMOM_DEBUG
+config MAC80211_11AA_DEBUG
 	bool "Verbose reliable multicast over mesh debugging"
 	depends on MAC80211_DEBUG_MENU
-	depends on MAC80211_MESH_RMOM
+	depends on MAC80211_MESH_11AA
 	---help---
 	  Selecting this option causes mac80211 to print out
 	  very verbose debugging messages to assist debugging

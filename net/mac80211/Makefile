@@ -41,8 +41,8 @@ mac80211-$(CONFIG_MAC80211_MESH) += \
 	mesh_hwmp.o \
 	mesh_sync.o
 
-mac80211-$(CONFIG_MAC80211_MESH_RMOM) += \
-	mesh_rmom.o
+mac80211-$(CONFIG_MAC80211_MESH_11AA) += \
+	mesh_11aa.o
 
 mac80211-$(CONFIG_PM) += pm.o
 
