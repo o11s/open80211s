@@ -17,6 +17,7 @@
 #include "ieee80211_i.h"
 #include "rate.h"
 #include "mesh.h"
+#include "mesh_11aa.h"
 #include "led.h"
 #include "wme.h"
 
@@ -578,12 +579,11 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	/* this was a transmitted frame, but now we want to reuse it */
 	skb_orphan(skb);
 
-	/* RMoM: if this is a mesh multicast frame, queue it for a while.  */
-#ifdef CONFIG_MAC80211_MESH_RMOM
-	if (skb->dev && skb->dev->ieee80211_ptr &&
-		skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
-		is_multicast_ether_addr(hdr->addr1) &&
-		!is_broadcast_ether_addr(hdr->addr1)) {
+	/* ieee80211aa: if this is a mesh multicast frame, queue it  */
+	if (ieee80211aa_enabled() && skb->dev && skb->dev->ieee80211_ptr &&
+	    skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
+	    is_multicast_ether_addr(hdr->addr1) &&
+	    !is_broadcast_ether_addr(hdr->addr1)) {
 
 		/* This will be called only on the original tx */
 		if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
@@ -616,7 +616,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			rcu_read_unlock();
 		}
 	}
-#endif
 
 	/* Need to make a copy before skb->cb gets cleared */
 	send_to_cooked = !!(info->flags & IEEE80211_TX_CTL_INJECTED) ||
