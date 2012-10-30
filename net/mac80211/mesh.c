@@ -13,7 +13,7 @@
 #include <asm/unaligned.h>
 #include "ieee80211_i.h"
 #include "mesh.h"
-#include "mesh_rmom.h"
+#include "mesh_11aa.h"
 
 #define TMR_RUNNING_HK	0
 #define TMR_RUNNING_MP	1
@@ -26,15 +26,6 @@ bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
 			WLAN_MESH_ACTION_HWMP_PATH_SELECTION);
-}
-
-bool mesh_action_is_rmom(struct ieee80211_mgmt *mgmt)
-{
-	return (mgmt->u.action.category ==
-				WLAN_CATEGORY_VENDOR_SPECIFIC &&
-				mgmt->u.action.u.mesh_rmom_nak.oid[0] == 0x4C &&
-				mgmt->u.action.u.mesh_rmom_nak.oid[1] == 0x22 &&
-				mgmt->u.action.u.mesh_rmom_nak.oid[2] == 0x58);
 }
 
 void ieee80211s_init(void)

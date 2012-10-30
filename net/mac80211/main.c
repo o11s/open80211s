@@ -28,6 +28,7 @@
 #include "driver-ops.h"
 #include "rate.h"
 #include "mesh.h"
+#include "mesh_11aa.h"
 #include "wep.h"
 #include "led.h"
 #include "cfg.h"
