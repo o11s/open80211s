@@ -252,34 +252,29 @@ static int smiapp_pll_update(struct smiapp_sensor *sensor)
 		.min_pll_op_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_PLL_OP_FREQ_HZ],
 		.max_pll_op_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_PLL_OP_FREQ_HZ],
 
-		.min_op_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_OP_SYS_CLK_DIV],
-		.max_op_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_OP_SYS_CLK_DIV],
-		.min_op_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_OP_PIX_CLK_DIV],
-		.max_op_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_OP_PIX_CLK_DIV],
-		.min_op_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_OP_SYS_CLK_FREQ_HZ],
-		.max_op_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_OP_SYS_CLK_FREQ_HZ],
-		.min_op_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_OP_PIX_CLK_FREQ_HZ],
-		.max_op_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_OP_PIX_CLK_FREQ_HZ],
+		.op.min_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_OP_SYS_CLK_DIV],
+		.op.max_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_OP_SYS_CLK_DIV],
+		.op.min_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_OP_PIX_CLK_DIV],
+		.op.max_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_OP_PIX_CLK_DIV],
+		.op.min_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_OP_SYS_CLK_FREQ_HZ],
+		.op.max_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_OP_SYS_CLK_FREQ_HZ],
+		.op.min_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_OP_PIX_CLK_FREQ_HZ],
+		.op.max_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_OP_PIX_CLK_FREQ_HZ],
 
-		.min_vt_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_VT_SYS_CLK_DIV],
-		.max_vt_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_VT_SYS_CLK_DIV],
-		.min_vt_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_VT_PIX_CLK_DIV],
-		.max_vt_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_VT_PIX_CLK_DIV],
-		.min_vt_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_VT_SYS_CLK_FREQ_HZ],
-		.max_vt_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_VT_SYS_CLK_FREQ_HZ],
-		.min_vt_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_VT_PIX_CLK_FREQ_HZ],
-		.max_vt_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_VT_PIX_CLK_FREQ_HZ],
+		.vt.min_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_VT_SYS_CLK_DIV],
+		.vt.max_sys_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_VT_SYS_CLK_DIV],
+		.vt.min_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MIN_VT_PIX_CLK_DIV],
+		.vt.max_pix_clk_div = sensor->limits[SMIAPP_LIMIT_MAX_VT_PIX_CLK_DIV],
+		.vt.min_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_VT_SYS_CLK_FREQ_HZ],
+		.vt.max_sys_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_VT_SYS_CLK_FREQ_HZ],
+		.vt.min_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MIN_VT_PIX_CLK_FREQ_HZ],
+		.vt.max_pix_clk_freq_hz = sensor->limits[SMIAPP_LIMIT_MAX_VT_PIX_CLK_FREQ_HZ],
 
 		.min_line_length_pck_bin = sensor->limits[SMIAPP_LIMIT_MIN_LINE_LENGTH_PCK_BIN],
 		.min_line_length_pck = sensor->limits[SMIAPP_LIMIT_MIN_LINE_LENGTH_PCK],
 	};
 	struct smiapp_pll *pll = &sensor->pll;
 	int rval;
-
-	memset(&sensor->pll, 0, sizeof(sensor->pll));
-
-	pll->lanes = sensor->platform_data->lanes;
-	pll->ext_clk_freq_hz = sensor->platform_data->ext_clk;
 
 	if (sensor->minfo.smiapp_profile == SMIAPP_PROFILE_0) {
 		/*
@@ -288,28 +283,14 @@ static int smiapp_pll_update(struct smiapp_sensor *sensor)
 		 * requirements regarding them are essentially the
 		 * same as on VT ones.
 		 */
-		lim.min_op_sys_clk_div = lim.min_vt_sys_clk_div;
-		lim.max_op_sys_clk_div = lim.max_vt_sys_clk_div;
-		lim.min_op_pix_clk_div = lim.min_vt_pix_clk_div;
-		lim.max_op_pix_clk_div = lim.max_vt_pix_clk_div;
-		lim.min_op_sys_clk_freq_hz = lim.min_vt_sys_clk_freq_hz;
-		lim.max_op_sys_clk_freq_hz = lim.max_vt_sys_clk_freq_hz;
-		lim.min_op_pix_clk_freq_hz = lim.min_vt_pix_clk_freq_hz;
-		lim.max_op_pix_clk_freq_hz = lim.max_vt_pix_clk_freq_hz;
-		/* Profile 0 sensors have no separate OP clock branch. */
-		pll->flags |= SMIAPP_PLL_FLAG_NO_OP_CLOCKS;
+		lim.op = lim.vt;
 	}
-
-	if (smiapp_needs_quirk(sensor,
-			       SMIAPP_QUIRK_FLAG_OP_PIX_CLOCK_PER_LANE))
-		pll->flags |= SMIAPP_PLL_FLAG_OP_PIX_CLOCK_PER_LANE;
 
 	pll->binning_horizontal = sensor->binning_horizontal;
 	pll->binning_vertical = sensor->binning_vertical;
 	pll->link_freq =
 		sensor->link_freq->qmenu_int[sensor->link_freq->val];
 	pll->scale_m = sensor->scale_m;
-	pll->scale_n = sensor->limits[SMIAPP_LIMIT_SCALER_N_MIN];
 	pll->bits_per_pixel = sensor->csi_format->compressed;
 
 	rval = smiapp_pll_calculate(&client->dev, &lim, pll);
@@ -2369,6 +2350,7 @@ static int smiapp_registered(struct v4l2_subdev *subdev)
 {
 	struct smiapp_sensor *sensor = to_smiapp_sensor(subdev);
 	struct i2c_client *client = v4l2_get_subdevdata(subdev);
+	struct smiapp_pll *pll = &sensor->pll;
 	struct smiapp_subdev *last = NULL;
 	u32 tmp;
 	unsigned int i;
@@ -2634,6 +2616,18 @@ static int smiapp_registered(struct v4l2_subdev *subdev)
 	rval = smiapp_init_controls(sensor);
 	if (rval < 0)
 		goto out_nvm_release;
+
+	/* prepare PLL configuration input values */
+	pll->bus_type = SMIAPP_PLL_BUS_TYPE_CSI2;
+	pll->csi2.lanes = sensor->platform_data->lanes;
+	pll->ext_clk_freq_hz = sensor->platform_data->ext_clk;
+	/* Profile 0 sensors have no separate OP clock branch. */
+	if (sensor->minfo.smiapp_profile == SMIAPP_PROFILE_0)
+		pll->flags |= SMIAPP_PLL_FLAG_NO_OP_CLOCKS;
+	if (smiapp_needs_quirk(sensor,
+			       SMIAPP_QUIRK_FLAG_OP_PIX_CLOCK_PER_LANE))
+		pll->flags |= SMIAPP_PLL_FLAG_OP_PIX_CLOCK_PER_LANE;
+	pll->scale_n = sensor->limits[SMIAPP_LIMIT_SCALER_N_MIN];
 
 	rval = smiapp_update_mode(sensor);
 	if (rval) {
