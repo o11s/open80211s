@@ -187,6 +187,7 @@ static bool __mesh_plink_deactivate(struct sta_info *sta)
 		deactivated = true;
 	}
 	sta->plink_state = NL80211_PLINK_BLOCKED;
+	sta->gcm_enabled = false;
 	mesh_path_flush_by_nexthop(sta);
 
 	return deactivated;
