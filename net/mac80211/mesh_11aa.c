@@ -253,8 +253,6 @@ void ieee80211_send_ba_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	ieee80211_tx_skb(sdata, skb);
 }
 
-/* Data frame tx path */
-
 int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u16 window_start)
 {
@@ -280,85 +278,6 @@ int ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 	return count;
 }
 
-void ieee80211aa_data_frame_tx(
-		struct ieee80211_sub_if_data *sdata,
-		struct rmc_entry *p, u32 seqnum)
-{
-	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
-		u16 window_start = calculate_window_start(seqnum);
-
-		/* Overwrite info for re-tx */
-		p->sender.rcv_ba_count = 0;
-		p->sender.exp_rcv_ba = ieee80211aa_send_bar(
-					sdata,
-					p->sa,
-					p->sender.s_window_start);
-
-
-		if (p->sender.exp_rcv_ba > 0)
-			/*
-			 * TODO This should be referenced to
-			 * current sn instead to the window
-			 */
-			p->sender.rtx_sn_thr = p->sender.s_window_start + 24;
-		else
-			/* zero is a non-valid threshold value */
-			p->sender.rtx_sn_thr = 0;
-		/* We expect to receive ba from just bar */
-		p->sender.r_window_start = p->sender.s_window_start;
-		/* Overwrite scoreboard with 1s*/
-		bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
-		/* We update sending window to next value */
-		p->sender.s_window_start = window_start;
-	}
-}
-
-/* Data frame rx path */
-
-void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
-				   struct ieee80211aa_receiver *r,
-				   u16 window_start)
-{
-	/* |window_start = 0
-	 * |W0.........W1..........|
-	 * |window_start = 64
-	 * |W1.........W2..........|
-	 * |window_start = 128
-	 * |W2.........W3..........|
-	 */
-
-	/* Calculate the number of bits we need shift */
-	int shift = window_start - r->window_start;
-	/* Should never happen... No shifting for negative values */
-	if (shift <= 0)
-		return;
-	/* Right shift N positions */
-	bitmap_shift_right(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
-	/* Store new window */
-	r->window_start = window_start;
-}
-
-void ieee80211aa_data_frame_rx(
-		struct ieee80211_sub_if_data *sdata,
-		struct rmc_entry *p, u32 seqnum)
-{
-
-	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
-		/* Current scoreboard doesn't have access to this bit
- 		 * Note:
-		 * This is not very nice but in this case want to keep
- 		 * at least a window of valuable data, this tries to...
- 		 * */
-		ieee80211aa_flush_scoreboard(sdata, &p->receiver,
-			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
-	}
-
-	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
-	//aa_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
-}
-
-/* Handle BAR path */
-
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
@@ -369,51 +288,7 @@ void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
 
-void ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
-				 struct rmc_entry *p, u8 *ta,
-				 u8 *sa, u16 window_start)
-{
-
-	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
-		aa_dbg("BAR received with new window_start %d previous was:%d",
-			 window_start, p->receiver.window_start);
-		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
-		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
-	} else if (window_start == p->receiver.window_start) {
-		aa_dbg("BAR received in current window_start %d",
-			 window_start);
-		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
-	} else {
-		aa_dbg("BAR discarded due old window_start: %d expected:%d",
-			 window_start, p->receiver.window_start);
-	}
-
-}
-
-bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
-			struct ieee80211_bar_gcr *bar)
-{
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
-	u8 idx;
-	struct rmc_entry *p, *n;
-	u16 window_start = le16_to_cpu(bar->start_seq_num);
-
-	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & rmc->idx_mask;
-
-	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
-		spin_lock_bh(&p->lock);
-		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
-			ieee80211aa_process_bar(sdata, p, bar->ta,
-						    bar->gcr_ga, window_start);
-			spin_unlock_bh(&p->lock);
-			return true;
-		}
-		spin_unlock_bh(&p->lock);
-	}
-	return false;
-}
-
-/** Handle BA path */
+/* Data retransmission path */
 
 bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 				  u8 *sa, u16 req_sn)
@@ -487,32 +362,183 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 						ga,
 						s->r_window_start);
 
-			if (s->exp_rcv_ba > 0)
-				/*
-				 * TODO This should be referenced to
-				 * current sn instead to the window
-				 */
-				s->rtx_sn_thr = s->r_window_start + 24;
-			else
-				/* zero is a non-valid threshold value */
-				s->rtx_sn_thr = 0;
-			/* Overwrite scoreboard with 1s */
-			bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
+			if (s->exp_rcv_ba > 0) {
+				/* Overwrite scoreboard with 1s */
+				bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
+				s->rtx_sn_thr = s->rtx_sn_thr + GCR_WIN_THRES;
+				return;
+			}
 		}
+	} /* No ba received and scoreboard is set to default value */
+	else if (s->rcv_ba_count == 0 &&
+		   bitmap_weight(s->scoreboard, GCR_WIN_SIZE) == GCR_WIN_SIZE) {
+		aa_dbg("BA was lost... we request it again!");
+		s->exp_rcv_ba = ieee80211aa_send_bar(
+                                                sdata,
+                                                ga,
+                                                s->r_window_start);
+		s->rtx_sn_thr = s->rtx_sn_thr + GCR_WIN_THRES;
+		return;
+	} /* All frames were received correctly disable expiration threshold */
+	else if (s->rcv_ba_count >= s->exp_rcv_ba) {
+			aa_dbg("All frames were correctly delivered ws %d",
+			       s->r_window_start);
+	}
+	/* For all other cases we set to a non valid value */
+	s->rtx_sn_thr = 0;
+}
+
+/* Data frame tx path */
+
+void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
+				  struct rmc_entry *p, u32 seqnum)
+{
+	/* Only if threshold is different than 0 and has expired */
+	if (p->sender.rtx_sn_thr != 0 &&
+	    p->sender.rcv_ba_count < p->sender.exp_rcv_ba &&
+	    seqnum > p->sender.rtx_sn_thr) {
+		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d thr:%d rcv:%d bitm:%d",
+		       seqnum, p->sender.rtx_sn_thr, p->sender.r_window_start,
+		       p->sender.exp_rcv_ba, p->sender.rcv_ba_count,
+		       bitmap_weight(p->sender.scoreboard, GCR_WIN_SIZE));
+		ieee80211aa_retransmit(sdata, &p->sender, p->sa);
 	}
 }
+
+void ieee80211aa_data_frame_tx(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum)
+{
+	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
+		u16 window_start = calculate_window_start(seqnum);
+
+		/* Overwrite info for re-tx */
+		p->sender.rcv_ba_count = 0;
+		p->sender.exp_rcv_ba = ieee80211aa_send_bar(
+					sdata,
+					p->sa,
+					p->sender.s_window_start);
+
+
+		if (p->sender.exp_rcv_ba > 0)
+			/* We expect the response in less than N frames */
+			p->sender.rtx_sn_thr = window_start + GCR_WIN_THRES;
+		else
+			/* zero is a non-valid threshold value */
+			p->sender.rtx_sn_thr = 0;
+		/* We expect to receive ba from this bar */
+		p->sender.r_window_start = p->sender.s_window_start;
+		/* Overwrite scoreboard with 1s*/
+		bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
+		/* We update sending window to next value */
+		p->sender.s_window_start = window_start;
+	}
+	else {
+		ieee80211aa_check_expired_rtx(sdata, p, seqnum);
+	}
+}
+
+/* Data frame rx path */
+
+void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
+				   struct ieee80211aa_receiver *r,
+				   u16 window_start)
+{
+	/* |window_start = 0
+	 * |W0.........W1..........|
+	 * |window_start = 64
+	 * |W1.........W2..........|
+	 * |window_start = 128
+	 * |W2.........W3..........|
+	 */
+
+	/* Calculate the number of bits we need shift */
+	int shift = window_start - r->window_start;
+	/* Should never happen... No shifting for negative values */
+	if (shift <= 0)
+		return;
+	/* Right shift N positions */
+	bitmap_shift_right(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
+	/* Store new window */
+	r->window_start = window_start;
+}
+
+void ieee80211aa_data_frame_rx(
+		struct ieee80211_sub_if_data *sdata,
+		struct rmc_entry *p, u32 seqnum)
+{
+
+	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
+		/* Current scoreboard doesn't have access to this bit
+ 		 * Note:
+		 * This is not very nice but in this case want to keep
+ 		 * at least a window of valuable data, this tries to...
+ 		 * */
+		ieee80211aa_flush_scoreboard(sdata, &p->receiver,
+			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
+	}
+
+	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
+	//aa_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
+}
+
+/* Handle BAR path */
+
+void ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
+				 struct rmc_entry *p, u8 *ta,
+				 u8 *sa, u16 window_start)
+{
+
+	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
+		aa_dbg("BAR received with new window_start %d previous was:%d",
+			 window_start, p->receiver.window_start);
+		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
+		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
+	} else if (window_start == p->receiver.window_start) {
+		aa_dbg("BAR received in current window_start %d",
+			 window_start);
+		ieee80211aa_send_ba(sdata, &p->receiver, ta, sa);
+	} else {
+		aa_dbg("BAR discarded due old window_start: %d expected:%d",
+			 window_start, p->receiver.window_start);
+	}
+
+}
+
+bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+			struct ieee80211_bar_gcr *bar)
+{
+	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	u8 idx;
+	struct rmc_entry *p, *n;
+	u16 window_start = le16_to_cpu(bar->start_seq_num);
+
+	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & rmc->idx_mask;
+
+	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
+		spin_lock_bh(&p->lock);
+		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
+			ieee80211aa_process_bar(sdata, p, bar->ta,
+						    bar->gcr_ga, window_start);
+			spin_unlock_bh(&p->lock);
+			return true;
+		}
+		spin_unlock_bh(&p->lock);
+	}
+	return false;
+}
+
+/** Handle BA path */
 
 void ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 				      struct ieee80211aa_sender *s,
 				      u8* ga, u64 bitmap)
 {
+	// XXX we update values here
 	bitmap_and(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
 	s->rcv_ba_count++;
 
-	/*
-	 * TODO Only call retransmit if we got all ba's or ba
-	 * transaction has expired AND there's any missing frame
- 	 */
+	/* Only retranmit if we got all expected ba's */
 	if (s->rcv_ba_count >= s->exp_rcv_ba)
 		ieee80211aa_retransmit(sdata, s, ga);
 }

@@ -183,6 +183,7 @@ struct mesh_table {
 
 #define GCR_WIN_SIZE 64 /* Fixed to 64 positions by protocol */
 #define GCR_WIN_SIZE_RCV GCR_WIN_SIZE*2 /* Fixed to 64*N positions by protocol */
+#define GCR_WIN_THRES 24 /* Arbitrary value for the BA threshold */
 
 struct ieee80211aa_sender {
 	/* Info for tx */
