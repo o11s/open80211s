@@ -558,12 +558,10 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 static void set_seqnum(struct ieee80211s_hdr *meshhdr,
 		       struct ieee80211_sub_if_data *sdata, u8* da)
 {
-	// TODO Rewrite using operations approach
-	if (true) {
+	if (ieee80211aa_enabled()) {
 		ieee80211aa_set_seqnum(sdata, meshhdr, da);
-		return;
-	}
-       	put_unaligned_le32(sdata->u.mesh.mesh_seqnum++, &meshhdr->seqnum);
+	} else
+       		put_unaligned_le32(sdata->u.mesh.mesh_seqnum++, &meshhdr->seqnum);
 }
 
 /**
