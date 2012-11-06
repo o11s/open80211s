@@ -1472,6 +1472,14 @@ F:	include/linux/ax25.h
 F:	include/net/ax25.h
 F:	net/ax25/
 
+AZ6007 DVB DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/usb/dvb-usb-v2/az6007.c
+
 B43 WIRELESS DRIVER
 M:	Stefano Brivio <stefano.brivio@polimi.it>
 L:	linux-wireless@vger.kernel.org
@@ -1728,7 +1736,7 @@ M:	Mauro Carvalho Chehab <mchehab@redhat.com>
 L:	linux-media@vger.kernel.org
 W:	http://linuxtv.org
 T:	git git://linuxtv.org/media_tree.git
-S:	Maintained
+S:	Odd fixes
 F:	Documentation/video4linux/bttv/
 F:	drivers/media/pci/bt8xx/bttv*
 
@@ -2150,6 +2158,16 @@ W:	http://www.ivtvdriver.org/index.php/Cx18
 S:	Maintained
 F:	Documentation/video4linux/cx18.txt
 F:	drivers/media/pci/cx18/
+F:	include/uapi/linux/ivtv*
+
+CX88 VIDEO4LINUX DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Odd fixes
+F:	Documentation/video4linux/cx88/
+F:	drivers/media/pci/cx88/
 
 CXD2820R MEDIA DRIVER
 M:	Antti Palosaari <crope@iki.fi>
@@ -2833,6 +2851,14 @@ M:	Thadeu Lima de Souza Cascardo <cascardo@linux.vnet.ibm.com>
 L:	netdev@vger.kernel.org
 S:	Maintained
 F:	drivers/net/ethernet/ibm/ehea/
+
+EM28XX VIDEO4LINUX DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/usb/em28xx/
 
 EMBEDDED LINUX
 M:	Paul Gortmaker <paul.gortmaker@windriver.com>
@@ -4741,8 +4767,13 @@ F:	Documentation/DocBook/media/
 F:	drivers/media/
 F:	drivers/staging/media/
 F:	include/media/
-F:	include/linux/dvb/
-F:	include/linux/videodev*.h
+F:	include/uapi/linux/dvb/
+F:	include/uapi/linux/videodev2.h
+F:	include/uapi/linux/media.h
+F:	include/uapi/linux/v4l2-*
+F:	include/uapi/linux/meye.h
+F:	include/uapi/linux/ivtv*
+F:	include/uapi/linux/uvcvideo.h
 
 MEGARAID SCSI DRIVERS
 M:	Neela Syam Kolli <megaraidlinux@lsi.com>
@@ -4816,7 +4847,7 @@ W:	http://popies.net/meye/
 S:	Orphan
 F:	Documentation/video4linux/meye.txt
 F:	drivers/media/pci/meye/
-F:	include/linux/meye.h
+F:	include/uapi/linux/meye.h
 
 MOTOROLA IMX MMC/SD HOST CONTROLLER INTERFACE DRIVER
 M:	Pavel Pisa <ppisa@pikron.com>
@@ -6200,6 +6231,15 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 S:	Supported
 F:	drivers/mmc/host/s3cmci.*
 
+SAA7134 VIDEO4LINUX DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Odd fixes
+F:	Documentation/video4linux/saa7134/
+F:	drivers/media/pci/saa7134/
+
 SAA7146 VIDEO4LINUX-2 DRIVER
 M:	Michael Hunold <michael@mihu.de>
 L:	linux-media@vger.kernel.org
@@ -7145,6 +7185,22 @@ T:	git git://linuxtv.org/mkrufky/tuners.git
 S:	Maintained
 F:	drivers/media/tuners/tda8290.*
 
+TEA5761 TUNER DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Odd fixes
+F:	drivers/media/tuners/tea5761.*
+
+TEA5767 TUNER DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/tuners/tea5767.*
+
 TEAM DRIVER
 M:	Jiri Pirko <jpirko@redhat.com>
 L:	netdev@vger.kernel.org
@@ -7295,6 +7351,14 @@ L:	linux-mm@kvack.org
 S:	Maintained
 F:	include/linux/shmem_fs.h
 F:	mm/shmem.c
+
+TM6000 VIDEO4LINUX DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Odd fixes
+F:	drivers/media/usb/tm6000/
 
 TPM DEVICE DRIVER
 M:	Kent Yoder <key@linux.vnet.ibm.com>
@@ -7730,6 +7794,7 @@ T:	git git://linuxtv.org/media_tree.git
 W:	http://www.ideasonboard.org/uvc/
 S:	Maintained
 F:	drivers/media/usb/uvc/
+F:	include/uapi/linux/uvcvideo.h
 
 USB WIRELESS RNDIS DRIVER (rndis_wlan)
 M:	Jussi Kivilinna <jussi.kivilinna@mbnet.fi>
@@ -8115,6 +8180,14 @@ M:	Borislav Petkov <bp@amd64.org>
 L:	linux-edac@vger.kernel.org
 S:	Maintained
 F:	arch/x86/kernel/cpu/mcheck/*
+
+XC2028/3028 TUNER DRIVER
+M:	Mauro Carvalho Chehab <mchehab@redhat.com>
+L:	linux-media@vger.kernel.org
+W:	http://linuxtv.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/tuners/tuner-xc2028.*
 
 XEN HYPERVISOR INTERFACE
 M:	Konrad Rzeszutek Wilk <konrad.wilk@oracle.com>
