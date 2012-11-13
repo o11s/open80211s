@@ -201,8 +201,8 @@ static int check_for_dups(u32 seqnum, struct rmc_entry *p)
 	return 0;
 }
 
-bool ieee80211aa_handle_data_tx(struct ieee80211_sub_if_data *sdata,
-				u8 *sa, u32 seqnum) {
+bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
+		       u8 *sa, u32 seqnum) {
 	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
 	u8 idx;
 	struct rmc_entry *p, *n;
@@ -212,7 +212,7 @@ bool ieee80211aa_handle_data_tx(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		spin_lock_bh(&p->lock);
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			ieee80211aa_data_frame_tx(sdata, p, seqnum);
+			ieee80211aa_process_tx_data(sdata, p, seqnum);
 			spin_unlock_bh(&p->lock);
 			return true;
 		}
@@ -226,7 +226,7 @@ bool ieee80211aa_handle_data_tx(struct ieee80211_sub_if_data *sdata,
 	p->seqnum_idx = p->num_seqnums = 0;
 	p->exp_time = jiffies + RMC_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
-	ieee80211aa_set_sender(sdata, p, seqnum);
+	ieee80211aa_init_struct(sdata, p, seqnum);
 	spin_lock_init(&p->lock);
 	list_add(&p->list, &rmc->bucket[idx].list);
 	return true;
@@ -283,7 +283,9 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 			p->num_seqnums = min(++p->num_seqnums,
 					     RMC_MAX_SEQNUMS);
 			p->exp_time = jiffies + RMC_TIMEOUT;
-			ieee80211aa_data_frame_rx(sdata, p, seqnum);
+			/* Only if ieee80211aa is enabled */
+			if (ieee80211aa_enabled())
+				ieee80211aa_process_rx_data(sdata, p, seqnum);
 			spin_unlock(&p->lock);
 			return 0;
 		}
@@ -298,7 +300,9 @@ int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
 	p->seqnum_idx = p->num_seqnums = 1;
 	p->exp_time = jiffies + RMC_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
-	ieee80211aa_set_sender(sdata, p, seqnum);
+	/* Only if ieee80211aa is enabled */
+	if (ieee80211aa_enabled())
+		ieee80211aa_init_struct(sdata, p, seqnum);
 	spin_lock_init(&p->lock);
 	list_add(&p->list, &rmc->bucket[idx].list);
 	return 0;

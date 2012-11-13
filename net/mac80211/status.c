@@ -597,8 +597,8 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 				if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
 					if (!ieee80211_sdata_running(sdata))
 						continue;
-					/* Call the ieee80211aa_handle_data_tx*/
-					ieee80211aa_handle_data_tx(sdata, hdr->addr3,
+					/* Call the mesh_rmc_check_tx*/
+					mesh_rmc_check_tx(sdata, hdr->addr3,
 						le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
 				}
 			}

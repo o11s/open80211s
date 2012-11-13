@@ -174,9 +174,8 @@ static u16 calculate_window_start(u32 seqnum)
 	return (u16)(window_start % 65536);
 }
 
-void ieee80211aa_set_sender(
-		struct ieee80211_sub_if_data *sdata,
-		struct rmc_entry *p, u32 seqnum)
+void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
+		      struct rmc_entry *p, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
 	p->sender.s_window_start = window_start;
@@ -405,7 +404,7 @@ void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 	}
 }
 
-void ieee80211aa_data_frame_tx(
+void ieee80211aa_process_tx_data(
 		struct ieee80211_sub_if_data *sdata,
 		struct rmc_entry *p, u32 seqnum)
 {
@@ -463,7 +462,7 @@ void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 	r->window_start = window_start;
 }
 
-void ieee80211aa_data_frame_rx(
+void ieee80211aa_process_rx_data(
 		struct ieee80211_sub_if_data *sdata,
 		struct rmc_entry *p, u32 seqnum)
 {

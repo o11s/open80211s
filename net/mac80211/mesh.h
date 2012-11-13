@@ -331,7 +331,7 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,
 			 struct ieee80211_mgmt *mgmt, size_t len,
 			 struct ieee80211_rx_status *rx_status);
 
-bool ieee80211aa_handle_data_tx(struct ieee80211_sub_if_data *sdata,
+bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
 				u8 *sa, u32 seqnum);
 /* Private interfaces */
 /* Mesh tables */
