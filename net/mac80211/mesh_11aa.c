@@ -39,7 +39,7 @@ void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 				   &mesh_hdr->seqnum);
 }
 
-static void set_mcast_list_on_mgmt(struct sk_buff *skb,
+static void ieee80211aa_set_mc_list(struct sk_buff *skb,
 				   struct ieee80211_mgmt *mgmt,
 				   struct netdev_hw_addr_list *mc_list)
 {
@@ -116,7 +116,7 @@ int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 		mgmt->u.action.category = WLAN_CATEGORY_ROBUST_AV_STREAMING;
 		mgmt->u.action.u.robust_av_resp.action = action;
 		mgmt->u.action.u.robust_av_resp.dialog_token = dialog_token;
-		set_mcast_list_on_mgmt(skb, mgmt, &local->mc_list);
+		ieee80211aa_set_mc_list(skb, mgmt, &local->mc_list);
 
 		ieee80211_tx_skb(sdata, skb);
 		return 0;
