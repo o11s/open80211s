@@ -212,8 +212,10 @@ bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		spin_lock_bh(&p->lock);
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
+			/* TODO Solve locking issues in a more elegant way */
 			ieee80211aa_process_tx_data(sdata, p, seqnum);
 			spin_unlock_bh(&p->lock);
+			ieee80211aa_check_expired_rtx(sdata, p, seqnum);
 			return true;
 		}
 		spin_unlock_bh(&p->lock);
