@@ -44,7 +44,8 @@ void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
 			       struct rmc_entry *p, u32 seqnum);
 void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da);
-
+void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
+				   struct rmc_entry *p, u32 seqnum);
 #else /* !CONFIG_MAC80211_MESH_11AA */
 static inline bool ieee80211aa_enabled(void)
 {
@@ -90,6 +91,12 @@ static inline void ieee80211aa_process_data_rx(struct ieee80211_sub_if_data *sda
 }
 static inline void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da)
+{
+	return;
+}
+static inline void ieee80211aa_check_expired_rtx(
+				struct ieee80211_sub_if_data *sdata,
+				struct rmc_entry *p, u32 seqnum)
 {
 	return;
 }
