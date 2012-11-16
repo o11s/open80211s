@@ -1510,7 +1510,8 @@ static int xen_pgd_alloc(struct mm_struct *mm)
 
 		if (user_pgd != NULL) {
 			user_pgd[pgd_index(VSYSCALL_START)] =
-				__pgd(__pa(level3_user_vsyscall) | _PAGE_TABLE);
+				__pgd(__pa_symbol(level3_user_vsyscall) |
+				      _PAGE_TABLE);
 			ret = 0;
 		}
 
@@ -1969,10 +1970,10 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 	 * pgd.
 	 */
 	if (xen_feature(XENFEAT_writable_page_tables)) {
-		native_write_cr3(__pa(init_level4_pgt));
+		native_write_cr3(__pa_symbol(init_level4_pgt));
 	} else {
 		xen_mc_batch();
-		__xen_write_cr3(true, __pa(init_level4_pgt));
+		__xen_write_cr3(true, __pa_symbol(init_level4_pgt));
 		xen_mc_issue(PARAVIRT_LAZY_CPU);
 	}
 	/* We can't that easily rip out L3 and L2, as the Xen pagetables are
@@ -1995,10 +1996,10 @@ static RESERVE_BRK_ARRAY(pmd_t, swapper_kernel_pmd, PTRS_PER_PMD);
 
 static void __init xen_write_cr3_init(unsigned long cr3)
 {
-	unsigned long pfn = PFN_DOWN(__pa(swapper_pg_dir));
+	unsigned long pfn = PFN_DOWN(__pa_symbol(swapper_pg_dir));
 
-	BUG_ON(read_cr3() != __pa(initial_page_table));
-	BUG_ON(cr3 != __pa(swapper_pg_dir));
+	BUG_ON(read_cr3() != __pa_symbol(initial_page_table));
+	BUG_ON(cr3 != __pa_symbol(swapper_pg_dir));
 
 	/*
 	 * We are switching to swapper_pg_dir for the first time (from
@@ -2022,7 +2023,7 @@ static void __init xen_write_cr3_init(unsigned long cr3)
 	pin_pagetable_pfn(MMUEXT_PIN_L3_TABLE, pfn);
 
 	pin_pagetable_pfn(MMUEXT_UNPIN_TABLE,
-			  PFN_DOWN(__pa(initial_page_table)));
+			  PFN_DOWN(__pa_symbol(initial_page_table)));
 	set_page_prot(initial_page_table, PAGE_KERNEL);
 	set_page_prot(initial_kernel_pmd, PAGE_KERNEL);
 
@@ -2047,7 +2048,7 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 
 	copy_page(initial_page_table, pgd);
 	initial_page_table[KERNEL_PGD_BOUNDARY] =
-		__pgd(__pa(initial_kernel_pmd) | _PAGE_PRESENT);
+		__pgd(__pa_symbol(initial_kernel_pmd) | _PAGE_PRESENT);
 
 	set_page_prot(initial_kernel_pmd, PAGE_KERNEL_RO);
 	set_page_prot(initial_page_table, PAGE_KERNEL_RO);
@@ -2056,8 +2057,8 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 	pin_pagetable_pfn(MMUEXT_UNPIN_TABLE, PFN_DOWN(__pa(pgd)));
 
 	pin_pagetable_pfn(MMUEXT_PIN_L3_TABLE,
-			  PFN_DOWN(__pa(initial_page_table)));
-	xen_write_cr3(__pa(initial_page_table));
+			  PFN_DOWN(__pa_symbol(initial_page_table)));
+	xen_write_cr3(__pa_symbol(initial_page_table));
 
 	memblock_reserve(__pa(xen_start_info->pt_base),
 			 xen_start_info->nr_pt_frames * PAGE_SIZE);
