@@ -693,9 +693,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 					  sdata->local->hw.conf.channel->band);
-	local->mcast_rexmit_skb_max_size =
-		(sdata->u.mesh.mshcfg.dot11MeshRmomMaxJump *
-		sdata->u.mesh.mshcfg.dot11MeshRmomMaxFlows);
+	local->mcast_rexmit_skb_max_size = 128;
 
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
@@ -849,7 +847,6 @@ void ieee80211_mesh_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 					    rx_status);
 		break;
 	case IEEE80211_STYPE_ACTION:
-	case IEEE80211_STYPE_ACTION_NO_ACK:
 		ieee80211_mesh_rx_mgmt_action(sdata, mgmt, skb->len, rx_status);
 		break;
 	}

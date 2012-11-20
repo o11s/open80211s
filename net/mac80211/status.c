@@ -21,10 +21,6 @@
 #include "led.h"
 #include "wme.h"
 
-#ifdef CONFIG_MAC80211_MESH_RMOM
-#include "mesh_rmom.h"
-#endif
-
 void ieee80211_tx_status_irqsafe(struct ieee80211_hw *hw,
 				 struct sk_buff *skb)
 {
