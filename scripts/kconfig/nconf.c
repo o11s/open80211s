@@ -7,6 +7,7 @@
  */
 #define _GNU_SOURCE
 #include <string.h>
+#include <stdlib.h>
 
 #include "lkc.h"
 #include "nconf.h"
@@ -696,13 +697,18 @@ static void search_conf(void)
 {
 	struct symbol **sym_arr;
 	struct gstr res;
+	struct gstr title;
 	char *dialog_input;
 	int dres;
+
+	title = str_new();
+	str_printf( &title, _("Enter %s (sub)string to search for "
+			      "(with or without \"%s\")"), CONFIG_, CONFIG_);
+
 again:
 	dres = dialog_inputbox(main_window,
 			_("Search Configuration Parameter"),
-			_("Enter " CONFIG_ " (sub)string to search for "
-				"(with or without \"" CONFIG_ "\")"),
+			str_get(&title),
 			"", &dialog_input_result, &dialog_input_result_len);
 	switch (dres) {
 	case 0:
@@ -712,6 +718,7 @@ again:
 				_("Search Configuration"), search_help);
 		goto again;
 	default:
+		str_free(&title);
 		return;
 	}
 
@@ -726,6 +733,7 @@ again:
 	show_scroll_win(main_window,
 			_("Search Results"), str_get(&res));
 	str_free(&res);
+	str_free(&title);
 }
 
 
