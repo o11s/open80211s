@@ -1917,7 +1917,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 	/* frame is in RMC, don't forward */
 	if (is_multicast_ether_addr(hdr->addr1) &&
-	    mesh_rmc_check(hdr->addr3, hdr, mesh_hdr, rx->sdata))
+	    mesh_rmc_check(rx->sdata, mesh_hdr, hdr->addr3))
 		return RX_DROP_MONITOR;
 
 	if (!mesh_hdr->ttl)

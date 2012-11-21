@@ -201,6 +201,8 @@ static int check_for_dups(u32 seqnum, struct rmc_entry *p)
 	return 0;
 }
 
+
+
 bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
 		       u8 *sa, u32 seqnum) {
 	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
@@ -245,14 +247,13 @@ bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
  * have received this frame lately. If the frame is not in the cache, it is
  * added to it.
  *
- * When RMoM is enabled, this function will also trigger NAKs for frames
- * that were missing.
+ * If 11aa for mesh is enabled, this function will also mark this frame
+ * as received on the corresponding scoreboard.
  *
  * Returns: 1 if the frame is a duplicate and should be dropped. 0 otherwise.
  */
-int mesh_rmc_check(u8 *sa, struct ieee80211_hdr *hdr,
-		   struct ieee80211s_hdr *mesh_hdr,
-		   struct ieee80211_sub_if_data *sdata)
+int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
+		   struct ieee80211s_hdr *mesh_hdr, u8 *sa)
 {
 	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
 	u32 seqnum = 0;

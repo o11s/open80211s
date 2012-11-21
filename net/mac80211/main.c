@@ -75,35 +75,19 @@ void ieee80211_configure_filter(struct ieee80211_local *local)
 	spin_lock_bh(&local->filter_lock);
 	changed_flags = local->filter_flags ^ new_flags;
 
-	/* add local->mc_list_hash value re-compute mc_list_hash and compare
-	 * with prev if different, send a Group Membership Response broadcast
-	 * mgmt frame to all our peers announcing the current multicast list to
-	 * all immediate peers.
-	 *
-	 * Cfr. 10.23.15.3.2
-	 *
-	 * Implementation note: For now, this request is not propagated beyond
-	 * 1-hop.
-	 */
-
-	/* Somewhere in the receive path, process GMResp and stores (per
-         * sta) the current list of subscribed addresses */
-
-	/* local keeps a list of known mcast addresses, with a list of sta's
-         * hanging from each address */
-
 	mc = drv_prepare_multicast(local, &local->mc_list);
 
 	spin_unlock_bh(&local->filter_lock);
 
-	/* TODO : I'm reusing mc as hash */
-	if (mc != local->mc_list_hash) {
+	/* If 11aa extension is enabled and multicast hash has changed */
+	if (ieee80211aa_enabled() && mc != local->mc_list_hash) {
 		/* Update mc_list_hash */
 		local->mc_list_hash = mc;
 
 		/* Send unsolicited gcm response */
 		rcu_read_lock();
 		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+			/* Only for mesh interfaces */
 			if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
 				if (!ieee80211_sdata_running(sdata))
 					continue;
@@ -704,7 +688,8 @@ struct ieee80211_hw *ieee80211_alloc_hw(size_t priv_data_len,
 	skb_queue_head_init(&local->skb_queue);
 	skb_queue_head_init(&local->skb_queue_unreliable);
 	skb_queue_head_init(&local->mcast_rexmit_skb_queue);
-	// Default size to zero, value overrided on mesh setup
+	/* rexmit queue max_size set to zero,
+	 * value overwritten on mesh setup */
 	local->mcast_rexmit_skb_max_size = 0;
 
 	/* init dummy netdev for use w/ NAPI */
