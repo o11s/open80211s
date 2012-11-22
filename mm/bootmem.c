@@ -32,6 +32,7 @@ EXPORT_SYMBOL(contig_page_data);
 
 unsigned long max_low_pfn;
 unsigned long min_low_pfn;
+EXPORT_SYMBOL(min_low_pfn);
 unsigned long max_pfn;
 
 bootmem_data_t bootmem_node_data[MAX_NUMNODES] __initdata;
