@@ -175,66 +175,24 @@ struct mesh_table {
 /* RMC_BUCKETS must be a power of 2, maximum 256 */
 #define RMC_BUCKETS		256
 #define RMC_QUEUE_MAX_LEN	4
-/* RMC_MAX_SEQNUMS must be a power of 2, maximum 256 */
-#define RMC_MAX_SEQNUMS		((u8) 8)
-#define RMC_TIMEOUT		(30 * HZ)
-
-/* ieee80211aa required fields */
-
-#define GCR_WIN_SIZE 64 /* Fixed to 64 positions by protocol */
-#define GCR_WIN_SIZE_RCV GCR_WIN_SIZE*2 /* Fixed to 64*N positions by protocol */
-#define GCR_WIN_THRES 24 /* Arbitrary value for the BA threshold */
-
-struct ieee80211aa_sender {
-	/* Info for tx */
-	u32 s_window_start; /* current seq_num when the window start*/
-	/* Info for re-tx's */
-	u32 r_window_start; /* retx seq_num when the window start */
-	u32 rtx_sn_thr; /* Maximum seq_num count before the retransmissions are sent */
-	u8 exp_rcv_ba; /* Number of BA expected */
-	u8 rcv_ba_count; /* Number of BA received */
-	u32 window_start; // current seq_num when the window has started
-	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE)];
-};
-
-struct ieee80211aa_receiver {
-	/* info for rx */
-	u32 window_start; // current seq_num when the window has started
-	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE_RCV)];
-};
-
+#define RMC_TIMEOUT		(3 * HZ)
 
 /**
  * struct rmc_entry - entry in the Recent Multicast Cache
  *
- * @seqnum: circular buffer of recent mesh sequence numbers received
- * from this source
- * @entry_lock: protect the members of rmc_entry from concurrent accesses
- * @num_seqnums: number of sequence numbers currently stored in the above
- * reference circular buffer
- * @seqnum_idx: points to the next available position into the above reference
- * circular buffer.
- * @exp_seqnum: expected sequence number from this source
+ * @seqnum: mesh sequence number of the frame
  * @exp_time: expiration time of the entry, in jiffies
- * @sa: source address of this transmitter
+ * @sa: source address of the frame
  *
- * The Recent Multicast Cache keeps track of the latest multicast
- * sources and records the sequence numbers of the frames that have
- * been received by this interface.  Used to discard duplicate
- * frames.
- * When RMoM is enabled, this cache is also used to detect losses in
- * multicast flows by detecting jumps in sequence numbers.
+ * The Recent Multicast Cache keeps track of the latest multicast frames that
+ * have been received by a mesh interface and discards received multicast frames
+ * that are found in the cache.
  */
 struct rmc_entry {
 	struct list_head list;
-	spinlock_t lock;
-	u32 seqnum[10];
-	u8 num_seqnums;
-	u8 seqnum_idx;
+	u32 seqnum;
 	unsigned long exp_time;
 	u8 sa[ETH_ALEN];
-	struct ieee80211aa_sender sender;
-	struct ieee80211aa_receiver receiver;
 };
 
 struct mesh_rmc {
@@ -260,7 +218,7 @@ struct mesh_rmc {
 int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 				  const u8 *da, const u8 *sa);
 int ieee80211_new_mesh_header(struct ieee80211s_hdr *meshhdr,
-		struct ieee80211_sub_if_data *sdata, char *da, char *addr4or5,
+		struct ieee80211_sub_if_data *sdata, char *sa, char *addr4or5,
 		char *addr6);
 int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
 		   struct ieee80211s_hdr *mesh_hdr, u8 *sa);
@@ -331,8 +289,6 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,
 			 struct ieee80211_mgmt *mgmt, size_t len,
 			 struct ieee80211_rx_status *rx_status);
 
-bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
-				u8 *sa, u32 seqnum);
 /* Private interfaces */
 /* Mesh tables */
 void mesh_mpath_table_grow(void);

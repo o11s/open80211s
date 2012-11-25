@@ -1,4 +1,3 @@
-
 /*
  * Copyright (c) 2008, 2009 open80211s Ltd.
  * Authors:    Luis Carlos Cobo <luisca@cozybit.com>
@@ -22,11 +21,16 @@
 int mesh_allocated;
 static struct kmem_cache *rm_cache;
 
+#ifdef CONFIG_MAC80211_MESH
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
 			WLAN_MESH_ACTION_HWMP_PATH_SELECTION);
 }
+#else
+bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
+{ return false; }
+#endif
 
 void ieee80211s_init(void)
 {
@@ -182,76 +186,20 @@ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
 	sdata->u.mesh.rmc = NULL;
 }
 
-static int check_for_dups(u32 seqnum, struct rmc_entry *p)
-{
-	int i;
-	u8 idx, num, ridx;
-
-	lockdep_assert_held(&p->lock);
-
-	idx = p->seqnum_idx;
-	num = p->num_seqnums;
-
-	for (i = 0; i < num; i++) {
-		/* checking in reverse order than addition */
-		ridx = (idx - i - 1) & (RMC_MAX_SEQNUMS - 1);
-		if (p->seqnum[ridx] == seqnum)
-			return 1;
-	}
-	return 0;
-}
-
-
-
-bool mesh_rmc_check_tx(struct ieee80211_sub_if_data *sdata,
-		       u8 *sa, u32 seqnum) {
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
-	u8 idx;
-	struct rmc_entry *p, *n;
-
-	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
-
-	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
-		spin_lock_bh(&p->lock);
-		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			/* TODO Solve locking issues in a more elegant way */
-			ieee80211aa_process_tx_data(sdata, p, seqnum);
-			spin_unlock_bh(&p->lock);
-			ieee80211aa_check_expired_rtx(sdata, p, seqnum);
-			return true;
-		}
-		spin_unlock_bh(&p->lock);
-	}
-	/* If it doesn't exist just create the entry */
-	p = kmem_cache_alloc(rm_cache, GFP_ATOMIC);
-	if (!p)
-		return false;
-
-	p->seqnum_idx = p->num_seqnums = 0;
-	p->exp_time = jiffies + RMC_TIMEOUT;
-	memcpy(p->sa, sa, ETH_ALEN);
-	ieee80211aa_init_struct(sdata, p, seqnum);
-	spin_lock_init(&p->lock);
-	list_add(&p->list, &rmc->bucket[idx].list);
-	return true;
-
-}
-
 /**
  * mesh_rmc_check - Check frame in recent multicast cache and add if absent.
  *
  * @sa:		source address
  * @mesh_hdr:	mesh_header
  *
- * Checks the source address and the mesh sequence number to determine if we
- * have received this frame lately. If the frame is not in the cache, it is
- * added to it.
+ * Returns: 0 if the frame is not in the cache, nonzero otherwise.
  *
- * If 11aa for mesh is enabled, this function will also mark this frame
- * as received on the corresponding scoreboard.
- *
- * Returns: 1 if the frame is a duplicate and should be dropped. 0 otherwise.
+ * Checks using the source address and the mesh sequence number if we have
+ * received this frame lately. If the frame is not in the cache, it is added to
+ * it.
  */
+//int mesh_rmc_check(u8 *sa, struct ieee80211s_hdr *mesh_hdr,
+//		   struct ieee80211_sub_if_data *sdata)
 int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
 		   struct ieee80211s_hdr *mesh_hdr, u8 *sa)
 {
@@ -261,52 +209,28 @@ int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
 	u8 idx;
 	struct rmc_entry *p, *n;
 
-	seqnum = get_unaligned_le32(&mesh_hdr->seqnum);
-	idx = (sa[3] ^ sa[4] ^ sa[5]) & rmc->idx_mask;
-
+	/* Don't care about endianness since only match matters */
+	memcpy(&seqnum, &mesh_hdr->seqnum, sizeof(mesh_hdr->seqnum));
+	idx = le32_to_cpu(mesh_hdr->seqnum) & rmc->idx_mask;
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
 		++entries;
-		spin_lock(&p->lock);
 		if (time_after(jiffies, p->exp_time) ||
 				(entries == RMC_QUEUE_MAX_LEN)) {
 			list_del(&p->list);
-			spin_unlock(&p->lock);
 			kmem_cache_free(rm_cache, p);
 			--entries;
-			continue;
-		} else if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			if (check_for_dups(seqnum, p)) {
-				spin_unlock(&p->lock);
-				return 1;  /* dup */
-			}
-
-			/* record this sequence number */
-			p->seqnum[p->seqnum_idx++] = seqnum;
-			p->seqnum_idx &= (RMC_MAX_SEQNUMS - 1);
-			p->num_seqnums = min(++p->num_seqnums,
-					     RMC_MAX_SEQNUMS);
-			p->exp_time = jiffies + RMC_TIMEOUT;
-			/* Only if ieee80211aa is enabled */
-			if (ieee80211aa_enabled())
-				ieee80211aa_process_rx_data(sdata, p, seqnum);
-			spin_unlock(&p->lock);
-			return 0;
-		}
-		spin_unlock(&p->lock);
+		} else if ((seqnum == p->seqnum) &&
+			   (ether_addr_equal(sa, p->sa)))
+			return -1;
 	}
 
 	p = kmem_cache_alloc(rm_cache, GFP_ATOMIC);
 	if (!p)
 		return 0;
 
-	p->seqnum[0] = seqnum;
-	p->seqnum_idx = p->num_seqnums = 1;
+	p->seqnum = seqnum;
 	p->exp_time = jiffies + RMC_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
-	/* Only if ieee80211aa is enabled */
-	if (ieee80211aa_enabled())
-		ieee80211aa_init_struct(sdata, p, seqnum);
-	spin_lock_init(&p->lock);
 	list_add(&p->list, &rmc->bucket[idx].list);
 	return 0;
 }
@@ -675,8 +599,6 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
 	atomic_inc(&local->iff_allmultis);
-	if (ieee80211aa_enabled())
-		local->fif_control++;
 	ieee80211_configure_filter(local);
 
 	ifmsh->mesh_cc_id = 0;	/* Disabled */
@@ -694,8 +616,6 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 					  sdata->local->hw.conf.channel->band);
-	local->mcast_rexmit_skb_max_size = 128;
-
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
 						BSS_CHANGED_HT |
@@ -725,8 +645,6 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 
 	local->fif_other_bss--;
 	atomic_dec(&local->iff_allmultis);
-	if (ieee80211aa_enabled())
-		local->fif_control--;
 	ieee80211_configure_filter(local);
 }
 
@@ -805,7 +723,6 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 			ieee80211aa_rx_gcm_frame(sdata, mgmt, len, rx_status);
 			break;
 		}
-
 		break;
 	}
 }
