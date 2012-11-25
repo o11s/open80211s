@@ -336,6 +336,13 @@ W:	http://wireless.kernel.org/
 S:	Orphan
 F:	drivers/net/wireless/adm8211.*
 
+ADP1653 FLASH CONTROLLER DRIVER
+M:	Sakari Ailus <sakari.ailus@iki.fi>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	drivers/media/i2c/adp1653.c
+F:	include/media/adp1653.h
+
 ADP5520 BACKLIGHT DRIVER WITH IO EXPANDER (ADP5520/ADP5501)
 M:	Michael Hennerich <michael.hennerich@analog.com>
 L:	device-drivers-devel@blackfin.uclinux.org
@@ -3751,6 +3758,12 @@ F:	net/ieee802154/
 F:	net/mac802154/
 F:	drivers/ieee802154/
 
+IGUANAWORKS USB IR TRANSCEIVER
+M:	Sean Young <sean@mess.org>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	drivers/media/rc/iguanair.c
+
 IIO SUBSYSTEM AND DRIVERS
 M:	Jonathan Cameron <jic23@cam.ac.uk>
 L:	linux-iio@vger.kernel.org
@@ -4909,6 +4922,13 @@ S:	Maintained
 F:	Documentation/serial/moxa-smartio
 F:	drivers/tty/mxser.*
 
+MR800 AVERMEDIA USB FM RADIO DRIVER
+M:	Alexey Klimov <klimov.linux@gmail.com>
+L:	linux-media@vger.kernel.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/radio/radio-mr800.c
+
 MSI LAPTOP SUPPORT
 M:	"Lee, Chun-Yi" <jlee@novell.com>
 L:	platform-driver-x86@vger.kernel.org
@@ -5897,6 +5917,13 @@ S:	Maintained
 F:	Documentation/video4linux/README.pvrusb2
 F:	drivers/media/usb/pvrusb2/
 
+PWC WEBCAM DRIVER
+M:	Hans de Goede <hdegoede@redhat.com>
+L:	linux-media@vger.kernel.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/usb/pwc/*
+
 PWM SUBSYSTEM
 M:	Thierry Reding <thierry.reding@avionic-design.de>
 L:	linux-kernel@vger.kernel.org
@@ -6038,6 +6065,21 @@ L:	linux-fbdev@vger.kernel.org
 S:	Maintained
 F:	drivers/video/aty/radeon*
 F:	include/linux/radeonfb.h
+
+RADIOSHARK RADIO DRIVER
+M:	Hans de Goede <hdegoede@redhat.com>
+L:	linux-media@vger.kernel.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/radio/radio-shark.c
+
+RADIOSHARK2 RADIO DRIVER
+M:	Hans de Goede <hdegoede@redhat.com>
+L:	linux-media@vger.kernel.org
+T:	git git://linuxtv.org/media_tree.git
+S:	Maintained
+F:	drivers/media/radio/radio-shark2.c
+F:	drivers/media/radio/radio-tea5777.c
 
 RAGE128 FRAMEBUFFER DISPLAY DRIVER
 M:	Paul Mackerras <paulus@samba.org>
@@ -6325,6 +6367,14 @@ F:	drivers/regulator/s2m*.c
 F:	drivers/regulator/s5m*.c
 F:	drivers/rtc/rtc-sec.c
 F:	include/linux/mfd/samsung/
+
+SAMSUNG S3C24XX/S3C64XX SOC SERIES CAMIF DRIVER
+M:	Sylwester Nawrocki <sylvester.nawrocki@gmail.com>
+L:	linux-media@vger.kernel.org
+L:	linux-samsung-soc@vger.kernel.org (moderated for non-subscribers)
+S:	Maintained
+F:	drivers/media/platform/s3c-camif/
+F:	include/media/s3c_camif.h
 
 SERIAL DRIVERS
 M:	Alan Cox <alan@linux.intel.com>
@@ -6619,6 +6669,18 @@ S:	Supported
 F:	arch/arm/mach-davinci
 F:	drivers/i2c/busses/i2c-davinci.c
 
+TI DAVINCI SERIES MEDIA DRIVER
+M:	Manjunath Hadli <manjunath.hadli@ti.com>
+M:	Prabhakar Lad <prabhakar.lad@ti.com>
+L:	linux-media@vger.kernel.org
+L:	davinci-linux-open-source@linux.davincidsp.com (moderated for non-subscribers)
+W:	http://linuxtv.org/
+Q:	http://patchwork.linuxtv.org/project/linux-media/list/
+T:	git git://linuxtv.org/mhadli/v4l-dvb-davinci_devices.git
+S:	Supported
+F:	drivers/media/platform/davinci/
+F:	include/media/davinci/
+
 SIS 190 ETHERNET DRIVER
 M:	Francois Romieu <romieu@fr.zoreil.com>
 L:	netdev@vger.kernel.org
@@ -6684,6 +6746,15 @@ SMC91x ETHERNET DRIVER
 M:	Nicolas Pitre <nico@fluxnic.net>
 S:	Odd Fixes
 F:	drivers/net/ethernet/smsc/smc91x.*
+
+SMIA AND SMIA++ IMAGE SENSOR DRIVER
+M:	Sakari Ailus <sakari.ailus@iki.fi>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	drivers/media/i2c/smiapp
+F:	include/media/smiapp.h
+F:	drivers/media/i2c/smiapp-pll.c
+F:	drivers/media/i2c/smiapp-pll.h
 
 SMM665 HARDWARE MONITOR DRIVER
 M:	Guenter Roeck <linux@roeck-us.net>
@@ -7255,6 +7326,12 @@ L:	netdev@vger.kernel.org
 S:	Supported
 F:	drivers/net/team/
 F:	include/linux/if_team.h
+
+TECHNOTREND USB IR RECEIVER
+M:	Sean Young <sean@mess.org>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	drivers/media/rc/ttusbir.c
 
 TEGRA SUPPORT
 M:	Stephen Warren <swarren@wwwdotorg.org>
