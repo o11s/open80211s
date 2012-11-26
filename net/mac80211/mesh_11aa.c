@@ -237,7 +237,6 @@ void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
 		    GCR_WIN_SIZE);
 
 	p->receiver.window_start = window_start;
-	spin_lock_init(&p->receiver.lock);
 	/* Fill with 0s */
 	bitmap_zero(p->receiver.scoreboard,
 		    GCR_WIN_SIZE_RCV);
@@ -333,10 +332,12 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 	return count;
 }
 
-void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
+static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 			  struct ieee80211aa_sender *s, u8 *sa,
 			  u16 window_start, u32 sn_thr)
 {
+	lockdep_assert_held(&s->lock);
+
 	/* Reset BA counter */
 	s->rcv_ba_count = 0;
 	/* Get the expected BAs */
@@ -380,7 +381,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	unsigned long flags;
 	u16 seqnum;
 
-	/* NACK is requesting one of our frames */
+	aa_dbg("%s:%d (rexmit lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
 	spin_lock_irqsave(&local->mcast_rexmit_skb_queue.lock, flags);
 	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
@@ -393,14 +394,13 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		 */
 		seqnum = (get_unaligned_le32(&mesh_hdr->seqnum) % 65536);
 
-
 		/* Only if seqnum and sa matches */
 		if (seqnum != req_sn ||
 		    memcmp(sa, hdr->addr3, ETH_ALEN))
 			continue;
 
-		aa_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
-			 req_sn, get_unaligned_le32(&mesh_hdr->seqnum), seqnum);
+		/*aa_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
+			 req_sn, get_unaligned_le32(&mesh_hdr->seqnum), seqnum);*/
 		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
 		spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
 		ieee80211_tx_skb(sdata, skb);
@@ -437,6 +437,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 						    GCR_WIN_SIZE, result+1);
 		}
 		if (count > 0) {
+			aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
 			spin_lock_bh(&s->lock);
 			/* Only if no new window has been opened
 			   while retransmitting frames */
@@ -449,6 +450,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	else if (s->rcv_ba_count == 0 &&
 		   bitmap_weight(s->scoreboard, GCR_WIN_SIZE) == GCR_WIN_SIZE) {
 		aa_dbg("BA was lost... we request it again!");
+		aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
 		spin_lock_bh(&s->lock);
 		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
 		spin_unlock_bh(&s->lock);
@@ -490,6 +492,7 @@ void ieee80211aa_process_tx_data(
 {
 	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
 		u16 window_start = calculate_window_start(seqnum);
+		aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
 		spin_lock_bh(&p->sender.lock);
 		ieee80211aa_send_bar(sdata, &p->sender, p->sa,
 				     p->sender.s_window_start, window_start);
@@ -529,9 +532,8 @@ void ieee80211aa_process_rx_data(
 		struct aa_entry *p, u32 seqnum)
 {
 
-	unsigned long flags;
+	//unsigned long flags;
 
-	spin_lock_bh(&p->receiver.lock);
 	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
 		/* Current scoreboard doesn't have access to this bit
  		 * Note:
@@ -543,7 +545,7 @@ void ieee80211aa_process_rx_data(
 			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
 	}
 	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
-	spin_unlock_bh(&p->receiver.lock);
+	//spin_unlock_bh(&p->receiver.lock);
 	//aa_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
 }
 
@@ -556,9 +558,7 @@ bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
 		aa_dbg("BAR received with new window_start %d previous was:%d",
 			 window_start, p->receiver.window_start);
-		spin_lock(&p->receiver.lock);
-	//	ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
-		spin_unlock(&p->receiver.lock);
+		ieee80211aa_flush_scoreboard(sdata, &p->receiver, window_start);
 		return true;
 	} else if (window_start == p->receiver.window_start) {
 		aa_dbg("BAR received in current window_start %d",
@@ -576,18 +576,18 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
-	struct aa_entry *p, *n;
+	struct aa_entry *p;
 	bool ret = false;
 	u16 window_start = le16_to_cpu(bar->start_seq_num);
 
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
-	list_for_each_entry_safe(p, n, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
 			ret = ieee80211aa_process_bar(sdata, p, bar->ta,
 						    bar->gcr_ga, window_start);
-			//if (ret)
-			//	ieee80211aa_send_ba(sdata, &p->receiver, bar->ta, bar->gcr_ga);
+			if (ret)
+				ieee80211aa_send_ba(sdata, &p->receiver, bar->ta, bar->gcr_ga);
 			return true;
 		}
 	}
@@ -612,15 +612,17 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
  *
  */
 bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
-				      struct ieee80211aa_sender *s,
+				      struct ieee80211aa_sender *sender,
 				      u8* ga, u64 bitmap)
 {
-	// XXX we update values here
-	bitmap_and(s->scoreboard, s->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
-	s->rcv_ba_count++;
+	aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
+	spin_lock_bh(&sender->lock);
+	bitmap_and(sender->scoreboard, sender->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
+	sender->rcv_ba_count++;
+	spin_unlock_bh(&sender->lock);
 
 	/* Only retranmit if we got all expected ba's */
-	if (s->rcv_ba_count >= s->exp_rcv_ba)
+	if (sender->rcv_ba_count >= sender->exp_rcv_ba)
 		return true;
 	return false;
 }
@@ -648,26 +650,20 @@ bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba) {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
-	struct aa_entry *p, *n;
+	struct aa_entry *p;
 	u16 window_start = le16_to_cpu(ba->start_seq_num);
 	bool ret = false;
-/*
-	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & rmc->idx_mask;
+	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
-	list_for_each_entry_safe(p, n, &rmc->bucket[idx].list, list) {
-		spin_lock_bh(&p->lock);
+	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
 		    	ret = ieee80211aa_process_ba(sdata, p, ba, window_start);
-			spin_unlock_bh(&p->lock);
-*/
 			/* After process the bar, execute retx if necessary  */
-/*			if (ret)
-				ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga, &p->lock);
+			if (ret)
+				ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
 			return true;
 		}
-		spin_unlock_bh(&p->lock);
 	}
-*/
 	return false;
 }
 
@@ -675,11 +671,11 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 		       u8 *sa, u32 seqnum) {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
-	struct aa_entry *p, *n;
+	struct aa_entry *p;
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
-	list_for_each_entry_safe(p, n, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
 			ieee80211aa_process_tx_data(sdata, p, seqnum);
 			ieee80211aa_check_expired_rtx(sdata, p, seqnum);
@@ -702,11 +698,11 @@ bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 		       u8 *sa, u32 seqnum) {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
-	struct aa_entry *p, *n;
+	struct aa_entry *p;
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
-	list_for_each_entry_safe(p, n, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
 			ieee80211aa_process_rx_data(sdata, p, seqnum);
 			return true;

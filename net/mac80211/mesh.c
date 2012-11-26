@@ -599,6 +599,10 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
 	atomic_inc(&local->iff_allmultis);
+	if (ieee80211aa_enabled()) {
+		local->fif_control++;
+		local->mcast_rexmit_skb_max_size = 128;
+	}
 	ieee80211_configure_filter(local);
 
 	ifmsh->mesh_cc_id = 0;	/* Disabled */
@@ -616,6 +620,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.basic_rates =
 		ieee80211_mandatory_rates(sdata->local,
 					  sdata->local->hw.conf.channel->band);
+
 	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON |
 						BSS_CHANGED_BEACON_ENABLED |
 						BSS_CHANGED_HT |
@@ -645,6 +650,10 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 
 	local->fif_other_bss--;
 	atomic_dec(&local->iff_allmultis);
+	if (ieee80211aa_enabled()) {
+		local->fif_control--;
+		local->mcast_rexmit_skb_max_size = 0;
+	}
 	ieee80211_configure_filter(local);
 }
 
