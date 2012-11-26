@@ -25,6 +25,7 @@
 #include "driver-ops.h"
 #include "led.h"
 #include "mesh.h"
+#include "mesh_11aa.h"
 #include "wep.h"
 #include "wpa.h"
 #include "tkip.h"
@@ -1916,9 +1917,13 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		return RX_CONTINUE;
 
 	/* frame is in RMC, don't forward */
-	if (is_multicast_ether_addr(hdr->addr1) &&
-	    mesh_rmc_check(rx->sdata, mesh_hdr, hdr->addr3))
-		return RX_DROP_MONITOR;
+	if (is_multicast_ether_addr(hdr->addr1)) {
+		if (mesh_rmc_check(rx->sdata, mesh_hdr, hdr->addr3))
+			return RX_DROP_MONITOR;
+		if (ieee80211aa_enabled())
+			ieee80211aa_check_rx(sdata, hdr->addr3,
+				le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+	}
 
 	if (!mesh_hdr->ttl)
 		return RX_DROP_MONITOR;

@@ -736,7 +736,6 @@ void ieee80211_mesh_rx_queued_ctl(struct ieee80211_sub_if_data *sdata,
 	/* TODO we only need fc and bar control to identify the frame */
 	rx_status = IEEE80211_SKB_RXCB(skb);
 	bar = (struct ieee80211_bar_gcr *)skb->data;
-
 	/* Only handle ieee80211aa bar */
 	if (ieee80211_is_back_req(bar->frame_control) &&
 	    bar->control & IEEE80211_BAR_CTRL_GCR)
@@ -825,6 +824,13 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 	/* Allocate all mesh structures when creating the first mesh interface. */
 	if (!mesh_allocated)
 		ieee80211s_init();
+	if (ieee80211aa_enabled()) {
+		/* Initialize 11aa cache struct */
+		ieee80211aa_mcc_init(sdata);
+		/* Initialize 11aa mem cache */
+		ieee80211aa_init();
+	}
+
 	setup_timer(&ifmsh->mesh_path_timer,
 		    ieee80211_mesh_path_timer,
 		    (unsigned long) sdata);
