@@ -336,15 +336,16 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 			  struct ieee80211aa_sender *s, u8 *sa,
 			  u16 window_start, u32 sn_thr)
 {
-	lockdep_assert_held(&s->lock);
+	int exp_bas;
 
+	/* XXX: return if exp_bas == 0? */
+	exp_bas = ieee80211aa_send_bar_to_known_sta(sdata, sa, window_start);
+
+	spin_lock_bh(&s->lock);
 	/* Reset BA counter */
 	s->rcv_ba_count = 0;
 	/* Get the expected BAs */
-	s->exp_rcv_ba = ieee80211aa_send_bar_to_known_sta(
-				sdata,
-				sa,
-				s->r_window_start);
+	s->exp_rcv_ba = exp_bas;
 
 	if (s->exp_rcv_ba > 0) {
 		/* Update re-tx threshold */
@@ -355,8 +356,8 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 	}
 	/* Fill scoreboard with 1s */
 	bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
-	/* Update receiver window (scoreboard) */
 	s->r_window_start = window_start;
+	spin_unlock_bh(&s->lock);
 }
 
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
@@ -437,23 +438,19 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 						    GCR_WIN_SIZE, result+1);
 		}
 		if (count > 0) {
-			aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
-			spin_lock_bh(&s->lock);
+			aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 			/* Only if no new window has been opened
 			   while retransmitting frames */
 			if (tmp.r_window_start == s->r_window_start)
 				ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
-			spin_unlock_bh(&s->lock);
 			return;
 		}
 	} /* No ba received and scoreboard is set to default value */
 	else if (s->rcv_ba_count == 0 &&
 		   bitmap_weight(s->scoreboard, GCR_WIN_SIZE) == GCR_WIN_SIZE) {
 		aa_dbg("BA was lost... we request it again!");
-		aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
-		spin_lock_bh(&s->lock);
+		aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
-		spin_unlock_bh(&s->lock);
 		return;
 	} /* All frames were received correctly disable expiration threshold */
 	else if (s->rcv_ba_count >= s->exp_rcv_ba) {
@@ -492,11 +489,11 @@ void ieee80211aa_process_tx_data(
 {
 	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
 		u16 window_start = calculate_window_start(seqnum);
-		aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
-		spin_lock_bh(&p->sender.lock);
+		aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 		ieee80211aa_send_bar(sdata, &p->sender, p->sa,
 				     p->sender.s_window_start, window_start);
 		/* Update sender window_start */
+		spin_lock_bh(&p->sender.lock);
 		p->sender.s_window_start = window_start;
 		spin_unlock_bh(&p->sender.lock);
 	}
