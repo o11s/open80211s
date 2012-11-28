@@ -46,7 +46,6 @@ struct ieee80211aa_sender {
 };
 
 struct ieee80211aa_receiver {
-	spinlock_t lock;
 	/* info for rx */
 	u32 window_start; // current seq_num when the window has started
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE_RCV)];
@@ -54,7 +53,6 @@ struct ieee80211aa_receiver {
 
 struct aa_entry {
 	struct list_head list;
-	//unsigned long exp_time;
 	u8 sa[ETH_ALEN];
 	struct ieee80211aa_sender sender;
 	struct ieee80211aa_receiver receiver;

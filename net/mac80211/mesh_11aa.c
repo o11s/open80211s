@@ -382,8 +382,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	unsigned long flags;
 	u16 seqnum;
 
-	aa_dbg("%s:%d (rexmit lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
-	spin_lock_irqsave(&local->mcast_rexmit_skb_queue.lock, flags);
+	aa_dbg("%s:%d (rexmit lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
@@ -400,14 +399,10 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		    memcmp(sa, hdr->addr3, ETH_ALEN))
 			continue;
 
-		/*aa_dbg("*** on rtx: req_sn:%d seqnum:%d seqnun_mod:%d",
-			 req_sn, get_unaligned_le32(&mesh_hdr->seqnum), seqnum);*/
-		__skb_unlink(skb, &local->mcast_rexmit_skb_queue);
-		spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
-		ieee80211_tx_skb(sdata, skb);
+		skb_unlink(skb, &local->mcast_rexmit_skb_queue);
+		ieee80211_add_pending_skb(local, skb);
 		return true;
 	}
-	spin_unlock_irqrestore(&local->mcast_rexmit_skb_queue.lock, flags);
 	return false;
 }
 
@@ -529,8 +524,6 @@ void ieee80211aa_process_rx_data(
 		struct aa_entry *p, u32 seqnum)
 {
 
-	//unsigned long flags;
-
 	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
 		/* Current scoreboard doesn't have access to this bit
  		 * Note:
@@ -542,12 +535,12 @@ void ieee80211aa_process_rx_data(
 			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
 	}
 	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
-	//spin_unlock_bh(&p->receiver.lock);
-	//aa_dbg("sn: %d set bit %d sb:[%lx][%lx]", seqnum, seqnum - p->receiver.window_start, p->receiver.scoreboard[0], p->receiver.scoreboard[1]);
 }
 
-/* Handle BAR path */
-
+/* Handle BAR path - process BAR frame
+ *
+ * return true if BA needs to be sent.
+ */
 bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 				 struct aa_entry *p, u8 *ta,
 				 u8 *sa, u16 window_start)
@@ -612,7 +605,7 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 				      struct ieee80211aa_sender *sender,
 				      u8* ga, u64 bitmap)
 {
-	aa_dbg("%s:%d (sender lock): in_irq:%ld in_serving_softirq:%ld", __FILE__, __LINE__, in_irq(), in_serving_softirq());
+	aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 	spin_lock_bh(&sender->lock);
 	bitmap_and(sender->scoreboard, sender->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
 	sender->rcv_ba_count++;
@@ -624,6 +617,7 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 	return false;
 }
 
+/* returns true if all BAs were received */
 bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 			    struct aa_entry *p,
 			    struct ieee80211_ba_gcr *ba,
@@ -643,6 +637,7 @@ bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 					ba->gcr_ga, ba->bitmap);
 }
 
+/* return true if all BAs are now received */
 bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba) {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
@@ -684,7 +679,6 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 	if (!p)
 		return false;
 
-	//p->exp_time = jiffies + AA_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
 	list_add(&p->list, &aamc->bucket[idx].list);
