@@ -513,8 +513,8 @@ void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 	/* Should never happen... No shifting for negative values */
 	if (shift <= 0)
 		return;
-	/* Right shift N positions */
-	bitmap_shift_right(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
+	/* left shift N positions */
+	bitmap_shift_left(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
 	/* Store new window */
 	r->window_start = window_start;
 }
