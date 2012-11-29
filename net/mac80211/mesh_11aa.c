@@ -38,8 +38,10 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 	if (!sdata->u.mesh.aamc)
 		return -ENOMEM;
 	sdata->u.mesh.aamc->idx_mask = AA_BUCKETS - 1;
-	for (i = 0; i < AA_BUCKETS; i++)
+	for (i = 0; i < AA_BUCKETS; i++) {
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc->bucket[i].list);
+		spin_lock_init(&sdata->u.mesh.aamc->bucket_lock[i]);
+	}
 	aa_dbg("aamc struct initialized");
 	return 0;
 
@@ -667,8 +669,10 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
+	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
+			spin_unlock_bh(&aamc->bucket_lock[idx]);
 			ieee80211aa_process_tx_data(sdata, p, seqnum);
 			ieee80211aa_check_expired_rtx(sdata, p, seqnum);
 			return true;
@@ -682,6 +686,7 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
 	list_add(&p->list, &aamc->bucket[idx].list);
+	spin_unlock_bh(&aamc->bucket_lock[idx]);
 	return true;
 }
 
@@ -693,8 +698,10 @@ bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
+	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
+			spin_unlock_bh(&aamc->bucket_lock[idx]);
 			ieee80211aa_process_rx_data(sdata, p, seqnum);
 			return true;
 		}
@@ -708,5 +715,6 @@ bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
 	list_add(&p->list, &aamc->bucket[idx].list);
+	spin_unlock_bh(&aamc->bucket_lock[idx]);
 	return true;
 }

@@ -60,6 +60,7 @@ struct aa_entry {
 
 struct aa_mc {
 	struct aa_entry bucket[AA_BUCKETS];
+	spinlock_t bucket_lock[AA_BUCKETS];
 	u32 idx_mask;
 };
 
