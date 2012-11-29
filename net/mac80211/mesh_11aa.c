@@ -387,7 +387,6 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	struct sk_buff *skb, *tmp;
 	struct ieee80211_hdr *hdr;
 	struct ieee80211s_hdr *mesh_hdr;
-	unsigned long flags;
 	u16 seqnum;
 
 	aa_dbg("%s:%d (rexmit lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
@@ -575,21 +574,23 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
 	struct aa_entry *p;
-	bool ret = false;
+	bool tx = false;
 	u16 window_start = le16_to_cpu(bar->start_seq_num);
 
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
+	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
-			ret = ieee80211aa_process_bar(sdata, p, bar->ta,
+			tx = ieee80211aa_process_bar(sdata, p, bar->ta,
 						    bar->gcr_ga, window_start);
-			if (ret)
+			if (tx)
 				ieee80211aa_send_ba(sdata, &p->receiver, bar->ta, bar->gcr_ga);
-			return true;
+			break;
 		}
 	}
-	return false;
+	spin_unlock_bh(&aamc->bucket_lock[idx]);
+	return tx;
 }
 
 /** Handle BA path */
@@ -655,16 +656,18 @@ bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	bool ret = false;
 	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
+	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
 		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
 		    	ret = ieee80211aa_process_ba(sdata, p, ba, window_start);
 			/* After process the bar, execute retx if necessary  */
 			if (ret)
 				ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
-			return true;
+			break;
 		}
 	}
-	return false;
+	spin_unlock_bh(&aamc->bucket_lock[idx]);
+	return ret;
 }
 
 bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,

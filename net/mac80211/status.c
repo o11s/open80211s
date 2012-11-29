@@ -602,6 +602,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 		}
 
+#if 0
 		skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
 		if (local->mcast_rexmit_skb_queue.qlen < local->mcast_rexmit_skb_max_size) {
 			/*  enqueued, so no need to free or do anything else with this skb */
@@ -610,6 +611,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			skb = skb_dequeue(&local->mcast_rexmit_skb_queue);
 			BUG_ON(!skb);
 		}
+#endif
 	}
 
 	/* Need to make a copy before skb->cb gets cleared */
