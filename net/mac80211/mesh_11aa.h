@@ -72,8 +72,10 @@ static inline bool ieee80211aa_enabled(void)
 }
 
 void ieee80211aa_init(void);
+void ieee80211aa_stop(void);
 
 int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata);
+void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata);
 
 int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 			     enum ieee80211_robust_av_actioncode action,

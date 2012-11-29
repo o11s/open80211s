@@ -44,6 +44,7 @@ void ieee80211s_stop(void)
 {
 	mesh_pathtbl_unregister();
 	kmem_cache_destroy(rm_cache);
+	ieee80211aa_stop();
 }
 
 static void ieee80211_mesh_housekeeping_timer(unsigned long data)

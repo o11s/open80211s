@@ -26,6 +26,9 @@ void ieee80211aa_init(void)
 
 void ieee80211aa_stop(void)
 {
+	if (!aa_allocated)
+		return
+
 	kmem_cache_destroy(aa_cache);
 	aa_allocated = false;
 }
@@ -53,7 +56,10 @@ void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 	struct aa_entry *p, *n;
 	int i;
 
-	if (!sdata->u.mesh.aamc)
+	if (!aamc)
+		return;
+
+	if(WARN_ON(!aa_allocated))
 		return;
 
 	for (i = 0; i < AA_BUCKETS; i++)

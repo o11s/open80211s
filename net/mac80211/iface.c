@@ -25,6 +25,7 @@
 #include "driver-ops.h"
 #include "wme.h"
 #include "rate.h"
+#include "mesh_11aa.h"
 
 /**
  * DOC: Interface list locking
@@ -1053,6 +1054,8 @@ static void ieee80211_clean_sdata(struct ieee80211_sub_if_data *sdata)
 	switch (sdata->vif.type) {
 	case NL80211_IFTYPE_MESH_POINT:
 		mesh_path_flush_by_iface(sdata);
+		if (ieee80211aa_enabled())
+			ieee80211aa_mcc_free(sdata);
 		break;
 
 	default:
