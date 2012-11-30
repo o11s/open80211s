@@ -42,7 +42,7 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 		return -ENOMEM;
 	sdata->u.mesh.aamc->idx_mask = AA_BUCKETS - 1;
 	for (i = 0; i < AA_BUCKETS; i++) {
-		INIT_LIST_HEAD(&sdata->u.mesh.aamc->bucket[i].list);
+		INIT_LIST_HEAD(&sdata->u.mesh.aamc->bucket[i]);
 		spin_lock_init(&sdata->u.mesh.aamc->bucket_lock[i]);
 	}
 	aa_dbg("aamc struct initialized");
@@ -63,7 +63,7 @@ void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 		return;
 
 	for (i = 0; i < AA_BUCKETS; i++)
-		list_for_each_entry_safe(p, n, &aamc->bucket[i].list, list) {
+		list_for_each_entry_safe(p, n, &aamc->bucket[i], list) {
 			list_del(&p->list);
 			kmem_cache_free(aa_cache, p);
 		}
@@ -580,7 +580,7 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
 			tx = ieee80211aa_process_bar(sdata, p, bar->ta,
 						    bar->gcr_ga, window_start);
@@ -657,7 +657,7 @@ bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
 		    	ret = ieee80211aa_process_ba(sdata, p, ba, window_start);
 			/* After process the bar, execute retx if necessary  */
@@ -679,7 +679,7 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
 			spin_unlock_bh(&aamc->bucket_lock[idx]);
 			ieee80211aa_process_tx_data(sdata, p, seqnum);
@@ -694,7 +694,7 @@ bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
-	list_add(&p->list, &aamc->bucket[idx].list);
+	list_add(&p->list, &aamc->bucket[idx]);
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
 	return true;
 }
@@ -708,7 +708,7 @@ bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx].list, list) {
+	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
 			spin_unlock_bh(&aamc->bucket_lock[idx]);
 			ieee80211aa_process_rx_data(sdata, p, seqnum);
@@ -723,7 +723,7 @@ bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 	//p->exp_time = jiffies + AA_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
-	list_add(&p->list, &aamc->bucket[idx].list);
+	list_add(&p->list, &aamc->bucket[idx]);
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
 	return true;
 }
