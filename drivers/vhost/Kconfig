@@ -11,4 +11,5 @@ config VHOST_NET
 
 if STAGING
 source "drivers/vhost/Kconfig.tcm"
+source "drivers/vhost/Kconfig.blk"
 endif
