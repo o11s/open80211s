@@ -602,6 +602,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 		}
 
+		/* XXX: skbs leak!! */
 #if 0
 		skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
 		if (local->mcast_rexmit_skb_queue.qlen < local->mcast_rexmit_skb_max_size) {

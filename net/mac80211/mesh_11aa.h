@@ -86,9 +86,9 @@ void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
 			    struct aa_entry *p,
 			    u32 seqnum);
-bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar);
-bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba);
 void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
 			       struct aa_entry *p, u32 seqnum);
@@ -98,9 +98,9 @@ void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da);
 void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 				   struct aa_entry *p, u32 seqnum);
-bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u32 seqnum);
-bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u32 seqnum);
 #else /* !CONFIG_MAC80211_MESH_11AA */
 static inline bool ieee80211aa_enabled(void)
@@ -136,12 +136,12 @@ static inline void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
 {
 	return;
 }
-static inline bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
 	return false;
 }
-static inline bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+static inline void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba)
 {
 	return false;

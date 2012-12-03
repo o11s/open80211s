@@ -38,14 +38,15 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 	int i;
 
 	sdata->u.mesh.aamc = kmalloc(sizeof(struct aa_mc), GFP_KERNEL);
-	if (!sdata->u.mesh.aamc)
+	if (!sdata->u.mesh.aamc) {
+		WARN_ON(1);
 		return -ENOMEM;
+	}
 	sdata->u.mesh.aamc->idx_mask = AA_BUCKETS - 1;
 	for (i = 0; i < AA_BUCKETS; i++) {
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc->bucket[i]);
 		spin_lock_init(&sdata->u.mesh.aamc->bucket_lock[i]);
 	}
-	aa_dbg("aamc struct initialized");
 	return 0;
 
 }
@@ -56,14 +57,13 @@ void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 	struct aa_entry *p, *n;
 	int i;
 
-	if (!aamc)
-		return;
-
-	if(WARN_ON(!aa_allocated))
+	if(WARN_ON(!aa_allocated || !aamc))
 		return;
 
 	for (i = 0; i < AA_BUCKETS; i++)
 		list_for_each_entry_safe(p, n, &aamc->bucket[i], list) {
+			aa_dbg("baleeting list entry %p in bucket %d", &p->list, i);
+			aa_dbg("pointers next: %p, prev: %p", p->list.next, p->list.prev);
 			list_del(&p->list);
 			kmem_cache_free(aa_cache, p);
 		}
@@ -234,7 +234,7 @@ static u16 calculate_window_start(u32 seqnum)
 }
 
 void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
-		      struct aa_entry *p, u32 seqnum)
+			     struct aa_entry *p, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
 	p->sender.s_window_start = window_start;
@@ -341,8 +341,8 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 }
 
 static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
-			  struct ieee80211aa_sender *s, u8 *sa,
-			  u16 window_start, u32 sn_thr)
+				 struct ieee80211aa_sender *s, u8 *sa,
+				 u16 window_start, u32 sn_thr)
 {
 	int exp_bas;
 
@@ -373,7 +373,6 @@ void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 {
 	aa_dbg("BA request %d missing frames",
 		 GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
-	//aa_dbg("BA sent to %pM with Ws=%d sb[%lx]", ta, r->window_start, r->scoreboard[0]);
 	/* Send a ba frame to the ta */
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
@@ -389,7 +388,6 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211s_hdr *mesh_hdr;
 	u16 seqnum;
 
-	aa_dbg("%s:%d (rexmit lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
@@ -440,7 +438,6 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 						    GCR_WIN_SIZE, result+1);
 		}
 		if (count > 0) {
-			aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 			/* Only if no new window has been opened
 			   while retransmitting frames */
 			if (tmp.r_window_start == s->r_window_start)
@@ -451,7 +448,6 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	else if (s->rcv_ba_count == 0 &&
 		   bitmap_weight(s->scoreboard, GCR_WIN_SIZE) == GCR_WIN_SIZE) {
 		aa_dbg("BA was lost... we request it again!");
-		aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
 		return;
 	} /* All frames were received correctly disable expiration threshold */
@@ -483,15 +479,12 @@ void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 	}
 }
 
-
-
 void ieee80211aa_process_tx_data(
 		struct ieee80211_sub_if_data *sdata,
 		struct aa_entry *p, u32 seqnum)
 {
 	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
 		u16 window_start = calculate_window_start(seqnum);
-		aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 		ieee80211aa_send_bar(sdata, &p->sender, p->sa,
 				     p->sender.s_window_start, window_start);
 		/* Update sender window_start */
@@ -503,9 +496,9 @@ void ieee80211aa_process_tx_data(
 
 /* Data frame rx path */
 
-void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
-				   struct ieee80211aa_receiver *r,
-				   u16 window_start)
+void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
+				  struct ieee80211aa_receiver *r,
+				  u16 window_start)
 {
 	/* |window_start = 0
 	 * |W0.........W1..........|
@@ -526,9 +519,8 @@ void ieee80211aa_flush_scoreboard (struct ieee80211_sub_if_data *sdata,
 	r->window_start = window_start;
 }
 
-void ieee80211aa_process_rx_data(
-		struct ieee80211_sub_if_data *sdata,
-		struct aa_entry *p, u32 seqnum)
+void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
+				 struct aa_entry *p, u32 seqnum)
 {
 
 	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
@@ -549,8 +541,8 @@ void ieee80211aa_process_rx_data(
  * return true if BA needs to be sent.
  */
 bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
-				 struct aa_entry *p, u8 *ta,
-				 u8 *sa, u16 window_start)
+			     struct aa_entry *p, u8 *ta,
+			     u8 *sa, u16 window_start)
 {
 	if (window_start >= p->receiver.window_start + GCR_WIN_SIZE) {
 		aa_dbg("BAR received with new window_start %d previous was:%d",
@@ -568,7 +560,7 @@ bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 	return false;
 }
 
-bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
@@ -579,18 +571,21 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
+	if (WARN_ON(!aamc))
+		return;
+
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0) {
-			tx = ieee80211aa_process_bar(sdata, p, bar->ta,
-						    bar->gcr_ga, window_start);
-			if (tx)
-				ieee80211aa_send_ba(sdata, &p->receiver, bar->ta, bar->gcr_ga);
-			break;
-		}
+		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0)
+			continue;
+		tx = ieee80211aa_process_bar(sdata, p, bar->ta,
+					    bar->gcr_ga, window_start);
+		if (tx)
+			ieee80211aa_send_ba(sdata, &p->receiver, bar->ta,
+					    bar->gcr_ga);
+		break;
 	}
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
-	return tx;
 }
 
 /** Handle BA path */
@@ -611,10 +606,9 @@ bool ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
  *
  */
 bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
-				      struct ieee80211aa_sender *sender,
-				      u8* ga, u64 bitmap)
+				     struct ieee80211aa_sender *sender,
+				     u8* ga, u64 bitmap)
 {
-	aa_dbg("%s:%d (sender lock): in_irq:%ld in_softirq:%ld", __FILE__, __LINE__, in_irq(), in_softirq());
 	spin_lock_bh(&sender->lock);
 	bitmap_and(sender->scoreboard, sender->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
 	sender->rcv_ba_count++;
@@ -647,83 +641,92 @@ bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 }
 
 /* return true if all BAs are now received */
-bool ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
-			    struct ieee80211_ba_gcr *ba) {
+void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
+			   struct ieee80211_ba_gcr *ba)
+{
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
 	struct aa_entry *p;
 	u16 window_start = le16_to_cpu(ba->start_seq_num);
-	bool ret = false;
+	bool retx = false;
+
 	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
+	if (WARN_ON(!aamc))
+		return;
+
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) == 0) {
-		    	ret = ieee80211aa_process_ba(sdata, p, ba, window_start);
-			/* After process the bar, execute retx if necessary  */
-			if (ret)
-				ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
-			break;
-		}
+		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) != 0)
+			continue;
+		retx = ieee80211aa_process_ba(sdata, p, ba, window_start);
+		/* After process the bar, execute retx if necessary  */
+		if (retx)
+			ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
+		break;
 	}
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
-	return ret;
 }
 
-bool ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
-		       u8 *sa, u32 seqnum) {
+void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
+			  u8 *sa, u32 seqnum)
+{
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
 	struct aa_entry *p;
+
+	if (WARN_ON(!aamc))
+		return;
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			spin_unlock_bh(&aamc->bucket_lock[idx]);
-			ieee80211aa_process_tx_data(sdata, p, seqnum);
-			ieee80211aa_check_expired_rtx(sdata, p, seqnum);
-			return true;
-		}
+		if (memcmp(sa, p->sa, ETH_ALEN) != 0)
+			continue;
+		ieee80211aa_process_tx_data(sdata, p, seqnum);
+		ieee80211aa_check_expired_rtx(sdata, p, seqnum);
+		goto unlock;
 	}
 	/* If it doesn't exist just create the entry */
 	p = kmem_cache_alloc(aa_cache, GFP_ATOMIC);
 	if (!p)
-		return false;
+		goto unlock;
 
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
 	list_add(&p->list, &aamc->bucket[idx]);
+unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
-	return true;
 }
 
-bool ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
+void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 		       u8 *sa, u32 seqnum) {
 	struct aa_mc *aamc = sdata->u.mesh.aamc;
 	u8 idx;
 	struct aa_entry *p;
 
+	if (WARN_ON(!aamc))
+		return;
+
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(sa, p->sa, ETH_ALEN) == 0) {
-			spin_unlock_bh(&aamc->bucket_lock[idx]);
-			ieee80211aa_process_rx_data(sdata, p, seqnum);
-			return true;
-		}
+		if (memcmp(sa, p->sa, ETH_ALEN) != 0)
+			continue;
+
+		ieee80211aa_process_rx_data(sdata, p, seqnum);
+		goto unlock;
 	}
 	/* If it doesn't exist just create the entry */
 	p = kmem_cache_alloc(aa_cache, GFP_ATOMIC);
 	if (!p)
-		return false;
+		goto unlock;
 
-	//p->exp_time = jiffies + AA_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
 	ieee80211aa_init_struct(sdata, p, seqnum);
 	list_add(&p->list, &aamc->bucket[idx]);
+unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
-	return true;
 }
