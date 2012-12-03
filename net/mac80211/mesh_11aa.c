@@ -11,7 +11,7 @@
 #include "mesh.h"
 #include "mesh_11aa.h"
 
-bool aa_allocated;
+bool aa_allocated = false;
 static struct kmem_cache *aa_cache;
 
 void ieee80211aa_init(void)
@@ -27,7 +27,7 @@ void ieee80211aa_init(void)
 void ieee80211aa_stop(void)
 {
 	if (!aa_allocated)
-		return
+		return;
 
 	kmem_cache_destroy(aa_cache);
 	aa_allocated = false;

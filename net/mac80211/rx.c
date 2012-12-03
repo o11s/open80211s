@@ -504,11 +504,6 @@ ieee80211_rx_mesh_check(struct ieee80211_rx_data *rx)
 		}
 	}
 
-	/* TODO Is this the correct place? */
-	if (ieee80211_is_back_req(hdr->frame_control) ||
-	    ieee80211_is_back(hdr->frame_control))
-		return RX_CONTINUE;
-
 	/* If there is not an established peer link and this is not a peer link
 	 * establisment frame, beacon or probe, drop the frame.
 	 */
@@ -533,7 +528,9 @@ ieee80211_rx_mesh_check(struct ieee80211_rx_data *rx)
 		if (ieee80211_is_probe_req(hdr->frame_control) ||
 		    ieee80211_is_probe_resp(hdr->frame_control) ||
 		    ieee80211_is_beacon(hdr->frame_control) ||
-		    ieee80211_is_auth(hdr->frame_control))
+		    ieee80211_is_auth(hdr->frame_control) ||
+		    ieee80211_is_back_req(hdr->frame_control) ||
+		    ieee80211_is_back(hdr->frame_control))
 			return RX_CONTINUE;
 
 		return RX_DROP_MONITOR;
