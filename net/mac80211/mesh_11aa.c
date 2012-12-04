@@ -241,14 +241,11 @@ void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
 	p->sender.r_window_start = window_start;
 	spin_lock_init(&p->sender.lock);
 	/* Fill with 1s*/
-	bitmap_fill(p->sender.scoreboard,
-		    GCR_WIN_SIZE);
+	bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
 
 	p->receiver.window_start = window_start;
 	/* Fill with 0s */
-	bitmap_zero(p->receiver.scoreboard,
-		    GCR_WIN_SIZE_RCV);
-
+	bitmap_zero(p->receiver.scoreboard, GCR_WIN_SIZE_RCV);
 	aa_dbg("ieee80211aa_init_struct %pM", p->sa);
 }
 
@@ -569,10 +566,10 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	bool tx = false;
 	u16 window_start = le16_to_cpu(bar->start_seq_num);
 
-	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
-
 	if (WARN_ON(!aamc))
 		return;
+
+	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
@@ -610,7 +607,8 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 				     u8* ga, u64 bitmap)
 {
 	spin_lock_bh(&sender->lock);
-	bitmap_and(sender->scoreboard, sender->scoreboard, (unsigned long int*) &bitmap, GCR_WIN_SIZE);
+	bitmap_and(sender->scoreboard, sender->scoreboard,
+		   (unsigned long *) &bitmap, GCR_WIN_SIZE);
 	sender->rcv_ba_count++;
 	spin_unlock_bh(&sender->lock);
 
@@ -650,10 +648,10 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	u16 window_start = le16_to_cpu(ba->start_seq_num);
 	bool retx = false;
 
-	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
-
 	if (WARN_ON(!aamc))
 		return;
+
+	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
