@@ -389,6 +389,8 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211s_hdr *mesh_hdr;
 	u16 seqnum;
 
+	/* TODO: Take a current scoreboard and window_start, and queue all
+	 * outstanding frames up at once */
 	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
@@ -735,4 +737,50 @@ void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 	list_add(&p->list, &aamc->bucket[idx]);
 unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
+}
+
+/**
+ * ieee80211aa_handle_tx_skb - queue frame for retransmission
+ *
+ * Will enqueue the given skb for retransmission, and bump off any old frames
+ * if the queue grows too long.
+ */
+void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
+			       struct sk_buff *skb)
+{
+	struct ieee80211_sub_if_data *sdata;
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	__le16 fc = hdr->frame_control;
+	int hdrlen = ieee80211_hdrlen(hdr->frame_control);
+	struct ieee80211s_hdr *mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
+
+	if (!(ieee80211aa_enabled() && skb->dev && skb->dev->ieee80211_ptr &&
+	    skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
+	    is_multicast_ether_addr(hdr->addr1) && ieee80211_is_data_qos(fc) &&
+	    !is_broadcast_ether_addr(hdr->addr1)))
+		return;
+
+	/* This will be called only on the original tx */
+	if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
+
+		rcu_read_lock();
+		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+			if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
+				if (!ieee80211_sdata_running(sdata))
+					continue;
+				ieee80211aa_check_tx(sdata, hdr->addr3,
+						     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+			}
+		}
+		rcu_read_unlock();
+		/* Mark as retransmission for next use */
+		info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
+	}
+
+	skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
+	if (local->mcast_rexmit_skb_queue.qlen > local->mcast_rexmit_skb_max_size) {
+		skb = skb_dequeue(&local->mcast_rexmit_skb_queue);
+		dev_kfree_skb(skb);
+	}
 }

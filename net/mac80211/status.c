@@ -352,9 +352,8 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	int rates_idx = -1;
 	bool send_to_cooked;
 	bool acked;
-	struct ieee80211s_hdr *mesh_hdr;
 	struct ieee80211_bar *bar;
-	int rtap_len, hdrlen;
+	int rtap_len;
 
 	for (i = 0; i < IEEE80211_TX_MAX_RATES; i++) {
 		if ((info->flags & IEEE80211_TX_CTL_AMPDU) &&
@@ -575,45 +574,9 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 	/* this was a transmitted frame, but now we want to reuse it */
 	skb_orphan(skb);
 
-	/* ieee80211aa: if this is a mesh multicast frame, queue it  */
-	if (ieee80211aa_enabled() && skb->dev && skb->dev->ieee80211_ptr &&
-	    skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
-	    is_multicast_ether_addr(hdr->addr1) &&
-	    !is_broadcast_ether_addr(hdr->addr1)) {
-
-		/* This will be called only on the original tx */
-		if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
-
-			hdr = (struct ieee80211_hdr *) skb->data;
-			hdrlen = ieee80211_hdrlen(hdr->frame_control);
-			mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
-
-			rcu_read_lock();
-			list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-				if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
-					if (!ieee80211_sdata_running(sdata))
-						continue;
-					ieee80211aa_check_tx(sdata, hdr->addr3,
-							     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
-				}
-			}
-			rcu_read_unlock();
-			/* Mark as retransmission for next use */
-			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
-		}
-
-		/* XXX: skbs leak!! */
-#if 0
-		skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
-		if (local->mcast_rexmit_skb_queue.qlen < local->mcast_rexmit_skb_max_size) {
-			/*  enqueued, so no need to free or do anything else with this skb */
-			return;
-		} else {
-			skb = skb_dequeue(&local->mcast_rexmit_skb_queue);
-			BUG_ON(!skb);
-		}
-#endif
-	}
+	/* ieee80211aa: if this is a mesh multicast frame, queue it.
+	 * XXX: process in the tx path? (yes) */
+	ieee80211aa_handle_tx_skb(local, skb);
 
 	/* Need to make a copy before skb->cb gets cleared */
 	send_to_cooked = !!(info->flags & IEEE80211_TX_CTL_INJECTED) ||
