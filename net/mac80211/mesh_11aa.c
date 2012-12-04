@@ -92,7 +92,10 @@ void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			  struct ieee80211s_hdr *mesh_hdr, u8 *da)
 {
 	if (is_multicast_ether_addr(da))
-		put_unaligned_le32(sdata->u.mesh.mesh_mseqnum++,
+		/* XXX: BA and BARs only have 16 bits for starting seq no. Fix
+		 * this properly by handling the translation in the 11aa / 11n
+		 * aggregation code. */
+		put_unaligned_le32((sdata->u.mesh.mesh_mseqnum++) % 65536,
 				   &mesh_hdr->seqnum);
 	else
 		put_unaligned_le32(sdata->u.mesh.mesh_seqnum++,
