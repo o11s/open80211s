@@ -493,7 +493,6 @@ void ieee80211aa_process_tx_data(
 }
 
 /* Data frame rx path */
-
 void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 				  struct ieee80211aa_receiver *r,
 				  u16 window_start)
@@ -508,11 +507,13 @@ void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 
 	/* Calculate the number of bits we need shift */
 	int shift = window_start - r->window_start;
-	/* Should never happen... No shifting for negative values */
+	/* if the sequence numbers rolled over */
 	if (shift <= 0)
-		return;
+		shift = GCR_WIN_SIZE_RCV;
+
 	/* left shift N positions */
-	bitmap_shift_left(r->scoreboard, r->scoreboard, shift, GCR_WIN_SIZE_RCV);
+	bitmap_shift_left(r->scoreboard, r->scoreboard,
+			  shift, GCR_WIN_SIZE_RCV);
 	/* Store new window */
 	r->window_start = window_start;
 }
@@ -520,18 +521,20 @@ void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
 				 struct aa_entry *p, u32 seqnum)
 {
+	struct ieee80211aa_receiver *r = &p->receiver;
 
-	if (seqnum >= p->receiver.window_start + GCR_WIN_SIZE_RCV) {
-		/* Current scoreboard doesn't have access to this bit
- 		 * Note:
-		 * This is not very nice but in this case want to keep
- 		 * at least a window of valuable data, this tries to...
- 		 * */
-
-		ieee80211aa_flush_scoreboard(sdata, &p->receiver,
-			calculate_window_start(seqnum) - GCR_WIN_SIZE_RCV + GCR_WIN_SIZE);
+	if (seqnum >= r->window_start + GCR_WIN_SIZE_RCV ||
+	    seqnum + GCR_WIN_SIZE_RCV < r->window_start) {
+		/* shift scoreboard to match sequence sender range */
+		ieee80211aa_flush_scoreboard(sdata, r,
+					     calculate_window_start(seqnum));
 	}
-	set_bit(seqnum - p->receiver.window_start, p->receiver.scoreboard);
+
+	/* shouldn't happen */
+	if (WARN_ON(seqnum - r->window_start > GCR_WIN_SIZE_RCV))
+		return;
+
+	set_bit(seqnum - r->window_start, r->scoreboard);
 }
 
 /* Handle BAR path - process BAR frame
