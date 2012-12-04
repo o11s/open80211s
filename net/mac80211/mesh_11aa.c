@@ -19,7 +19,8 @@ void ieee80211aa_init(void)
 	if (!aa_allocated) {
 		aa_allocated = true;
 		aa_cache = kmem_cache_create("aa_mc", sizeof(struct aa_entry),
-				 	     0, 0, NULL);
+					     0, SLAB_POISON | SLAB_RED_ZONE,
+					     NULL);
 		printk(KERN_DEBUG "aa_mc mem cache created");
 	}
 }
