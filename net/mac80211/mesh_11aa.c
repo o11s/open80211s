@@ -484,7 +484,8 @@ void ieee80211aa_process_tx_data(
 		struct ieee80211_sub_if_data *sdata,
 		struct aa_entry *p, u32 seqnum)
 {
-	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE) {
+	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE ||
+	    seqnum + GCR_WIN_SIZE < p->sender.s_window_start) {
 		u16 window_start = calculate_window_start(seqnum);
 		ieee80211aa_send_bar(sdata, &p->sender, p->sa,
 				     p->sender.s_window_start, window_start);
