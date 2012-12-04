@@ -602,7 +602,7 @@ void ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	atomic_inc(&local->iff_allmultis);
 	if (ieee80211aa_enabled()) {
 		local->fif_control++;
-		local->mcast_rexmit_skb_max_size = 128;
+		sdata->mcast_rexmit_skb_max_size = 128;
 	}
 	ieee80211_configure_filter(local);
 
@@ -653,7 +653,7 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	atomic_dec(&local->iff_allmultis);
 	if (ieee80211aa_enabled()) {
 		local->fif_control--;
-		local->mcast_rexmit_skb_max_size = 0;
+		sdata->mcast_rexmit_skb_max_size = 0;
 	}
 	ieee80211_configure_filter(local);
 }

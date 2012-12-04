@@ -1004,7 +1004,10 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 	sdata->dev->type = ARPHRD_ETHER;
 
 	skb_queue_head_init(&sdata->skb_queue);
+	skb_queue_head_init(&sdata->mcast_rexmit_skb_queue);
+	sdata->mcast_rexmit_skb_max_size = 0;
 	INIT_WORK(&sdata->work, ieee80211_iface_work);
+
 
 	switch (type) {
 	case NL80211_IFTYPE_P2P_GO:

@@ -718,6 +718,10 @@ struct ieee80211_sub_if_data {
 	struct work_struct work;
 	struct sk_buff_head skb_queue;
 
+	/* 11aa */
+	struct sk_buff_head mcast_rexmit_skb_queue;
+	int mcast_rexmit_skb_max_size;
+
 	bool arp_filter_state;
 
 	/*
@@ -939,9 +943,6 @@ struct ieee80211_local {
 	 */
 	struct sk_buff_head rx_skb_queue;
 	bool running_rx_handler;	/* protected by rx_skb_queue.lock */
-
-	struct sk_buff_head mcast_rexmit_skb_queue;
-	int mcast_rexmit_skb_max_size;
 
 	/* Station data */
 	/*

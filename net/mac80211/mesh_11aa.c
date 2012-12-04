@@ -391,7 +391,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 
 	/* TODO: Take a current scoreboard and window_start, and queue all
 	 * outstanding frames up at once */
-	skb_queue_walk_safe(&local->mcast_rexmit_skb_queue, skb, tmp) {
+	skb_queue_walk_safe(&sdata->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
 				ieee80211_hdrlen(hdr->frame_control));
@@ -407,7 +407,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		    memcmp(sa, hdr->addr3, ETH_ALEN))
 			continue;
 
-		skb_unlink(skb, &local->mcast_rexmit_skb_queue);
+		skb_unlink(skb, &sdata->mcast_rexmit_skb_queue);
 		ieee80211_add_pending_skb(local, skb);
 		return true;
 	}
@@ -742,8 +742,8 @@ unlock:
 /**
  * ieee80211aa_handle_tx_skb - queue frame for retransmission
  *
- * Will enqueue the given skb for retransmission, and bump off any old frames
- * if the queue grows too long.
+ * Will clone and enqueue the given skb for retransmission, and bump off any
+ * old frames if the queue grows too long.
  */
 void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 			       struct sk_buff *skb)
@@ -761,26 +761,32 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 	    !is_broadcast_ether_addr(hdr->addr1)))
 		return;
 
-	/* This will be called only on the original tx */
-	if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
-
-		rcu_read_lock();
-		list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-			if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT) {
-				if (!ieee80211_sdata_running(sdata))
-					continue;
-				ieee80211aa_check_tx(sdata, hdr->addr3,
-						     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
-			}
+	skb = skb_clone(skb, GFP_ATOMIC);
+	rcu_read_lock();
+	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+		if (!ieee80211_sdata_running(sdata) ||
+		    !ieee80211_vif_is_mesh(&sdata->vif) ||
+		    !ether_addr_equal(hdr->addr2, sdata->vif.addr))
+			continue;
+		/* This will be called only on the original tx */
+		if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
+			ieee80211aa_check_tx(sdata, hdr->addr3,
+				     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 		}
-		rcu_read_unlock();
-		/* Mark as retransmission for next use */
-		info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
+		break;
 	}
 
-	skb_queue_tail(&local->mcast_rexmit_skb_queue, skb);
-	if (local->mcast_rexmit_skb_queue.qlen > local->mcast_rexmit_skb_max_size) {
-		skb = skb_dequeue(&local->mcast_rexmit_skb_queue);
+	/* huh? */
+	if (WARN_ON(!sdata))
+		goto out;
+
+	/* re-queue it in either case since even a retransmission might fail */
+	skb_queue_tail(&sdata->mcast_rexmit_skb_queue, skb);
+	if (sdata->mcast_rexmit_skb_queue.qlen > sdata->mcast_rexmit_skb_max_size) {
+		skb = skb_dequeue(&sdata->mcast_rexmit_skb_queue);
 		dev_kfree_skb(skb);
 	}
+out:
+	rcu_read_unlock();
 }
