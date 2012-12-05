@@ -751,7 +751,7 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 			       struct sk_buff *skb)
 {
 	struct ieee80211_sub_if_data *sdata;
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_tx_info *info;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	__le16 fc = hdr->frame_control;
 	int hdrlen = ieee80211_hdrlen(hdr->frame_control);
@@ -764,6 +764,10 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 		return;
 
 	skb = skb_clone(skb, GFP_ATOMIC);
+	if (WARN_ON(!skb))
+		return;
+	info = IEEE80211_SKB_CB(skb);
+
 	rcu_read_lock();
 	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
 		if (!ieee80211_sdata_running(sdata) ||
@@ -782,6 +786,13 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 	/* huh? */
 	if (WARN_ON(!sdata))
 		goto out;
+
+	/* XXX: garbage, the txinfo.control was overwritten by status, so
+	 * proper fix is to call this function from the tx path. */
+	memset(&info->control, 0, sizeof(info->control));
+	info->control.jiffies = jiffies;
+	info->control.vif = &sdata->vif;
+	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 
 	/* re-queue it in either case since even a retransmission might fail */
 	skb_queue_tail(&sdata->mcast_rexmit_skb_queue, skb);
