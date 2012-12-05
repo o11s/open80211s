@@ -38,7 +38,8 @@ struct ieee80211aa_sender {
 	u32 s_window_start; /* current seq_num when the window start*/
 	/* Info for re-tx's */
 	u32 r_window_start; /* retx seq_num when the window start */
-	u32 rtx_sn_thr; /* Maximum seq_num count before the retransmissions are sent */
+	/* XXX: this threshold "timer" should be a real timer */
+	u32 ba_expire; /* Maximum seq_num count before we determine BAR respones were lost */
 	u8 exp_rcv_ba; /* Number of BA expected */
 	u8 rcv_ba_count; /* Number of BA received */
 	u32 window_start; // current seq_num when the window has started

@@ -348,22 +348,13 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 {
 	int exp_bas;
 
-	/* XXX: return if exp_bas == 0? */
 	exp_bas = ieee80211aa_send_bar_to_known_sta(sdata, sa, window_start);
 
 	spin_lock_bh(&s->lock);
-	/* Reset BA counter */
 	s->rcv_ba_count = 0;
-	/* Get the expected BAs */
 	s->exp_rcv_ba = exp_bas;
+	s->ba_expire = sn_thr + GCR_WIN_THRES;
 
-	if (s->exp_rcv_ba > 0) {
-		/* Update re-tx threshold */
-		s->rtx_sn_thr = sn_thr + GCR_WIN_THRES;
-	} else {
-		/* Set a non valid threshold */
-		s->rtx_sn_thr = 0;
-	}
 	/* Fill scoreboard with 1s */
 	bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
 	s->r_window_start = window_start;
@@ -371,7 +362,7 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
-			struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
+			 struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
 	aa_dbg("BA request %d missing frames",
 		 GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
@@ -415,78 +406,66 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	return false;
 }
 
+/* retransmit outstanding frames from sender */
 void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211aa_sender *s, u8 *ga)
 {
-	struct ieee80211aa_sender tmp;
-	int count, result;
+	int frames, frame_n;
 
-	// Make a copy of the sender
-	memcpy(&tmp, s, sizeof(struct ieee80211aa_sender));
+	/* for each bit set to 0 ask for retransmission */
+	frame_n = find_first_zero_bit(s->scoreboard, GCR_WIN_SIZE);
+	frames = 0;
 
-	// Foreach bit set to 0 ask for retransmission
-	result = find_first_zero_bit(tmp.scoreboard, GCR_WIN_SIZE);
-	count = 0;
+	if (s->exp_rcv_ba && s->rcv_ba_count == s->exp_rcv_ba)
+		aa_dbg("All frames were correctly delivered ws %d",
+		       s->r_window_start);
 
-	/* Only enter if at least one frame is missing */
-	if (result < GCR_WIN_SIZE) {
+	/* will be GCR_WIN_SIZE if no zero bits found */
+	if (frame_n < GCR_WIN_SIZE) {
 		aa_dbg("BA contains %d missing frames",
 		       GCR_WIN_SIZE -
-		       bitmap_weight(tmp.scoreboard, GCR_WIN_SIZE));
+		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
-		while (result < GCR_WIN_SIZE) {
-			u16 req_sn = tmp.r_window_start + result;
+		while (frame_n < GCR_WIN_SIZE) {
+			u16 req_sn = s->r_window_start + frame_n;
 			if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
-				count++;
-			result = find_next_zero_bit(tmp.scoreboard,
-						    GCR_WIN_SIZE, result+1);
+				frames++;
+			frame_n = find_next_zero_bit(s->scoreboard,
+						     GCR_WIN_SIZE, frame_n + 1);
 		}
-		if (count > 0) {
-			/* Only if no new window has been opened
-			   while retransmitting frames */
-			if (tmp.r_window_start == s->r_window_start)
-				ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
-			return;
-		}
-	} /* No ba received and scoreboard is set to default value */
-	else if (s->rcv_ba_count == 0 &&
-		   bitmap_weight(s->scoreboard, GCR_WIN_SIZE) == GCR_WIN_SIZE) {
-		aa_dbg("BA was lost... we request it again!");
-		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->rtx_sn_thr);
-		return;
-	} /* All frames were received correctly disable expiration threshold */
-	else if (s->rcv_ba_count >= s->exp_rcv_ba) {
-			aa_dbg("All frames were correctly delivered ws %d",
-			       s->r_window_start);
-
 	}
-	/* For all other cases we set to a non valid value */
-	spin_lock_bh(&s->lock);
-	s->rtx_sn_thr = 0;
-	spin_unlock_bh(&s->lock);
-}
 
-/* Data frame tx path */
+	if (frames || s->rcv_ba_count == 0) {
+		/* need BAs */
+		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->ba_expire);
+		return;
+	} else {
+		/* we're done for this window */
+		spin_lock_bh(&s->lock);
+		s->exp_rcv_ba = 0;
+		spin_unlock_bh(&s->lock);
+	}
+}
 
 void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 				  struct aa_entry *p, u32 seqnum)
 {
-	/* Only if threshold is different than 0 and has expired */
-	if (p->sender.rtx_sn_thr != 0 &&
-	    p->sender.rcv_ba_count < p->sender.exp_rcv_ba &&
-	    seqnum > p->sender.rtx_sn_thr) {
+	struct ieee80211aa_sender *s = &p->sender;
+
+	/* time to retransmit if necessary */
+	if (s->exp_rcv_ba && seqnum > s->ba_expire) {
 		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d thr:%d rcv:%d bitm:%d",
-		       seqnum, p->sender.rtx_sn_thr, p->sender.r_window_start,
-		       p->sender.exp_rcv_ba, p->sender.rcv_ba_count,
-		       bitmap_weight(p->sender.scoreboard, GCR_WIN_SIZE));
-		ieee80211aa_retransmit(sdata, &p->sender, p->sa);
+		       seqnum, s->ba_expire, s->r_window_start,
+		       s->exp_rcv_ba, s->rcv_ba_count,
+		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
+		ieee80211aa_retransmit(sdata, s, p->sa);
 	}
 }
 
-void ieee80211aa_process_tx_data(
-		struct ieee80211_sub_if_data *sdata,
-		struct aa_entry *p, u32 seqnum)
+void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
+				 struct aa_entry *p, u32 seqnum)
 {
+	/* did we just finish or roll over a window? */
 	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE ||
 	    seqnum + GCR_WIN_SIZE < p->sender.s_window_start) {
 		u16 window_start = calculate_window_start(seqnum);
@@ -588,6 +567,7 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(bar->gcr_ga, p->sa))
 			continue;
+
 		tx = ieee80211aa_process_bar(sdata, p, bar->ta,
 					    bar->gcr_ga, window_start);
 		if (tx)
@@ -626,7 +606,7 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 	spin_unlock_bh(&sender->lock);
 
 	/* Only retranmit if we got all expected ba's */
-	if (sender->rcv_ba_count >= sender->exp_rcv_ba)
+	if (sender->rcv_ba_count == sender->exp_rcv_ba)
 		return true;
 	return false;
 }
@@ -671,7 +651,7 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 		if (!ether_addr_equal(ba->gcr_ga, p->sa))
 			continue;
 		retx = ieee80211aa_process_ba(sdata, p, ba, window_start);
-		/* After process the bar, execute retx if necessary  */
+		/* After process the bar, retx if necessary  */
 		if (retx)
 			ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
 		break;
