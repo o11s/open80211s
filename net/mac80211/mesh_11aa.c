@@ -325,7 +325,8 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
         rcu_read_lock();
         list_for_each_entry_rcu(sta, &sdata->local->sta_list, list) {
                 if (sdata != sta->sdata ||
-                    sta->gcm_enabled != true)
+                    sta->gcm_enabled != true ||
+		    ether_addr_equal(sta->sta.addr, sa))
                         continue;
 		aa_dbg("Sent BAR to %pM with Ws=%d",
 			 sta->sta.addr,
