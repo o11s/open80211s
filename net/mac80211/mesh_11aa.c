@@ -404,7 +404,7 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 
 		/* Only if seqnum and sa matches */
 		if (seqnum != req_sn ||
-		    memcmp(sa, hdr->addr3, ETH_ALEN))
+		    !ether_addr_equal(sa, hdr->addr3))
 			continue;
 
 		skb_unlink(skb, &sdata->mcast_rexmit_skb_queue);
@@ -583,7 +583,7 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(bar->gcr_ga, p->sa, ETH_ALEN) == 0)
+		if (!ether_addr_equal(bar->gcr_ga, p->sa))
 			continue;
 		tx = ieee80211aa_process_bar(sdata, p, bar->ta,
 					    bar->gcr_ga, window_start);
@@ -665,7 +665,7 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(ba->gcr_ga, p->sa, ETH_ALEN) != 0)
+		if (!ether_addr_equal(ba->gcr_ga, p->sa))
 			continue;
 		retx = ieee80211aa_process_ba(sdata, p, ba, window_start);
 		/* After process the bar, execute retx if necessary  */
@@ -690,7 +690,7 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(sa, p->sa, ETH_ALEN) != 0)
+		if (!ether_addr_equal(sa, p->sa))
 			continue;
 		ieee80211aa_process_tx_data(sdata, p, seqnum);
 		ieee80211aa_check_expired_rtx(sdata, p, seqnum);
@@ -721,7 +721,7 @@ void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (memcmp(sa, p->sa, ETH_ALEN) != 0)
+		if (!ether_addr_equal(sa, p->sa))
 			continue;
 
 		ieee80211aa_process_rx_data(sdata, p, seqnum);

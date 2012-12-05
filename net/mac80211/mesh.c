@@ -740,11 +740,8 @@ static void ieee80211_mesh_rx_mgmt_action(struct ieee80211_sub_if_data *sdata,
 void ieee80211_mesh_rx_queued_ctl(struct ieee80211_sub_if_data *sdata,
 				   struct sk_buff *skb)
 {
-	struct ieee80211_rx_status *rx_status;
 	struct ieee80211_bar_gcr *bar;
 
-	/* TODO we only need fc and bar control to identify the frame */
-	rx_status = IEEE80211_SKB_RXCB(skb);
 	bar = (struct ieee80211_bar_gcr *)skb->data;
 	/* Only handle ieee80211aa bar */
 	if (ieee80211_is_back_req(bar->frame_control) &&
