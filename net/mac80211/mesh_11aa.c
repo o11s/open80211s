@@ -241,8 +241,8 @@ void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
 			     struct aa_entry *p, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
-	p->sender.s_window_start = window_start;
-	p->sender.r_window_start = window_start;
+	p->sender.curr_win = window_start;
+	p->sender.prev_win = window_start;
 	spin_lock_init(&p->sender.lock);
 	/* Fill with 1s*/
 	bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
@@ -351,13 +351,13 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 	exp_bas = ieee80211aa_send_bar_to_known_sta(sdata, sa, window_start);
 
 	spin_lock_bh(&s->lock);
-	s->rcv_ba_count = 0;
-	s->exp_rcv_ba = exp_bas;
+	s->rcv_bas = 0;
+	s->exp_bas = exp_bas;
 	s->ba_expire = sn_thr + GCR_WIN_THRES;
 
 	/* Fill scoreboard with 1s */
 	bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
-	s->r_window_start = window_start;
+	s->prev_win = window_start;
 	spin_unlock_bh(&s->lock);
 }
 
@@ -416,10 +416,6 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	frame_n = find_first_zero_bit(s->scoreboard, GCR_WIN_SIZE);
 	frames = 0;
 
-	if (s->exp_rcv_ba && s->rcv_ba_count == s->exp_rcv_ba)
-		aa_dbg("All frames were correctly delivered ws %d",
-		       s->r_window_start);
-
 	/* will be GCR_WIN_SIZE if no zero bits found */
 	if (frame_n < GCR_WIN_SIZE) {
 		aa_dbg("BA contains %d missing frames",
@@ -427,7 +423,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
 		while (frame_n < GCR_WIN_SIZE) {
-			u16 req_sn = s->r_window_start + frame_n;
+			u16 req_sn = s->prev_win + frame_n;
 			if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
 				frames++;
 			frame_n = find_next_zero_bit(s->scoreboard,
@@ -435,14 +431,15 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 		}
 	}
 
-	if (frames || s->rcv_ba_count == 0) {
+	if (frames || s->rcv_bas != s->exp_bas) {
 		/* need BAs */
-		ieee80211aa_send_bar(sdata, s, ga, s->r_window_start, s->ba_expire);
+		ieee80211aa_send_bar(sdata, s, ga, s->prev_win, s->ba_expire);
 		return;
 	} else {
 		/* we're done for this window */
+		aa_dbg("All frames delivered for window %d", s->prev_win);
 		spin_lock_bh(&s->lock);
-		s->exp_rcv_ba = 0;
+		s->exp_bas = 0;
 		spin_unlock_bh(&s->lock);
 	}
 }
@@ -453,10 +450,10 @@ void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211aa_sender *s = &p->sender;
 
 	/* time to retransmit if necessary */
-	if (s->exp_rcv_ba && seqnum > s->ba_expire) {
-		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d thr:%d rcv:%d bitm:%d",
-		       seqnum, s->ba_expire, s->r_window_start,
-		       s->exp_rcv_ba, s->rcv_ba_count,
+	if (s->exp_bas && seqnum > s->ba_expire) {
+		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d req:%d rcv:%d bitm:%d",
+		       seqnum, s->ba_expire, s->prev_win,
+		       s->exp_bas, s->rcv_bas,
 		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 		ieee80211aa_retransmit(sdata, s, p->sa);
 	}
@@ -465,15 +462,17 @@ void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
 				 struct aa_entry *p, u32 seqnum)
 {
+	struct ieee80211aa_sender *s = &p->sender;
+
 	/* did we just finish or roll over a window? */
-	if (seqnum >= p->sender.s_window_start + GCR_WIN_SIZE ||
-	    seqnum + GCR_WIN_SIZE < p->sender.s_window_start) {
+	if (seqnum >= s->curr_win + GCR_WIN_SIZE ||
+	    seqnum + GCR_WIN_SIZE < s->curr_win) {
 		u16 window_start = calculate_window_start(seqnum);
-		ieee80211aa_send_bar(sdata, &p->sender, p->sa,
-				     p->sender.s_window_start, window_start);
-		/* Update sender window_start */
+		ieee80211aa_send_bar(sdata, s, p->sa,
+				     s->curr_win, s->ba_expire);
+		/* new window */
 		spin_lock_bh(&p->sender.lock);
-		p->sender.s_window_start = window_start;
+		s->curr_win = window_start;
 		spin_unlock_bh(&p->sender.lock);
 	}
 }
@@ -536,10 +535,10 @@ bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 	if (window_start >= r->window_start + GCR_WIN_SIZE ||
 	    window_start + GCR_WIN_SIZE < r->window_start) {
 		aa_dbg("BAR received with new window_start %d previous was:%d",
-			 window_start, p->receiver.window_start);
+			 window_start, r->window_start);
 		ieee80211aa_flush_scoreboard(sdata, r, window_start);
 		return true;
-	} else if (window_start == p->receiver.window_start) {
+	} else if (window_start == r->window_start) {
 		aa_dbg("BAR received in current window_start %d",
 			 window_start);
 		return true;
@@ -602,11 +601,11 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 	spin_lock_bh(&sender->lock);
 	bitmap_and(sender->scoreboard, sender->scoreboard,
 		   (unsigned long *) &bitmap, GCR_WIN_SIZE);
-	sender->rcv_ba_count++;
+	sender->rcv_bas++;
 	spin_unlock_bh(&sender->lock);
 
-	/* Only retranmit if we got all expected ba's */
-	if (sender->rcv_ba_count == sender->exp_rcv_ba)
+	/* all BAs received, retx */
+	if (sender->rcv_bas == sender->exp_bas)
 		return true;
 	return false;
 }
@@ -617,13 +616,13 @@ bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba,
 			    u16 window_start)
 {
-	if (window_start < p->sender.r_window_start) {
+	if (window_start < p->sender.prev_win) {
 		aa_dbg("BA discarded due old window_start %d expected %d",
-			 window_start, p->sender.r_window_start);
+			 window_start, p->sender.prev_win);
 		return false;
-	} else if (window_start > p->sender.r_window_start) {
+	} else if (window_start > p->sender.prev_win) {
 		aa_dbg("BA discarded due future window_start %d expected %d",
-			 window_start, p->sender.r_window_start);
+			 window_start, p->sender.prev_win);
 		return false;
 	}
 	aa_dbg("BA received in current window_start %d", window_start);
@@ -631,7 +630,6 @@ bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
 					ba->gcr_ga, ba->bitmap);
 }
 
-/* return true if all BAs are now received */
 void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			   struct ieee80211_ba_gcr *ba)
 {
@@ -650,6 +648,7 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	list_for_each_entry(p, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(ba->gcr_ga, p->sa))
 			continue;
+
 		retx = ieee80211aa_process_ba(sdata, p, ba, window_start);
 		/* After process the bar, retx if necessary  */
 		if (retx)

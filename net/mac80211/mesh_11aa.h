@@ -34,15 +34,12 @@
 
 struct ieee80211aa_sender {
 	spinlock_t lock;
-	/* Info for tx */
-	u32 s_window_start; /* current seq_num when the window start*/
-	/* Info for re-tx's */
-	u32 r_window_start; /* retx seq_num when the window start */
+	u16 curr_win; /* sn marking start of current window */
+	u16 prev_win; /* sn marking start of previous window */
 	/* XXX: this threshold "timer" should be a real timer */
 	u32 ba_expire; /* Maximum seq_num count before we determine BAR respones were lost */
-	u8 exp_rcv_ba; /* Number of BA expected */
-	u8 rcv_ba_count; /* Number of BA received */
-	u32 window_start; // current seq_num when the window has started
+	int exp_bas; /* Number of BA expected */
+	int rcv_bas; /* Number of BA received */
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE)];
 };
 
