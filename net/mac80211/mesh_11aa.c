@@ -508,11 +508,11 @@ void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211aa_receiver *r = &p->receiver;
 
-	if (seqnum >= r->window_start + GCR_WIN_SIZE_RCV ||
-	    seqnum + GCR_WIN_SIZE_RCV < r->window_start) {
-		/* shift scoreboard to match sequence sender range */
-		ieee80211aa_flush_scoreboard(sdata, r,
-					     calculate_window_start(seqnum));
+	if (seqnum >= r->window_start + GCR_WIN_SIZE ||
+	    seqnum + GCR_WIN_SIZE < r->window_start) {
+		/* shift scoreboard to match the old sender window */
+		u16 ws = calculate_window_start(seqnum - GCR_WIN_SIZE);
+		ieee80211aa_flush_scoreboard(sdata, r, ws);
 	}
 
 	/* shouldn't happen */
