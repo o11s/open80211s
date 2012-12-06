@@ -683,10 +683,13 @@ static long vhost_blk_ioctl(struct file *f, unsigned int ioctl,
 		return vhost_blk_reset_owner(blk);
 	default:
 		mutex_lock(&blk->dev.mutex);
-		ret = vhost_dev_ioctl(&blk->dev, ioctl, arg);
+		ret = vhost_vring_ioctl(&blk->dev, ioctl, argp);
 		if (!ret && ioctl == VHOST_SET_VRING_NUM)
 			ret = vhost_blk_setup(blk);
-		vhost_blk_flush(blk);
+		else if (ret == -ENOIOCTLCMD) {
+			ret = vhost_dev_ioctl(&blk->dev, ioctl, argp);
+			vhost_blk_flush(blk);
+		}
 		mutex_unlock(&blk->dev.mutex);
 		return ret;
 	}
