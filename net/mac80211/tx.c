@@ -29,6 +29,7 @@
 #include "driver-ops.h"
 #include "led.h"
 #include "mesh.h"
+#include "mesh_11aa.h"
 #include "wep.h"
 #include "wpa.h"
 #include "wme.h"
@@ -605,6 +606,13 @@ ieee80211_tx_h_select_key(struct ieee80211_tx_data *tx)
 			info->control.hw_key = &tx->key->conf;
 	}
 
+	return TX_CONTINUE;
+}
+
+static ieee80211_tx_result debug_noinline
+ieee80211_tx_h_mesh_11aa(struct ieee80211_tx_data *tx)
+{
+	ieee80211aa_handle_tx_skb(tx->local, tx->skb);
 	return TX_CONTINUE;
 }
 
@@ -1348,6 +1356,7 @@ static int invoke_tx_handlers(struct ieee80211_tx_data *tx)
 	if (!(tx->local->hw.flags & IEEE80211_HW_HAS_RATE_CONTROL))
 		CALL_TXH(ieee80211_tx_h_rate_ctrl);
 
+	CALL_TXH(ieee80211_tx_h_mesh_11aa);
 	if (unlikely(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
 		__skb_queue_tail(&tx->skbs, tx->skb);
 		tx->skb = NULL;

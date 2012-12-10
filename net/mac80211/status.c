@@ -17,7 +17,6 @@
 #include "ieee80211_i.h"
 #include "rate.h"
 #include "mesh.h"
-#include "mesh_11aa.h"
 #include "led.h"
 #include "wme.h"
 
@@ -573,10 +572,6 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 
 	/* this was a transmitted frame, but now we want to reuse it */
 	skb_orphan(skb);
-
-	/* ieee80211aa: if this is a mesh multicast frame, queue it.
-	 * XXX: process in the tx path? (yes) */
-	ieee80211aa_handle_tx_skb(local, skb);
 
 	/* Need to make a copy before skb->cb gets cleared */
 	send_to_cooked = !!(info->flags & IEEE80211_TX_CTL_INJECTED) ||

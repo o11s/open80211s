@@ -767,13 +767,6 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 	if (WARN_ON(!sdata))
 		goto out;
 
-	/* XXX: garbage, the txinfo.control was overwritten by status, so
-	 * proper fix is to call this function from the tx path. */
-	memset(&info->control, 0, sizeof(info->control));
-	info->control.jiffies = jiffies;
-	info->control.vif = &sdata->vif;
-	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
-
 	/* re-queue it in either case since even a retransmission might fail */
 	skb_queue_tail(&sdata->mcast_rexmit_skb_queue, skb);
 	if (sdata->mcast_rexmit_skb_queue.qlen > sdata->mcast_rexmit_skb_max_size) {
