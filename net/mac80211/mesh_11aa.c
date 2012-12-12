@@ -749,10 +749,9 @@ unlock:
  * Will clone and enqueue the given skb for retransmission, and bump off any
  * old frames if the queue grows too long.
  */
-void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
+void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 			       struct sk_buff *skb)
 {
-	struct ieee80211_sub_if_data *sdata;
 	struct ieee80211_tx_info *info;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	__le16 fc = hdr->frame_control;
@@ -771,24 +770,12 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 	info = IEEE80211_SKB_CB(skb);
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-		if (!ieee80211_sdata_running(sdata) ||
-		    !ieee80211_vif_is_mesh(&sdata->vif) ||
-		    !ether_addr_equal(hdr->addr2, sdata->vif.addr))
-			continue;
-		/* This will be called only on the original tx */
-		if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
-			ieee80211aa_check_tx(sdata, hdr->addr3,
-				     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
-			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
-			info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
-		}
-		break;
+	if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
+		ieee80211aa_check_tx(sdata, hdr->addr3,
+			     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+		info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
+		info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 	}
-
-	/* huh? */
-	if (WARN_ON(!sdata))
-		goto out;
 
 	/* re-queue it in either case since even a retransmission might fail */
 	skb_queue_tail(&sdata->mcast_rexmit_skb_queue, skb);
@@ -796,6 +783,5 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 		skb = skb_dequeue(&sdata->mcast_rexmit_skb_queue);
 		dev_kfree_skb(skb);
 	}
-out:
 	rcu_read_unlock();
 }

@@ -96,7 +96,7 @@ void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da);
 void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 				   struct aa_entry *p, u32 seqnum);
-void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
+void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 			       struct sk_buff *skb);
 void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u32 seqnum);

@@ -612,7 +612,7 @@ ieee80211_tx_h_select_key(struct ieee80211_tx_data *tx)
 static ieee80211_tx_result debug_noinline
 ieee80211_tx_h_mesh_11aa(struct ieee80211_tx_data *tx)
 {
-	ieee80211aa_handle_tx_skb(tx->local, tx->skb);
+	ieee80211aa_handle_tx_skb(tx->sdata, tx->skb);
 	return TX_CONTINUE;
 }
 
