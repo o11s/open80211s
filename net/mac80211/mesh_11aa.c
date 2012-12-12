@@ -280,7 +280,9 @@ void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	memcpy(bar->gcr_ga, sa, ETH_ALEN);
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
-	ieee80211_tx_skb(sdata, skb);
+	IEEE80211_SKB_CB(skb)->control.vif = &sdata->vif;
+	//ieee80211_tx_skb(sdata, skb);
+	ieee80211_add_pending_skb(sdata->local, skb);
 }
 
 void ieee80211_send_ba_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
@@ -364,8 +366,8 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 			 struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
 {
-	aa_dbg("BA request %d missing frames",
-		 GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
+	aa_dbg("our BA will request %d missing frames",
+	       GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
 	/* Send a ba frame to the ta */
 	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
 }
@@ -418,7 +420,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 	/* will be GCR_WIN_SIZE if no zero bits found */
 	if (frame_n < GCR_WIN_SIZE) {
-		aa_dbg("BA contains %d missing frames",
+		aa_dbg("aggr BA ws=%d contains %d missing frames", s->prev_win,
 		       GCR_WIN_SIZE -
 		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
 
@@ -437,7 +439,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 		return;
 	} else {
 		/* we're done for this window */
-		aa_dbg("All frames delivered for window %d", s->prev_win);
+		aa_dbg("We're done for window %d", s->prev_win);
 		spin_lock_bh(&s->lock);
 		s->exp_bas = 0;
 		spin_unlock_bh(&s->lock);
@@ -492,15 +494,21 @@ void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 
 	/* Calculate the number of bits we need shift */
 	int shift = window_start - r->window_start;
-	/* if the sequence numbers rolled over */
-	if (shift <= 0 || shift > GCR_WIN_SIZE_RCV)
-		shift = GCR_WIN_SIZE_RCV;
+	aa_dbg("before ws:%d sh:%d \t[%lx][%lx]", r->window_start, shift, r->scoreboard[0], r->scoreboard[1]);
 
-	/* left shift N positions */
-	bitmap_shift_left(r->scoreboard, r->scoreboard,
+	/* if a big jump happens */
+	if (shift > GCR_WIN_SIZE_RCV)
+		shift = GCR_WIN_SIZE_RCV;
+	/* if the sequence numbers rolled over */
+	else if (shift <= 0)
+		shift = GCR_WIN_SIZE;
+
+	/* right shift N positions */
+	bitmap_shift_right(r->scoreboard, r->scoreboard,
 			  shift, GCR_WIN_SIZE_RCV);
 	/* Store new window */
 	r->window_start = window_start;
+	aa_dbg("after ws:%d sh:%d \t[%lx][%lx]", r->window_start, shift, r->scoreboard[0], r->scoreboard[1]);
 }
 
 void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
@@ -508,18 +516,32 @@ void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211aa_receiver *r = &p->receiver;
 
-	if (seqnum >= r->window_start + GCR_WIN_SIZE ||
-	    seqnum + GCR_WIN_SIZE < r->window_start) {
+	if (seqnum >= r->window_start + GCR_WIN_SIZE_RCV) {
 		/* shift scoreboard to match the old sender window */
 		u16 ws = calculate_window_start(seqnum - GCR_WIN_SIZE);
 		ieee80211aa_flush_scoreboard(sdata, r, ws);
+	} else if (r->window_start == 65408 && seqnum < GCR_WIN_SIZE) {
+		/* THIS IS A CORNER CASE FOR ROLLING OVER */
+		ieee80211aa_flush_scoreboard(sdata, r, 65472);
+	} else if (r->window_start == 65472 && seqnum >= GCR_WIN_SIZE) {
+		/* THIS IS A CORNER CASE FOR ROLLING OVER */
+		ieee80211aa_flush_scoreboard(sdata, r, 0);
 	}
 
 	/* shouldn't happen */
-	if (WARN_ON(seqnum - r->window_start > GCR_WIN_SIZE_RCV))
+	if (WARN_ON((seqnum - r->window_start > GCR_WIN_SIZE_RCV) && (r->window_start > 0 && r->window_start < 65408))) {
+		aa_dbg("This should not happen outside the rolling over procedure");
+		aa_dbg("seqnum: %d r->window_start: %d", seqnum, r->window_start);
 		return;
+	}
 
-	set_bit(seqnum - r->window_start, r->scoreboard);
+	if (r->window_start == 65472 && seqnum < GCR_WIN_SIZE) {
+		/* THIS IS A CORNER CASE FOR ROLLING OVER yy*/
+		set_bit(GCR_WIN_SIZE + seqnum, r->scoreboard);
+	} else {
+		set_bit(seqnum - r->window_start, r->scoreboard);
+	}
+
 }
 
 /* Handle BAR path - process BAR frame
@@ -759,6 +781,7 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_local *local,
 			ieee80211aa_check_tx(sdata, hdr->addr3,
 				     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
 			info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
+			info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 		}
 		break;
 	}
