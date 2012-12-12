@@ -173,16 +173,14 @@ static void jz_battery_external_power_changed(struct power_supply *psy)
 {
 	struct jz_battery *jz_battery = psy_to_jz_battery(psy);
 
-	cancel_delayed_work(&jz_battery->work);
-	schedule_delayed_work(&jz_battery->work, 0);
+	mod_delayed_work(system_wq, &jz_battery->work, 0);
 }
 
 static irqreturn_t jz_battery_charge_irq(int irq, void *data)
 {
 	struct jz_battery *jz_battery = data;
 
-	cancel_delayed_work(&jz_battery->work);
-	schedule_delayed_work(&jz_battery->work, 0);
+	mod_delayed_work(system_wq, &jz_battery->work, 0);
 
 	return IRQ_HANDLED;
 }
@@ -240,7 +238,7 @@ static void jz_battery_work(struct work_struct *work)
 	schedule_delayed_work(&jz_battery->work, interval);
 }
 
-static int __devinit jz_battery_probe(struct platform_device *pdev)
+static int jz_battery_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct jz_battery_platform_data *pdata = pdev->dev.parent->platform_data;
@@ -378,7 +376,7 @@ err_free:
 	return ret;
 }
 
-static int __devexit jz_battery_remove(struct platform_device *pdev)
+static int jz_battery_remove(struct platform_device *pdev)
 {
 	struct jz_battery *jz_battery = platform_get_drvdata(pdev);
 
@@ -433,7 +431,7 @@ static const struct dev_pm_ops jz_battery_pm_ops = {
 
 static struct platform_driver jz_battery_driver = {
 	.probe		= jz_battery_probe,
-	.remove		= __devexit_p(jz_battery_remove),
+	.remove		= jz_battery_remove,
 	.driver = {
 		.name = "jz4740-battery",
 		.owner = THIS_MODULE,

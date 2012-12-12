@@ -121,6 +121,11 @@
 #define MSR_P6_EVNTSEL0			0x00000186
 #define MSR_P6_EVNTSEL1			0x00000187
 
+#define MSR_KNC_PERFCTR0               0x00000020
+#define MSR_KNC_PERFCTR1               0x00000021
+#define MSR_KNC_EVNTSEL0               0x00000028
+#define MSR_KNC_EVNTSEL1               0x00000029
+
 /* AMD64 MSRs. Not complete. See the architecture manual for a more
    complete list. */
 
@@ -248,6 +253,9 @@
 
 #define MSR_IA32_PERF_STATUS		0x00000198
 #define MSR_IA32_PERF_CTL		0x00000199
+#define MSR_AMD_PSTATE_DEF_BASE		0xc0010064
+#define MSR_AMD_PERF_STATUS		0xc0010063
+#define MSR_AMD_PERF_CTL		0xc0010062
 
 #define MSR_IA32_MPERF			0x000000e7
 #define MSR_IA32_APERF			0x000000e8
@@ -328,6 +336,8 @@
 #define MSR_IA32_MISC_ENABLE_DCU_PREF_DISABLE	(1ULL << 37)
 #define MSR_IA32_MISC_ENABLE_TURBO_DISABLE	(1ULL << 38)
 #define MSR_IA32_MISC_ENABLE_IP_PREF_DISABLE	(1ULL << 39)
+
+#define MSR_IA32_TSC_DEADLINE		0x000006E0
 
 /* P4/Xeon+ specific */
 #define MSR_IA32_MCG_EAX		0x00000180

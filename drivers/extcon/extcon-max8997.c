@@ -271,8 +271,6 @@ out:
 static int max8997_muic_handle_charger_type_detach(
 				struct max8997_muic_info *info)
 {
-	int ret = 0;
-
 	switch (info->pre_charger_type) {
 	case MAX8997_CHARGER_TYPE_USB:
 		extcon_set_cable_state(info->edev, "USB", false);
@@ -290,11 +288,11 @@ static int max8997_muic_handle_charger_type_detach(
 		extcon_set_cable_state(info->edev, "Fast-charger", false);
 		break;
 	default:
-		ret = -EINVAL;
+		return -EINVAL;
 		break;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int max8997_muic_handle_charger_type(struct max8997_muic_info *info,
@@ -428,7 +426,7 @@ static void max8997_muic_detect_dev(struct max8997_muic_info *info)
 	max8997_muic_handle_charger_type(info, chg_type);
 }
 
-static int __devinit max8997_muic_probe(struct platform_device *pdev)
+static int max8997_muic_probe(struct platform_device *pdev)
 {
 	struct max8997_dev *max8997 = dev_get_drvdata(pdev->dev.parent);
 	struct max8997_platform_data *pdata = dev_get_platdata(max8997->dev);
@@ -510,7 +508,7 @@ err_kfree:
 	return ret;
 }
 
-static int __devexit max8997_muic_remove(struct platform_device *pdev)
+static int max8997_muic_remove(struct platform_device *pdev)
 {
 	struct max8997_muic_info *info = platform_get_drvdata(pdev);
 	int i;
@@ -533,7 +531,7 @@ static struct platform_driver max8997_muic_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe		= max8997_muic_probe,
-	.remove		= __devexit_p(max8997_muic_remove),
+	.remove		= max8997_muic_remove,
 };
 
 module_platform_driver(max8997_muic_driver);

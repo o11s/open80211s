@@ -480,19 +480,11 @@ void iwl_trans_pcie_txq_enable(struct iwl_trans *trans, int txq_id, int fifo,
 void iwl_trans_pcie_txq_disable(struct iwl_trans *trans, int txq_id)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-	u16 rd_ptr, wr_ptr;
-	int n_bd = trans_pcie->txq[txq_id].q.n_bd;
 
 	if (!test_and_clear_bit(txq_id, trans_pcie->queue_used)) {
 		WARN_ONCE(1, "queue %d not used", txq_id);
 		return;
 	}
-
-	rd_ptr = iwl_read_prph(trans, SCD_QUEUE_RDPTR(txq_id)) & (n_bd - 1);
-	wr_ptr = iwl_read_prph(trans, SCD_QUEUE_WRPTR(txq_id));
-
-	WARN_ONCE(rd_ptr != wr_ptr, "queue %d isn't empty: [%d,%d]",
-		  txq_id, rd_ptr, wr_ptr);
 
 	iwl_txq_set_inactive(trans, txq_id);
 	IWL_DEBUG_TX_QUEUES(trans, "Deactivate queue %d\n", txq_id);
@@ -521,12 +513,7 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	u16 copy_size, cmd_size;
 	bool had_nocopy = false;
 	int i;
-	u8 *cmd_dest;
-#ifdef CONFIG_IWLWIFI_DEVICE_TRACING
-	const void *trace_bufs[IWL_MAX_CMD_TFDS + 1] = {};
-	int trace_lens[IWL_MAX_CMD_TFDS + 1] = {};
-	int trace_idx;
-#endif
+	u32 cmd_pos;
 
 	copy_size = sizeof(out_cmd->hdr);
 	cmd_size = sizeof(out_cmd->hdr);
@@ -584,15 +571,31 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 					 INDEX_TO_SEQ(q->write_ptr));
 
 	/* and copy the data that needs to be copied */
-
-	cmd_dest = out_cmd->payload;
+	cmd_pos = offsetof(struct iwl_device_cmd, payload);
 	for (i = 0; i < IWL_MAX_CMD_TFDS; i++) {
 		if (!cmd->len[i])
 			continue;
 		if (cmd->dataflags[i] & IWL_HCMD_DFL_NOCOPY)
 			break;
-		memcpy(cmd_dest, cmd->data[i], cmd->len[i]);
-		cmd_dest += cmd->len[i];
+		memcpy((u8 *)out_cmd + cmd_pos, cmd->data[i], cmd->len[i]);
+		cmd_pos += cmd->len[i];
+	}
+
+	WARN_ON_ONCE(txq->entries[idx].copy_cmd);
+
+	/*
+	 * since out_cmd will be the source address of the FH, it will write
+	 * the retry count there. So when the user needs to receivce the HCMD
+	 * that corresponds to the response in the response handler, it needs
+	 * to set CMD_WANT_HCMD.
+	 */
+	if (cmd->flags & CMD_WANT_HCMD) {
+		txq->entries[idx].copy_cmd =
+			kmemdup(out_cmd, cmd_pos, GFP_ATOMIC);
+		if (unlikely(!txq->entries[idx].copy_cmd)) {
+			idx = -ENOMEM;
+			goto out;
+		}
 	}
 
 	IWL_DEBUG_HC(trans,
@@ -612,11 +615,6 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 	dma_unmap_len_set(out_meta, len, copy_size);
 
 	iwlagn_txq_attach_buf_to_tfd(trans, txq, phys_addr, copy_size, 1);
-#ifdef CONFIG_IWLWIFI_DEVICE_TRACING
-	trace_bufs[0] = &out_cmd->hdr;
-	trace_lens[0] = copy_size;
-	trace_idx = 1;
-#endif
 
 	for (i = 0; i < IWL_MAX_CMD_TFDS; i++) {
 		if (!cmd->len[i])
@@ -635,25 +633,14 @@ static int iwl_enqueue_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd)
 
 		iwlagn_txq_attach_buf_to_tfd(trans, txq, phys_addr,
 					     cmd->len[i], 0);
-#ifdef CONFIG_IWLWIFI_DEVICE_TRACING
-		trace_bufs[trace_idx] = cmd->data[i];
-		trace_lens[trace_idx] = cmd->len[i];
-		trace_idx++;
-#endif
 	}
 
 	out_meta->flags = cmd->flags;
 
 	txq->need_update = 1;
 
-	/* check that tracing gets all possible blocks */
-	BUILD_BUG_ON(IWL_MAX_CMD_TFDS + 1 != 3);
-#ifdef CONFIG_IWLWIFI_DEVICE_TRACING
-	trace_iwlwifi_dev_hcmd(trans->dev, cmd->flags,
-			       trace_bufs[0], trace_lens[0],
-			       trace_bufs[1], trace_lens[1],
-			       trace_bufs[2], trace_lens[2]);
-#endif
+	trace_iwlwifi_dev_hcmd(trans->dev, cmd, cmd_size,
+			       &out_cmd->hdr, copy_size);
 
 	/* start timer if queue currently empty */
 	if (q->read_ptr == q->write_ptr && trans_pcie->wd_timeout)

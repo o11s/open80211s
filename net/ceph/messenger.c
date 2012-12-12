@@ -1073,16 +1073,13 @@ static int write_partial_msg_pages(struct ceph_connection *con)
 			BUG_ON(kaddr == NULL);
 			base = kaddr + con->out_msg_pos.page_pos + bio_offset;
 			crc = crc32c(crc, base, len);
+			kunmap(page);
 			msg->footer.data_crc = cpu_to_le32(crc);
 			con->out_msg_pos.did_page_crc = true;
 		}
 		ret = ceph_tcp_sendpage(con->sock, page,
 				      con->out_msg_pos.page_pos + bio_offset,
 				      len, 1);
-
-		if (do_datacrc)
-			kunmap(page);
-
 		if (ret <= 0)
 			goto out;
 
@@ -2303,10 +2300,11 @@ restart:
 			mutex_unlock(&con->mutex);
 			return;
 		} else {
-			con->ops->put(con);
 			dout("con_work %p FAILED to back off %lu\n", con,
 			     con->delay);
+			set_bit(CON_FLAG_BACKOFF, &con->flags);
 		}
+		goto done;
 	}
 
 	if (con->state == CON_STATE_STANDBY) {
@@ -2752,7 +2750,8 @@ static int ceph_con_in_msg_alloc(struct ceph_connection *con, int *skip)
 		msg = con->ops->alloc_msg(con, hdr, skip);
 		mutex_lock(&con->mutex);
 		if (con->state != CON_STATE_OPEN) {
-			ceph_msg_put(msg);
+			if (msg)
+				ceph_msg_put(msg);
 			return -EAGAIN;
 		}
 		con->in_msg = msg;

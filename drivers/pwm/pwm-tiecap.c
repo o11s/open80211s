@@ -32,6 +32,7 @@
 #define CAP3			0x10
 #define CAP4			0x14
 #define ECCTL2			0x2A
+#define ECCTL2_APWM_POL_LOW	BIT(10)
 #define ECCTL2_APWM_MODE	BIT(9)
 #define ECCTL2_SYNC_SEL_DISA	(BIT(7) | BIT(6))
 #define ECCTL2_TSCTR_FREERUN	BIT(4)
@@ -59,7 +60,7 @@ static int ecap_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	unsigned long period_cycles, duty_cycles;
 	unsigned int reg_val;
 
-	if (period_ns < 0 || duty_ns < 0 || period_ns > NSEC_PER_SEC)
+	if (period_ns > NSEC_PER_SEC)
 		return -ERANGE;
 
 	c = pc->clk_rate;
@@ -111,6 +112,26 @@ static int ecap_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	return 0;
 }
 
+static int ecap_pwm_set_polarity(struct pwm_chip *chip, struct pwm_device *pwm,
+		enum pwm_polarity polarity)
+{
+	struct ecap_pwm_chip *pc = to_ecap_pwm_chip(chip);
+	unsigned short reg_val;
+
+	pm_runtime_get_sync(pc->chip.dev);
+	reg_val = readw(pc->mmio_base + ECCTL2);
+	if (polarity == PWM_POLARITY_INVERSED)
+		/* Duty cycle defines LOW period of PWM */
+		reg_val |= ECCTL2_APWM_POL_LOW;
+	else
+		/* Duty cycle defines HIGH period of PWM */
+		reg_val &= ~ECCTL2_APWM_POL_LOW;
+
+	writew(reg_val, pc->mmio_base + ECCTL2);
+	pm_runtime_put_sync(pc->chip.dev);
+	return 0;
+}
+
 static int ecap_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm)
 {
 	struct ecap_pwm_chip *pc = to_ecap_pwm_chip(chip);
@@ -157,12 +178,13 @@ static void ecap_pwm_free(struct pwm_chip *chip, struct pwm_device *pwm)
 static const struct pwm_ops ecap_pwm_ops = {
 	.free		= ecap_pwm_free,
 	.config		= ecap_pwm_config,
+	.set_polarity	= ecap_pwm_set_polarity,
 	.enable		= ecap_pwm_enable,
 	.disable	= ecap_pwm_disable,
 	.owner		= THIS_MODULE,
 };
 
-static int __devinit ecap_pwm_probe(struct platform_device *pdev)
+static int ecap_pwm_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct resource *r;
@@ -213,7 +235,7 @@ static int __devinit ecap_pwm_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit ecap_pwm_remove(struct platform_device *pdev)
+static int ecap_pwm_remove(struct platform_device *pdev)
 {
 	struct ecap_pwm_chip *pc = platform_get_drvdata(pdev);
 
@@ -227,7 +249,7 @@ static struct platform_driver ecap_pwm_driver = {
 		.name = "ecap",
 	},
 	.probe = ecap_pwm_probe,
-	.remove = __devexit_p(ecap_pwm_remove),
+	.remove = ecap_pwm_remove,
 };
 
 module_platform_driver(ecap_pwm_driver);

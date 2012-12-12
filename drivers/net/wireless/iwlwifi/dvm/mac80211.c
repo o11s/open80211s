@@ -195,7 +195,7 @@ int iwlagn_mac_setup_register(struct iwl_priv *priv,
 			ARRAY_SIZE(iwlagn_iface_combinations_dualmode);
 	}
 
-	hw->wiphy->max_remain_on_channel_duration = 1000;
+	hw->wiphy->max_remain_on_channel_duration = 500;
 
 	hw->wiphy->flags |= WIPHY_FLAG_CUSTOM_REGULATORY |
 			    WIPHY_FLAG_DISABLE_BEACON_HINTS |
@@ -511,15 +511,17 @@ static void iwlagn_mac_set_wakeup(struct ieee80211_hw *hw, bool enabled)
 }
 #endif
 
-static void iwlagn_mac_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
+static void iwlagn_mac_tx(struct ieee80211_hw *hw,
+			  struct ieee80211_tx_control *control,
+			  struct sk_buff *skb)
 {
 	struct iwl_priv *priv = IWL_MAC80211_GET_DVM(hw);
 
 	IWL_DEBUG_TX(priv, "dev->xmit(%d bytes) at rate 0x%02x\n", skb->len,
 		     ieee80211_get_tx_rate(hw, IEEE80211_SKB_CB(skb))->bitrate);
 
-	if (iwlagn_tx_skb(priv, skb))
-		dev_kfree_skb_any(skb);
+	if (iwlagn_tx_skb(priv, control->sta, skb))
+		ieee80211_free_txskb(hw, skb);
 }
 
 static void iwlagn_mac_update_tkip_key(struct ieee80211_hw *hw,
@@ -1351,6 +1353,20 @@ static int iwlagn_mac_add_interface(struct ieee80211_hw *hw,
 
 	vif_priv->ctx = ctx;
 	ctx->vif = vif;
+
+	/*
+	 * In SNIFFER device type, the firmware reports the FCS to
+	 * the host, rather than snipping it off. Unfortunately,
+	 * mac80211 doesn't (yet) provide a per-packet flag for
+	 * this, so that we have to set the hardware flag based
+	 * on the interfaces added. As the monitor interface can
+	 * only be present by itself, and will be removed before
+	 * other interfaces are added, this is safe.
+	 */
+	if (vif->type == NL80211_IFTYPE_MONITOR)
+		priv->hw->flags |= IEEE80211_HW_RX_INCLUDES_FCS;
+	else
+		priv->hw->flags &= ~IEEE80211_HW_RX_INCLUDES_FCS;
 
 	err = iwl_setup_interface(priv, ctx);
 	if (!err || reset)

@@ -15,7 +15,6 @@
 #include <linux/device.h>
 #include <linux/mmc/host.h>
 
-#include <plat/board.h>
 #include <plat/omap_hwmod.h>
 
 #define OMAP15XX_NR_MMC		1
@@ -127,6 +126,7 @@ struct omap_mmc_platform_data {
 		/* we can put the features above into this variable */
 #define HSMMC_HAS_PBIAS		(1 << 0)
 #define HSMMC_HAS_UPDATED_RESET	(1 << 1)
+#define HSMMC_HAS_HSPE_SUPPORT	(1 << 2)
 		unsigned features;
 
 		int switch_pin;			/* gpio (card detect) */

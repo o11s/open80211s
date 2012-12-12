@@ -103,8 +103,6 @@
 		};
 
 		sdhci@70000000 {
-			power-gpio = <&gpio0 2 1>;
-			power_always_enb;
 			status = "okay";
 		};
 
@@ -163,6 +161,10 @@
 
 		apb {
 			gpio0: gpio@fc980000 {
+			       status = "okay";
+			};
+
+			gpio@b3000000 {
 			       status = "okay";
 			};
 

@@ -284,7 +284,6 @@ msi_bus_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-#ifdef CONFIG_HOTPLUG
 static DEFINE_MUTEX(pci_remove_rescan_mutex);
 static ssize_t bus_rescan_store(struct bus_type *bus, const char *buf,
 				size_t count)
@@ -377,8 +376,6 @@ dev_bus_rescan_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-#endif
-
 #if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_ACPI)
 static ssize_t d3cold_allowed_store(struct device *dev,
 				    struct device_attribute *attr,
@@ -424,10 +421,8 @@ struct device_attribute pci_dev_attrs[] = {
 	__ATTR(broken_parity_status,(S_IRUGO|S_IWUSR),
 		broken_parity_status_show,broken_parity_status_store),
 	__ATTR(msi_bus, 0644, msi_bus_show, msi_bus_store),
-#ifdef CONFIG_HOTPLUG
 	__ATTR(remove, (S_IWUSR|S_IWGRP), NULL, remove_store),
 	__ATTR(rescan, (S_IWUSR|S_IWGRP), NULL, dev_rescan_store),
-#endif
 #if defined(CONFIG_PM_RUNTIME) && defined(CONFIG_ACPI)
 	__ATTR(d3cold_allowed, 0644, d3cold_allowed_show, d3cold_allowed_store),
 #endif
@@ -435,9 +430,7 @@ struct device_attribute pci_dev_attrs[] = {
 };
 
 struct device_attribute pcibus_dev_attrs[] = {
-#ifdef CONFIG_HOTPLUG
 	__ATTR(rescan, (S_IWUSR|S_IWGRP), NULL, dev_bus_rescan_store),
-#endif
 	__ATTR(cpuaffinity, S_IRUGO, pci_bus_show_cpumaskaffinity, NULL),
 	__ATTR(cpulistaffinity, S_IRUGO, pci_bus_show_cpulistaffinity, NULL),
 	__ATTR_NULL,
@@ -457,40 +450,6 @@ boot_vga_show(struct device *dev, struct device_attribute *attr, char *buf)
 		   IORESOURCE_ROM_SHADOW));
 }
 struct device_attribute vga_attr = __ATTR_RO(boot_vga);
-
-static void
-pci_config_pm_runtime_get(struct pci_dev *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct device *parent = dev->parent;
-
-	if (parent)
-		pm_runtime_get_sync(parent);
-	pm_runtime_get_noresume(dev);
-	/*
-	 * pdev->current_state is set to PCI_D3cold during suspending,
-	 * so wait until suspending completes
-	 */
-	pm_runtime_barrier(dev);
-	/*
-	 * Only need to resume devices in D3cold, because config
-	 * registers are still accessible for devices suspended but
-	 * not in D3cold.
-	 */
-	if (pdev->current_state == PCI_D3cold)
-		pm_runtime_resume(dev);
-}
-
-static void
-pci_config_pm_runtime_put(struct pci_dev *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct device *parent = dev->parent;
-
-	pm_runtime_put(dev);
-	if (parent)
-		pm_runtime_put_sync(parent);
-}
 
 static ssize_t
 pci_read_config(struct file *filp, struct kobject *kobj,

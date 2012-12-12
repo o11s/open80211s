@@ -5,6 +5,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/mmci.h>
 #include <linux/io.h>
+#include <linux/smp.h>
 #include <linux/init.h>
 #include <linux/of_address.h>
 #include <linux/of_fdt.h>
@@ -38,6 +39,7 @@
 #include <mach/motherboard.h>
 
 #include <plat/sched_clock.h>
+#include <plat/platsmp.h>
 
 #include "core.h"
 
@@ -530,6 +532,7 @@ static void __init v2m_init(void)
 
 MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.atag_offset	= 0x100,
+	.smp		= smp_ops(vexpress_smp_ops),
 	.map_io		= v2m_map_io,
 	.init_early	= v2m_init_early,
 	.init_irq	= v2m_init_irq,
@@ -538,8 +541,6 @@ MACHINE_START(VEXPRESS, "ARM-Versatile Express")
 	.init_machine	= v2m_init,
 	.restart	= v2m_restart,
 MACHINE_END
-
-#if defined(CONFIG_ARCH_VEXPRESS_DT)
 
 static struct map_desc v2m_rs1_io_desc __initdata = {
 	.virtual	= V2M_PERIPH,
@@ -588,7 +589,7 @@ void __init v2m_dt_init_early(void)
 		return;
 
 	/* Confirm board type against DT property, if available */
-	if (of_property_read_u32(allnodes, "arm,hbi", &dt_hbi) == 0) {
+	if (of_property_read_u32(of_allnodes, "arm,hbi", &dt_hbi) == 0) {
 		int site = v2m_get_master_site();
 		u32 id = readl(v2m_sysreg_base + (site == SYS_CFG_SITE_DB2 ?
 				V2M_SYS_PROCID1 : V2M_SYS_PROCID0));
@@ -658,11 +659,13 @@ static void __init v2m_dt_init(void)
 
 const static char *v2m_dt_match[] __initconst = {
 	"arm,vexpress",
+	"xen,xenvm",
 	NULL,
 };
 
 DT_MACHINE_START(VEXPRESS_DT, "ARM-Versatile Express")
 	.dt_compat	= v2m_dt_match,
+	.smp		= smp_ops(vexpress_smp_ops),
 	.map_io		= v2m_dt_map_io,
 	.init_early	= v2m_dt_init_early,
 	.init_irq	= v2m_dt_init_irq,
@@ -671,5 +674,3 @@ DT_MACHINE_START(VEXPRESS_DT, "ARM-Versatile Express")
 	.handle_irq	= gic_handle_irq,
 	.restart	= v2m_restart,
 MACHINE_END
-
-#endif

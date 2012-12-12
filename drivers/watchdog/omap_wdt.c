@@ -46,6 +46,7 @@
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <mach/hardware.h>
+#include <plat/cpu.h>
 #include <plat/prcm.h>
 
 #include "omap_wdt.h"
@@ -218,12 +219,16 @@ static long omap_wdt_ioctl(struct file *file, unsigned int cmd,
 	case WDIOC_GETSTATUS:
 		return put_user(0, (int __user *)arg);
 	case WDIOC_GETBOOTSTATUS:
+#ifdef CONFIG_ARCH_OMAP1
 		if (cpu_is_omap16xx())
 			return put_user(__raw_readw(ARM_SYSST),
 					(int __user *)arg);
+#endif
+#ifdef CONFIG_ARCH_OMAP2PLUS
 		if (cpu_is_omap24xx())
 			return put_user(omap_prcm_get_reset_sources(),
 					(int __user *)arg);
+#endif
 		return put_user(0, (int __user *)arg);
 	case WDIOC_KEEPALIVE:
 		spin_lock(&wdt_lock);
@@ -259,7 +264,7 @@ static const struct file_operations omap_wdt_fops = {
 	.llseek = no_llseek,
 };
 
-static int __devinit omap_wdt_probe(struct platform_device *pdev)
+static int omap_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res, *mem;
 	struct omap_wdt_dev *wdev;
@@ -354,7 +359,7 @@ static void omap_wdt_shutdown(struct platform_device *pdev)
 	}
 }
 
-static int __devexit omap_wdt_remove(struct platform_device *pdev)
+static int omap_wdt_remove(struct platform_device *pdev)
 {
 	struct omap_wdt_dev *wdev = platform_get_drvdata(pdev);
 	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -421,7 +426,7 @@ MODULE_DEVICE_TABLE(of, omap_wdt_of_match);
 
 static struct platform_driver omap_wdt_driver = {
 	.probe		= omap_wdt_probe,
-	.remove		= __devexit_p(omap_wdt_remove),
+	.remove		= omap_wdt_remove,
 	.shutdown	= omap_wdt_shutdown,
 	.suspend	= omap_wdt_suspend,
 	.resume		= omap_wdt_resume,

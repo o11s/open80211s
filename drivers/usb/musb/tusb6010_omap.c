@@ -17,7 +17,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
 #include <plat/dma.h>
-#include <plat/mux.h>
 
 #include "musb_core.h"
 #include "tusb6010.h"
@@ -662,8 +661,7 @@ void dma_controller_destroy(struct dma_controller *c)
 	kfree(tusb_dma);
 }
 
-struct dma_controller *__init
-dma_controller_create(struct musb *musb, void __iomem *base)
+struct dma_controller *dma_controller_create(struct musb *musb, void __iomem *base)
 {
 	void __iomem		*tbase = musb->ctrl_base;
 	struct tusb_omap_dma	*tusb_dma;

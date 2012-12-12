@@ -327,7 +327,7 @@ static int da9052_bat_interpolate(int vbat_lower, int  vbat_upper,
 	return tmp;
 }
 
-unsigned char da9052_determine_vc_tbl_index(unsigned char adc_temp)
+static unsigned char da9052_determine_vc_tbl_index(unsigned char adc_temp)
 {
 	int i;
 
@@ -345,6 +345,13 @@ unsigned char da9052_determine_vc_tbl_index(unsigned char adc_temp)
 		     && (adc_temp <= vc_tbl_ref[i]))
 				return i + 1;
 	}
+	/*
+	 * For some reason authors of the driver didn't presume that we can
+	 * end up here. It might be OK, but might be not, no one knows for
+	 * sure. Go check your battery, is it on fire?
+	 */
+	WARN_ON(1);
+	return 0;
 }
 
 static int da9052_bat_read_capacity(struct da9052_battery *bat, int *capacity)
@@ -569,7 +576,7 @@ static const char *const da9052_bat_irqs[] = {
 	"CHG END",
 };
 
-static s32 __devinit da9052_bat_probe(struct platform_device *pdev)
+static s32 da9052_bat_probe(struct platform_device *pdev)
 {
 	struct da9052_pdata *pdata;
 	struct da9052_battery *bat;
@@ -616,14 +623,14 @@ static s32 __devinit da9052_bat_probe(struct platform_device *pdev)
 	return 0;
 
 err:
-	for (; i >= 0; i--) {
+	while (--i >= 0) {
 		irq = platform_get_irq_byname(pdev, da9052_bat_irqs[i]);
 		free_irq(bat->da9052->irq_base + irq, bat);
 	}
 	kfree(bat);
 	return ret;
 }
-static int __devexit da9052_bat_remove(struct platform_device *pdev)
+static int da9052_bat_remove(struct platform_device *pdev)
 {
 	int i;
 	int irq;
@@ -641,7 +648,7 @@ static int __devexit da9052_bat_remove(struct platform_device *pdev)
 
 static struct platform_driver da9052_bat_driver = {
 	.probe = da9052_bat_probe,
-	.remove = __devexit_p(da9052_bat_remove),
+	.remove = da9052_bat_remove,
 	.driver = {
 		.name = "da9052-bat",
 		.owner = THIS_MODULE,
