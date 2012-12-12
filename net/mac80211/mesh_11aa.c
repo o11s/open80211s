@@ -12,16 +12,20 @@
 #include "mesh_11aa.h"
 
 bool aa_allocated = false;
-static struct kmem_cache *aa_cache;
+static struct kmem_cache *aa_cache_tx;
+static struct kmem_cache *aa_cache_rx;
 
 void ieee80211aa_init(void)
 {
 	if (!aa_allocated) {
 		aa_allocated = true;
-		aa_cache = kmem_cache_create("aa_mc", sizeof(struct aa_entry),
+		aa_cache_tx = kmem_cache_create("aa_mc_tx", sizeof(struct ieee80211aa_sender),
 					     0, SLAB_POISON | SLAB_RED_ZONE,
 					     NULL);
-		printk(KERN_DEBUG "aa_mc mem cache created");
+		aa_cache_rx = kmem_cache_create("aa_mc_rx", sizeof(struct ieee80211aa_receiver),
+					     0, SLAB_POISON | SLAB_RED_ZONE,
+					     NULL);
+		printk(KERN_DEBUG "aa_mcc mem cache created");
 	}
 }
 
@@ -30,7 +34,8 @@ void ieee80211aa_stop(void)
 	if (!aa_allocated)
 		return;
 
-	kmem_cache_destroy(aa_cache);
+	kmem_cache_destroy(aa_cache_tx);
+	kmem_cache_destroy(aa_cache_rx);
 	aa_allocated = false;
 }
 
@@ -38,39 +43,58 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 {
 	int i;
 
-	sdata->u.mesh.aamc = kmalloc(sizeof(struct aa_mc), GFP_KERNEL);
-	if (!sdata->u.mesh.aamc) {
+	sdata->u.mesh.aamc_tx = kmalloc(sizeof(struct aa_mc), GFP_KERNEL);
+	if (!sdata->u.mesh.aamc_tx) {
 		WARN_ON(1);
 		return -ENOMEM;
 	}
-	sdata->u.mesh.aamc->idx_mask = AA_BUCKETS - 1;
-	for (i = 0; i < AA_BUCKETS; i++) {
-		INIT_LIST_HEAD(&sdata->u.mesh.aamc->bucket[i]);
-		spin_lock_init(&sdata->u.mesh.aamc->bucket_lock[i]);
+	sdata->u.mesh.aamc_rx = kmalloc(sizeof(struct aa_mc), GFP_KERNEL);
+	if (!sdata->u.mesh.aamc_rx) {
+		WARN_ON(1);
+		return -ENOMEM;
 	}
-	return 0;
 
+	sdata->u.mesh.aamc_tx->idx_mask = AA_BUCKETS - 1;
+	sdata->u.mesh.aamc_rx->idx_mask = AA_BUCKETS - 1;
+	for (i = 0; i < AA_BUCKETS; i++) {
+		INIT_LIST_HEAD(&sdata->u.mesh.aamc_tx->bucket[i]);
+		spin_lock_init(&sdata->u.mesh.aamc_tx->bucket_lock[i]);
+		INIT_LIST_HEAD(&sdata->u.mesh.aamc_rx->bucket[i]);
+		spin_lock_init(&sdata->u.mesh.aamc_rx->bucket_lock[i]);
+	}
+	aa_dbg("ieee80211aa_mcc_init completed");
+	return 0;
 }
 
 void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 {
-	struct aa_mc *aamc = sdata->u.mesh.aamc;
-	struct aa_entry *p, *n;
+	struct aa_mc *aamc_tx = sdata->u.mesh.aamc_tx;
+	struct aa_mc *aamc_rx = sdata->u.mesh.aamc_rx;
+	struct ieee80211aa_sender *tx_p, *tx_n;
+	struct ieee80211aa_receiver *rx_p, *rx_n;
 	int i;
 
-	if(WARN_ON(!aa_allocated || !aamc))
+	if(WARN_ON(!aa_allocated || !aamc_tx || !aamc_rx))
 		return;
 
-	for (i = 0; i < AA_BUCKETS; i++)
-		list_for_each_entry_safe(p, n, &aamc->bucket[i], list) {
-			aa_dbg("baleeting list entry %p in bucket %d", &p->list, i);
-			aa_dbg("pointers next: %p, prev: %p", p->list.next, p->list.prev);
-			list_del(&p->list);
-			kmem_cache_free(aa_cache, p);
+	for (i = 0; i < AA_BUCKETS; i++) {
+		list_for_each_entry_safe(tx_p, tx_n, &aamc_tx->bucket[i], list) {
+			aa_dbg("baleeting list entry %p in bucket %d", &tx_p->list, i);
+			aa_dbg("pointers next: %p, prev: %p", tx_p->list.next, tx_p->list.prev);
+			list_del(&tx_p->list);
+			kmem_cache_free(aa_cache_tx, tx_p);
 		}
-
-	kfree(aamc);
-	sdata->u.mesh.aamc = NULL;
+		list_for_each_entry_safe(rx_p, rx_n, &aamc_rx->bucket[i], list) {
+			aa_dbg("baleeting list entry %p in bucket %d", &rx_p->list, i);
+			aa_dbg("pointers next: %p, prev: %p", rx_p->list.next, rx_p->list.prev);
+			list_del(&rx_p->list);
+			kmem_cache_free(aa_cache_rx, rx_p);
+		}
+	}
+	kfree(aamc_tx);
+	kfree(aamc_rx);
+	sdata->u.mesh.aamc_tx = NULL;
+	sdata->u.mesh.aamc_rx = NULL;
 }
 
 /**
@@ -237,20 +261,27 @@ static u16 calculate_window_start(u32 seqnum)
 	return (u16)(window_start % 65536);
 }
 
-void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
-			     struct aa_entry *p, u32 seqnum)
+void ieee80211aa_init_receiver(struct ieee80211_sub_if_data *sdata,
+			     struct ieee80211aa_receiver *receiver, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
-	p->sender.curr_win = window_start;
-	p->sender.prev_win = window_start;
-	spin_lock_init(&p->sender.lock);
-	/* Fill with 1s*/
-	bitmap_fill(p->sender.scoreboard, GCR_WIN_SIZE);
-
-	p->receiver.window_start = window_start;
+	receiver->window_start = window_start;
 	/* Fill with 0s */
-	bitmap_zero(p->receiver.scoreboard, GCR_WIN_SIZE_RCV);
-	aa_dbg("ieee80211aa_init_struct %pM", p->sa);
+	bitmap_zero(receiver->scoreboard, GCR_WIN_SIZE_RCV);
+	aa_dbg("ieee80211aa_init_receiver %pM", receiver->sa);
+}
+
+void ieee80211aa_init_sender(struct ieee80211_sub_if_data *sdata,
+			     struct ieee80211aa_sender *sender, u32 seqnum)
+{
+	u16 window_start = calculate_window_start(seqnum);
+	sender->curr_win = window_start;
+	sender->prev_win = window_start;
+	spin_lock_init(&sender->lock);
+	/* Fill with 1s*/
+	bitmap_fill(sender->scoreboard, GCR_WIN_SIZE);
+
+	aa_dbg("ieee80211aa_init_sender %pM", sender->sa);
 }
 
 void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
@@ -364,12 +395,12 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
-			 struct ieee80211aa_receiver *r, u8 *ta, u8 *sa)
+			 struct ieee80211aa_receiver *receiver, u8 *ta, u8 *sa)
 {
 	aa_dbg("our BA will request %d missing frames",
-	       GCR_WIN_SIZE - bitmap_weight(r->scoreboard, GCR_WIN_SIZE));
+	       GCR_WIN_SIZE - bitmap_weight(receiver->scoreboard, GCR_WIN_SIZE));
 	/* Send a ba frame to the ta */
-	ieee80211_send_ba_gcr(sdata, ta, sa, r->window_start, r->scoreboard[0]);
+	ieee80211_send_ba_gcr(sdata, ta, sa, receiver->window_start, receiver->scoreboard[0]);
 }
 
 /* Data retransmission path */
@@ -395,7 +426,6 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		 * seq_num are close enough
 		 */
 		seqnum = (get_unaligned_le32(&mesh_hdr->seqnum) % 65536);
-
 		/* Only if seqnum and sa matches */
 		if (seqnum != req_sn ||
 		    !ether_addr_equal(sa, hdr->addr3))
@@ -447,35 +477,32 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
-				  struct aa_entry *p, u32 seqnum)
+				  struct ieee80211aa_sender *sender, u32 seqnum)
 {
-	struct ieee80211aa_sender *s = &p->sender;
 
 	/* time to retransmit if necessary */
-	if (s->exp_bas && seqnum > s->ba_expire) {
+	if (sender->exp_bas && seqnum > sender->ba_expire) {
 		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d req:%d rcv:%d bitm:%d",
-		       seqnum, s->ba_expire, s->prev_win,
-		       s->exp_bas, s->rcv_bas,
-		       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
-		ieee80211aa_retransmit(sdata, s, p->sa);
+		       seqnum, sender->ba_expire, sender->prev_win,
+		       sender->exp_bas, sender->rcv_bas,
+		       bitmap_weight(sender->scoreboard, GCR_WIN_SIZE));
+		ieee80211aa_retransmit(sdata, sender, sender->sa);
 	}
 }
 
 void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
-				 struct aa_entry *p, u32 seqnum)
+				 struct ieee80211aa_sender *sender, u32 seqnum)
 {
-	struct ieee80211aa_sender *s = &p->sender;
-
 	/* did we just finish or roll over a window? */
-	if (seqnum >= s->curr_win + GCR_WIN_SIZE ||
-	    seqnum + GCR_WIN_SIZE < s->curr_win) {
+	if (seqnum >= sender->curr_win + GCR_WIN_SIZE ||
+	    seqnum + GCR_WIN_SIZE < sender->curr_win) {
 		u16 window_start = calculate_window_start(seqnum);
-		ieee80211aa_send_bar(sdata, s, p->sa,
-				     s->curr_win, s->ba_expire);
+		ieee80211aa_send_bar(sdata, sender, sender->sa,
+				     sender->curr_win, sender->ba_expire);
 		/* new window */
-		spin_lock_bh(&p->sender.lock);
-		s->curr_win = window_start;
-		spin_unlock_bh(&p->sender.lock);
+		spin_lock_bh(&sender->lock);
+		sender->curr_win = window_start;
+		spin_unlock_bh(&sender->lock);
 	}
 }
 
@@ -494,7 +521,6 @@ void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 
 	/* Calculate the number of bits we need shift */
 	int shift = window_start - r->window_start;
-	aa_dbg("before ws:%d sh:%d \t[%lx][%lx]", r->window_start, shift, r->scoreboard[0], r->scoreboard[1]);
 
 	/* if a big jump happens */
 	if (shift > GCR_WIN_SIZE_RCV)
@@ -508,40 +534,36 @@ void ieee80211aa_flush_scoreboard(struct ieee80211_sub_if_data *sdata,
 			  shift, GCR_WIN_SIZE_RCV);
 	/* Store new window */
 	r->window_start = window_start;
-	aa_dbg("after ws:%d sh:%d \t[%lx][%lx]", r->window_start, shift, r->scoreboard[0], r->scoreboard[1]);
 }
 
 void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
-				 struct aa_entry *p, u32 seqnum)
+				 struct ieee80211aa_receiver *receiver, u32 seqnum)
 {
-	struct ieee80211aa_receiver *r = &p->receiver;
-
-	if (seqnum >= r->window_start + GCR_WIN_SIZE_RCV) {
+	if (seqnum >= receiver->window_start + GCR_WIN_SIZE_RCV) {
 		/* shift scoreboard to match the old sender window */
 		u16 ws = calculate_window_start(seqnum - GCR_WIN_SIZE);
-		ieee80211aa_flush_scoreboard(sdata, r, ws);
-	} else if (r->window_start == 65408 && seqnum < GCR_WIN_SIZE) {
+		ieee80211aa_flush_scoreboard(sdata, receiver, ws);
+	} else if (receiver->window_start == 65408 && seqnum < GCR_WIN_SIZE) {
 		/* THIS IS A CORNER CASE FOR ROLLING OVER */
-		ieee80211aa_flush_scoreboard(sdata, r, 65472);
-	} else if (r->window_start == 65472 && seqnum >= GCR_WIN_SIZE) {
+		ieee80211aa_flush_scoreboard(sdata, receiver, 65472);
+	} else if (receiver->window_start == 65472 && seqnum >= GCR_WIN_SIZE) {
 		/* THIS IS A CORNER CASE FOR ROLLING OVER */
-		ieee80211aa_flush_scoreboard(sdata, r, 0);
+		ieee80211aa_flush_scoreboard(sdata, receiver, 0);
 	}
 
 	/* shouldn't happen */
-	if (WARN_ON((seqnum - r->window_start > GCR_WIN_SIZE_RCV) && (r->window_start > 0 && r->window_start < 65408))) {
+	if (WARN_ON((seqnum - receiver->window_start > GCR_WIN_SIZE_RCV) && (receiver->window_start > 0 && receiver->window_start < 65408))) {
 		aa_dbg("This should not happen outside the rolling over procedure");
-		aa_dbg("seqnum: %d r->window_start: %d", seqnum, r->window_start);
+		aa_dbg("seqnum: %d r->window_start: %d", seqnum, receiver->window_start);
 		return;
 	}
 
-	if (r->window_start == 65472 && seqnum < GCR_WIN_SIZE) {
+	if (receiver->window_start == 65472 && seqnum < GCR_WIN_SIZE) {
 		/* THIS IS A CORNER CASE FOR ROLLING OVER yy*/
-		set_bit(GCR_WIN_SIZE + seqnum, r->scoreboard);
+		set_bit(GCR_WIN_SIZE + seqnum, receiver->scoreboard);
 	} else {
-		set_bit(seqnum - r->window_start, r->scoreboard);
+		set_bit(seqnum - receiver->window_start, receiver->scoreboard);
 	}
-
 }
 
 /* Handle BAR path - process BAR frame
@@ -549,33 +571,31 @@ void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
  * return true if BA needs to be sent.
  */
 bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
-			     struct aa_entry *p, u8 *ta,
+			     struct ieee80211aa_receiver *receiver, u8 *ta,
 			     u8 *sa, u16 window_start)
 {
-	struct ieee80211aa_receiver *r = &p->receiver;
-
-	if (window_start >= r->window_start + GCR_WIN_SIZE ||
-	    window_start + GCR_WIN_SIZE < r->window_start) {
+	if (window_start >= receiver->window_start + GCR_WIN_SIZE ||
+	    window_start + GCR_WIN_SIZE < receiver->window_start) {
 		aa_dbg("BAR received with new window_start %d previous was:%d",
-			 window_start, r->window_start);
-		ieee80211aa_flush_scoreboard(sdata, r, window_start);
+			 window_start, receiver->window_start);
+		ieee80211aa_flush_scoreboard(sdata, receiver, window_start);
 		return true;
-	} else if (window_start == r->window_start) {
+	} else if (window_start == receiver->window_start) {
 		aa_dbg("BAR received in current window_start %d",
 			 window_start);
 		return true;
 	}
 	aa_dbg("BAR discarded due old window_start: %d expected:%d",
-	       window_start, r->window_start);
+	       window_start, receiver->window_start);
 	return false;
 }
 
 void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
-	struct aa_mc *aamc = sdata->u.mesh.aamc;
+	struct aa_mc *aamc = sdata->u.mesh.aamc_rx;
 	u8 idx;
-	struct aa_entry *p;
+	struct ieee80211aa_receiver *receiver;
 	bool tx = false;
 	u16 window_start = le16_to_cpu(bar->start_seq_num);
 
@@ -585,14 +605,14 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (!ether_addr_equal(bar->gcr_ga, p->sa))
+	list_for_each_entry(receiver, &aamc->bucket[idx], list) {
+		if (!ether_addr_equal(bar->gcr_ga, receiver->sa))
 			continue;
 
-		tx = ieee80211aa_process_bar(sdata, p, bar->ta,
+		tx = ieee80211aa_process_bar(sdata, receiver, bar->ta,
 					    bar->gcr_ga, window_start);
 		if (tx)
-			ieee80211aa_send_ba(sdata, &p->receiver, bar->ta,
+			ieee80211aa_send_ba(sdata, receiver, bar->ta,
 					    bar->gcr_ga);
 		break;
 	}
@@ -634,30 +654,30 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 
 /* returns true if all BAs were received */
 bool ieee80211aa_process_ba(struct ieee80211_sub_if_data *sdata,
-			    struct aa_entry *p,
+			    struct ieee80211aa_sender *sender,
 			    struct ieee80211_ba_gcr *ba,
 			    u16 window_start)
 {
-	if (window_start < p->sender.prev_win) {
+	if (window_start < sender->prev_win) {
 		aa_dbg("BA discarded due old window_start %d expected %d",
-			 window_start, p->sender.prev_win);
+			 window_start, sender->prev_win);
 		return false;
-	} else if (window_start > p->sender.prev_win) {
+	} else if (window_start > sender->prev_win) {
 		aa_dbg("BA discarded due future window_start %d expected %d",
-			 window_start, p->sender.prev_win);
+			 window_start, sender->prev_win);
 		return false;
 	}
 	aa_dbg("BA received in current window_start %d", window_start);
-	return ieee80211aa_apply_ba_scoreboard(sdata, &p->sender,
+	return ieee80211aa_apply_ba_scoreboard(sdata, sender,
 					ba->gcr_ga, ba->bitmap);
 }
 
 void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			   struct ieee80211_ba_gcr *ba)
 {
-	struct aa_mc *aamc = sdata->u.mesh.aamc;
+	struct aa_mc *aamc = sdata->u.mesh.aamc_tx;
 	u8 idx;
-	struct aa_entry *p;
+	struct ieee80211aa_sender *sender;
 	u16 window_start = le16_to_cpu(ba->start_seq_num);
 	bool retx = false;
 
@@ -667,14 +687,14 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (!ether_addr_equal(ba->gcr_ga, p->sa))
+	list_for_each_entry(sender, &aamc->bucket[idx], list) {
+		if (!ether_addr_equal(ba->gcr_ga, sender->sa))
 			continue;
 
-		retx = ieee80211aa_process_ba(sdata, p, ba, window_start);
+		retx = ieee80211aa_process_ba(sdata, sender, ba, window_start);
 		/* After process the bar, retx if necessary  */
 		if (retx)
-			ieee80211aa_retransmit(sdata, &p->sender, ba->gcr_ga);
+			ieee80211aa_retransmit(sdata, sender, ba->gcr_ga);
 		break;
 	}
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
@@ -683,9 +703,9 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u32 seqnum)
 {
-	struct aa_mc *aamc = sdata->u.mesh.aamc;
+	struct aa_mc *aamc = sdata->u.mesh.aamc_tx;
 	u8 idx;
-	struct aa_entry *p;
+	struct ieee80211aa_sender *sender;
 
 	if (WARN_ON(!aamc))
 		return;
@@ -693,30 +713,30 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (!ether_addr_equal(sa, p->sa))
+	list_for_each_entry(sender, &aamc->bucket[idx], list) {
+		if (!ether_addr_equal(sa, sender->sa))
 			continue;
-		ieee80211aa_process_tx_data(sdata, p, seqnum);
-		ieee80211aa_check_expired_rtx(sdata, p, seqnum);
+		ieee80211aa_process_tx_data(sdata, sender, seqnum);
+		ieee80211aa_check_expired_rtx(sdata, sender, seqnum);
 		goto unlock;
 	}
 	/* If it doesn't exist just create the entry */
-	p = kmem_cache_alloc(aa_cache, GFP_ATOMIC);
-	if (!p)
+	sender = kmem_cache_alloc(aa_cache_tx, GFP_ATOMIC);
+	if (!sender)
 		goto unlock;
 
-	memcpy(p->sa, sa, ETH_ALEN);
-	ieee80211aa_init_struct(sdata, p, seqnum);
-	list_add(&p->list, &aamc->bucket[idx]);
+	memcpy(sender->sa, sa, ETH_ALEN);
+	ieee80211aa_init_sender(sdata, sender, seqnum);
+	list_add(&sender->list, &aamc->bucket[idx]);
 unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
 }
 
 void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 		       u8 *sa, u32 seqnum) {
-	struct aa_mc *aamc = sdata->u.mesh.aamc;
+	struct aa_mc *aamc = sdata->u.mesh.aamc_rx;
 	u8 idx;
-	struct aa_entry *p;
+	struct ieee80211aa_receiver *receiver;
 
 	if (WARN_ON(!aamc))
 		return;
@@ -724,21 +744,21 @@ void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
 	spin_lock_bh(&aamc->bucket_lock[idx]);
-	list_for_each_entry(p, &aamc->bucket[idx], list) {
-		if (!ether_addr_equal(sa, p->sa))
+	list_for_each_entry(receiver, &aamc->bucket[idx], list) {
+		if (!ether_addr_equal(sa, receiver->sa))
 			continue;
 
-		ieee80211aa_process_rx_data(sdata, p, seqnum);
+		ieee80211aa_process_rx_data(sdata, receiver, seqnum);
 		goto unlock;
 	}
 	/* If it doesn't exist just create the entry */
-	p = kmem_cache_alloc(aa_cache, GFP_ATOMIC);
-	if (!p)
+	receiver = kmem_cache_alloc(aa_cache_rx, GFP_ATOMIC);
+	if (!receiver)
 		goto unlock;
 
-	memcpy(p->sa, sa, ETH_ALEN);
-	ieee80211aa_init_struct(sdata, p, seqnum);
-	list_add(&p->list, &aamc->bucket[idx]);
+	memcpy(receiver->sa, sa, ETH_ALEN);
+	ieee80211aa_init_receiver(sdata, receiver, seqnum);
+	list_add(&receiver->list, &aamc->bucket[idx]);
 unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
 }

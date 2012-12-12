@@ -33,6 +33,8 @@
 #define GCR_WIN_THRES 24 /* Arbitrary value for the BA threshold */
 
 struct ieee80211aa_sender {
+	struct list_head list;
+	u8 sa[ETH_ALEN];
 	spinlock_t lock;
 	u16 curr_win; /* sn marking start of current window */
 	u16 prev_win; /* sn marking start of previous window */
@@ -44,17 +46,19 @@ struct ieee80211aa_sender {
 };
 
 struct ieee80211aa_receiver {
+	struct list_head list;
+	u8 sa[ETH_ALEN];
 	/* info for rx */
 	u32 window_start; // current seq_num when the window has started
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE_RCV)];
 };
 
-struct aa_entry {
+/*struct aa_entry {
 	struct list_head list;
 	u8 sa[ETH_ALEN];
 	struct ieee80211aa_sender sender;
 	struct ieee80211aa_receiver receiver;
-};
+};*/
 
 struct aa_mc {
 	struct list_head bucket[AA_BUCKETS];
@@ -81,21 +85,12 @@ int ieee80211aa_gcm_frame_tx(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211_mgmt *mgmt,
 			      size_t len, struct ieee80211_rx_status *rx_status);
-void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
-			    struct aa_entry *p,
-			    u32 seqnum);
 void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar);
 void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba);
-void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
-			       struct aa_entry *p, u32 seqnum);
-void ieee80211aa_process_rx_data(struct ieee80211_sub_if_data *sdata,
-			       struct aa_entry *p, u32 seqnum);
 void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da);
-void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
-				   struct aa_entry *p, u32 seqnum);
 void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 			       struct sk_buff *skb);
 void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
@@ -130,12 +125,6 @@ static void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 {
 	return;
 }
-static inline void ieee80211aa_init_struct(struct ieee80211_sub_if_data *sdata,
-			    struct aa_entry *p,
-			    u32 seqnum)
-{
-	return;
-}
 static inline void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
@@ -146,24 +135,8 @@ static inline void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 {
 	return false;
 }
-static inline void ieee80211aa_process_data_tx(struct ieee80211_sub_if_data *sdata,
-			       struct aa_entry *p, u32 seqnum)
-{
-	return;
-}
-static inline void ieee80211aa_process_data_rx(struct ieee80211_sub_if_data *sdata,
-			       struct aa_entry *p, u32 seqnum)
-{
-	return;
-}
 static inline void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da)
-{
-	return;
-}
-static inline void ieee80211aa_check_expired_rtx(
-				struct ieee80211_sub_if_data *sdata,
-				struct aa_entry *p, u32 seqnum)
 {
 	return;
 }

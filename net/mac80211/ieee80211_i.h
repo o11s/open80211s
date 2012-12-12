@@ -605,7 +605,8 @@ struct ieee80211_if_mesh {
 	/* Timestamp of last PREQ sent */
 	unsigned long last_preq;
 	struct mesh_rmc *rmc;
-	struct aa_mc *aamc;
+	struct aa_mc *aamc_tx;
+	struct aa_mc *aamc_rx;
 	spinlock_t mesh_preq_queue_lock;
 	struct mesh_preq_queue preq_queue;
 	int preq_queue_len;
