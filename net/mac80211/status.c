@@ -17,6 +17,7 @@
 #include "ieee80211_i.h"
 #include "rate.h"
 #include "mesh.h"
+#include "mesh_11aa.h"
 #include "led.h"
 #include "wme.h"
 
@@ -418,6 +419,12 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 					   tid, ssn);
 		}
 
+		/* HERE INSERT THE SEND_BAR_GCR after the window is full */
+		if ((info->flags & IEEE80211_TX_STAT_AMPDU_NO_BACK) &&
+		     is_multicast_ether_addr(hdr->addr1)) {
+			printk("YUJUH");
+		}
+
 		if (!acked && ieee80211_is_back_req(fc)) {
 			u16 tid, control;
 
@@ -428,7 +435,19 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			 */
 			bar = (struct ieee80211_bar *) skb->data;
 			control = le16_to_cpu(bar->control);
-			if (!(control & IEEE80211_BAR_CTRL_MULTI_TID)) {
+
+			if (control & IEEE80211_BAR_CTRL_GCR) {
+				if (!(info->flags &
+				      IEEE80211_TX_INTFL_RETRANSMISSION)) {
+					ieee80211_send_bar_gcr(
+					  sta->sdata,
+					  hdr->addr1,
+					  ((struct ieee80211_bar_gcr *)bar)->gcr_ga,
+					  ((struct ieee80211_bar_gcr *)bar)->start_seq_num,
+					  true);
+				}
+			}
+			else if (!(control & IEEE80211_BAR_CTRL_MULTI_TID)) {
 				u16 ssn = le16_to_cpu(bar->start_seq_num);
 
 				tid = (control &

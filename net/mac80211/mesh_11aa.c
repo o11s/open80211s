@@ -285,7 +285,7 @@ void ieee80211aa_init_sender(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
-			    u8 *sa, u16 ssn)
+			    u8 *sa, u16 ssn, bool retx)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct sk_buff *skb;
@@ -311,6 +311,8 @@ void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	memcpy(bar->gcr_ga, sa, ETH_ALEN);
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
+	if (!retx)
+		IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 	IEEE80211_SKB_CB(skb)->control.vif = &sdata->vif;
 	//ieee80211_tx_skb(sdata, skb);
 	ieee80211_add_pending_skb(sdata->local, skb);
@@ -362,13 +364,14 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 		    ether_addr_equal(sta->sta.addr, sa))
                         continue;
 		aa_dbg("Sent BAR to %pM with Ws=%d",
-			 sta->sta.addr,
-			 window_start);
+		       sta->sta.addr,
+		       window_start);
 
 		ieee80211_send_bar_gcr(sdata,
 				       sta->sta.addr,
 				       sa,
-				       window_start);
+				       window_start,
+				       false);
 		count++;
 	}
         rcu_read_unlock();
@@ -465,6 +468,8 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 	if (frames || s->rcv_bas != s->exp_bas) {
 		/* need BAs */
+		if (frames)
+			aa_dbg("Retransmited %d frames", frames);
 		ieee80211aa_send_bar(sdata, s, ga, s->prev_win, s->ba_expire);
 		return;
 	} else {
@@ -490,12 +495,18 @@ void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
 	}
 }
 
+bool is_new_window_start(struct ieee80211_sub_if_data *sdata,
+			 struct ieee80211aa_sender *sender, u32 seqnum)
+{
+	/* did we just finish or roll over a window? */
+	return (seqnum >= sender->curr_win + GCR_WIN_SIZE ||
+	    seqnum + GCR_WIN_SIZE < sender->curr_win);
+}
+
 void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
 				 struct ieee80211aa_sender *sender, u32 seqnum)
 {
-	/* did we just finish or roll over a window? */
-	if (seqnum >= sender->curr_win + GCR_WIN_SIZE ||
-	    seqnum + GCR_WIN_SIZE < sender->curr_win) {
+	if (is_new_window_start(sdata, sender, seqnum)) {
 		u16 window_start = calculate_window_start(seqnum);
 		ieee80211aa_send_bar(sdata, sender, sender->sa,
 				     sender->curr_win, sender->ba_expire);
@@ -730,6 +741,7 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 	list_add(&sender->list, &aamc->bucket[idx]);
 unlock:
 	spin_unlock_bh(&aamc->bucket_lock[idx]);
+	return;
 }
 
 void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
@@ -795,6 +807,8 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 			     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
 		info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 		info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+		/* XXX Workaround to avoid BAR being received before data */
+		info->hw_queue = 0;
 	}
 
 	/* re-queue it in either case since even a retransmission might fail */
