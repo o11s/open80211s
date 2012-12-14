@@ -39,7 +39,7 @@ struct ieee80211aa_sender {
 	u16 curr_win; /* sn marking start of current window */
 	u16 prev_win; /* sn marking start of previous window */
 	/* XXX: this threshold "timer" should be a real timer */
-	u32 ba_expire; /* Maximum seq_num count before we determine BAR respones were lost */
+	u16 ba_expire; /* Maximum seq_num count before we determine BAR respones were lost */
 	int exp_bas; /* Number of BA expected */
 	int rcv_bas; /* Number of BA received */
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE)];

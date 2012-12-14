@@ -277,6 +277,7 @@ void ieee80211aa_init_sender(struct ieee80211_sub_if_data *sdata,
 	u16 window_start = calculate_window_start(seqnum);
 	sender->curr_win = window_start;
 	sender->prev_win = window_start;
+	sender->ba_expire = window_start;
 	spin_lock_init(&sender->lock);
 	/* Fill with 1s*/
 	bitmap_fill(sender->scoreboard, GCR_WIN_SIZE);
@@ -380,7 +381,7 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 
 static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 				 struct ieee80211aa_sender *s, u8 *sa,
-				 u16 window_start, u32 sn_thr)
+				 u16 window_start, u16 sn_thr)
 {
 	int exp_bas;
 
