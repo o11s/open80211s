@@ -587,18 +587,12 @@ bool ieee80211aa_process_bar(struct ieee80211_sub_if_data *sdata,
 			     struct ieee80211aa_receiver *receiver, u8 *ta,
 			     u8 *sa, u16 window_start)
 {
-	if (window_start >= receiver->window_start + GCR_WIN_SIZE ||
-	    window_start + GCR_WIN_SIZE < receiver->window_start) {
-		aa_dbg("BAR received with new window_start %d previous was:%d",
-			 window_start, receiver->window_start);
-		ieee80211aa_flush_scoreboard(sdata, receiver, window_start);
-		return true;
-	} else if (window_start == receiver->window_start) {
+	if (window_start == receiver->window_start) {
 		aa_dbg("BAR received in current window_start %d",
 			 window_start);
 		return true;
 	}
-	aa_dbg("BAR discarded due old window_start: %d expected:%d",
+	aa_dbg("BAR discarded due wrong window: %d expected:%d",
 	       window_start, receiver->window_start);
 	return false;
 }
