@@ -62,7 +62,6 @@ struct ieee80211aa_receiver {
 
 struct aa_mc {
 	struct list_head bucket[AA_BUCKETS];
-	spinlock_t bucket_lock[AA_BUCKETS];
 	u32 idx_mask;
 };
 

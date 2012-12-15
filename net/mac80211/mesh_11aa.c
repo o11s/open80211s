@@ -58,9 +58,7 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 	sdata->u.mesh.aamc_rx->idx_mask = AA_BUCKETS - 1;
 	for (i = 0; i < AA_BUCKETS; i++) {
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc_tx->bucket[i]);
-		spin_lock_init(&sdata->u.mesh.aamc_tx->bucket_lock[i]);
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc_rx->bucket[i]);
-		spin_lock_init(&sdata->u.mesh.aamc_rx->bucket_lock[i]);
 	}
 	aa_dbg("ieee80211aa_mcc_init completed");
 	return 0;
@@ -315,7 +313,6 @@ void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	if (!retx)
 		IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 	IEEE80211_SKB_CB(skb)->control.vif = &sdata->vif;
-	//ieee80211_tx_skb(sdata, skb);
 	ieee80211_add_pending_skb(sdata->local, skb);
 }
 
@@ -417,9 +414,12 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_hdr *hdr;
 	struct ieee80211s_hdr *mesh_hdr;
 	u16 seqnum;
+	unsigned long flags;
 
 	/* TODO: Take a current scoreboard and window_start, and queue all
 	 * outstanding frames up at once */
+	/* TODO: use skb_unlink() once we call this from work queue */
+	spin_lock_irqsave(&sdata->mcast_rexmit_skb_queue.lock, flags);
 	skb_queue_walk_safe(&sdata->mcast_rexmit_skb_queue, skb, tmp) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
@@ -435,10 +435,12 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 		    !ether_addr_equal(sa, hdr->addr3))
 			continue;
 
-		skb_unlink(skb, &sdata->mcast_rexmit_skb_queue);
+		__skb_unlink(skb, &sdata->mcast_rexmit_skb_queue);
 		ieee80211_add_pending_skb(local, skb);
+		spin_unlock_irqrestore(&sdata->mcast_rexmit_skb_queue.lock, flags);
 		return true;
 	}
+	spin_unlock_irqrestore(&sdata->mcast_rexmit_skb_queue.lock, flags);
 	return false;
 }
 
@@ -465,12 +467,11 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 			frame_n = find_next_zero_bit(s->scoreboard,
 						     GCR_WIN_SIZE, frame_n + 1);
 		}
+		aa_dbg("Retransmitted %d frames", frames);
 	}
 
 	if (frames || s->rcv_bas != s->exp_bas) {
 		/* need BAs */
-		if (frames)
-			aa_dbg("Retransmited %d frames", frames);
 		ieee80211aa_send_bar(sdata, s, ga, s->prev_win, s->ba_expire);
 		return;
 	} else {
@@ -616,7 +617,6 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 
 	idx = (bar->gcr_ga[3] ^ bar->gcr_ga[4] ^ bar->gcr_ga[5]) & aamc->idx_mask;
 
-	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(receiver, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(bar->gcr_ga, receiver->sa))
 			continue;
@@ -628,7 +628,6 @@ void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 					    bar->gcr_ga);
 		break;
 	}
-	spin_unlock_bh(&aamc->bucket_lock[idx]);
 }
 
 /** Handle BA path */
@@ -698,7 +697,6 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 
 	idx = (ba->gcr_ga[3] ^ ba->gcr_ga[4] ^ ba->gcr_ga[5]) & aamc->idx_mask;
 
-	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(sender, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(ba->gcr_ga, sender->sa))
 			continue;
@@ -709,7 +707,6 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			ieee80211aa_retransmit(sdata, sender, ba->gcr_ga);
 		break;
 	}
-	spin_unlock_bh(&aamc->bucket_lock[idx]);
 }
 
 void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
@@ -724,25 +721,21 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
-	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(sender, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(sa, sender->sa))
 			continue;
 		ieee80211aa_process_tx_data(sdata, sender, seqnum);
 		ieee80211aa_check_expired_rtx(sdata, sender, seqnum);
-		goto unlock;
+		return;
 	}
 	/* If it doesn't exist just create the entry */
 	sender = kmem_cache_alloc(aa_cache_tx, GFP_ATOMIC);
 	if (!sender)
-		goto unlock;
+		return;
 
 	memcpy(sender->sa, sa, ETH_ALEN);
 	ieee80211aa_init_sender(sdata, sender, seqnum);
 	list_add(&sender->list, &aamc->bucket[idx]);
-unlock:
-	spin_unlock_bh(&aamc->bucket_lock[idx]);
-	return;
 }
 
 void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
@@ -756,24 +749,21 @@ void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 
 	idx = (sa[3] ^ sa[4] ^ sa[5]) & aamc->idx_mask;
 
-	spin_lock_bh(&aamc->bucket_lock[idx]);
 	list_for_each_entry(receiver, &aamc->bucket[idx], list) {
 		if (!ether_addr_equal(sa, receiver->sa))
 			continue;
 
 		ieee80211aa_process_rx_data(sdata, receiver, seqnum);
-		goto unlock;
+		return;
 	}
 	/* If it doesn't exist just create the entry */
 	receiver = kmem_cache_alloc(aa_cache_rx, GFP_ATOMIC);
 	if (!receiver)
-		goto unlock;
+		return;
 
 	memcpy(receiver->sa, sa, ETH_ALEN);
 	ieee80211aa_init_receiver(sdata, receiver, seqnum);
 	list_add(&receiver->list, &aamc->bucket[idx]);
-unlock:
-	spin_unlock_bh(&aamc->bucket_lock[idx]);
 }
 
 /**
