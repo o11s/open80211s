@@ -12,6 +12,7 @@
 #include "ieee80211_i.h"
 #include "rate.h"
 #include "mesh.h"
+#include "driver-ops.h"
 
 #define PLINK_GET_LLID(p) (p + 2)
 #define PLINK_GET_PLID(p) (p + 4)
@@ -499,27 +500,44 @@ mesh_sta_info_get(struct ieee80211_sub_if_data *sdata,
  *
  * @sdata: local meshif
  * @addr: peer's address
- * @elems: IEs from beacon or mesh peering frame
+ * @elems: IEs from beacon or mesh probe response
  *
  * Initiates peering if appropriate.
  */
 void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
-			   u8 *hw_addr,
-			   struct ieee802_11_elems *elems)
+			   struct ieee80211_mgmt *mgmt,
+			   struct ieee802_11_elems *elems,
+			   struct ieee80211_rx_status *rx_status)
 {
+	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct sta_info *sta;
 	u32 changed = 0;
+	u64 t_r;
 
-	sta = mesh_sta_info_get(sdata, hw_addr, elems);
+	/*
+	 * If available, calculate the time the beacon timestamp field was
+	 * received from the rx_status->mactime field. Otherwise get the
+	 * current TSF as approximation before entering rcu-read section.
+	 */
+	if (ieee80211_have_rx_timestamp(rx_status))
+		t_r = ieee80211_calculate_rx_timestamp(local, rx_status,
+				24 + 12 + elems->total_len + FCS_LEN, 24);
+	else
+		t_r = drv_get_tsf(local, sdata);
+
+	sta = mesh_sta_info_get(sdata, mgmt->sa, elems);
 	if (!sta)
 		goto out;
 
 	if (mesh_peer_accepts_plinks(elems) &&
 	    sta->plink_state == NL80211_PLINK_LISTEN &&
-	    sdata->u.mesh.accepting_plinks &&
-	    sdata->u.mesh.mshcfg.auto_open_plinks &&
+	    ifmsh->accepting_plinks && ifmsh->mshcfg.auto_open_plinks &&
 	    rssi_threshold_check(sta, sdata))
 		changed = mesh_plink_open(sta);
+
+	if (ifmsh->sync_ops)
+		ifmsh->sync_ops->rx_bcn_presp(sta, mgmt, elems, t_r);
 
 	ieee80211_mps_frame_release(sta, elems);
 out:

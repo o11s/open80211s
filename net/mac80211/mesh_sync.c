@@ -75,34 +75,16 @@ void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 		drv_set_tsf(local, sdata, tsf + tsfdelta);
 }
 
-static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
-				   u16 stype,
-				   struct ieee80211_mgmt *mgmt,
-				   struct ieee802_11_elems *elems,
-				   struct ieee80211_rx_status *rx_status)
+static void mesh_sync_offset_rx_bcn_presp(struct sta_info *sta,
+					  struct ieee80211_mgmt *mgmt,
+					  struct ieee802_11_elems *elems,
+					  u64 t_r)
 {
+	struct ieee80211_sub_if_data *sdata = sta->sdata;
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
-	struct ieee80211_local *local = sdata->local;
-	struct sta_info *sta;
-	u64 t_t, t_r;
+	u64 t_t;
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
-
-	/* standard mentions only beacons */
-	if (stype != IEEE80211_STYPE_BEACON)
-		return;
-
-	/* The current tsf is a first approximation for the timestamp
-	 * for the received beacon.  Further down we try to get a
-	 * better value from the rx_status->mactime field if
-	 * available. Also we have to call drv_get_tsf() before
-	 * entering the rcu-read section.*/
-	t_r = drv_get_tsf(local, sdata);
-
-	rcu_read_lock();
-	sta = sta_info_get(sdata, mgmt->sa);
-	if (!sta)
-		goto no_sync;
 
 	/* check offset sync conditions (13.13.2.2.1)
 	 *
@@ -114,16 +96,8 @@ static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 		clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
 		msync_dbg(sdata, "STA %pM : is adjusting TBTT\n",
 			  sta->sta.addr);
-		goto no_sync;
+		return;
 	}
-
-	if (ieee80211_have_rx_timestamp(rx_status))
-		/* time when timestamp field was received */
-		t_r = ieee80211_calculate_rx_timestamp(local, rx_status,
-						       24 + 12 +
-						       elems->total_len +
-						       FCS_LEN,
-						       24);
 
 	/* Timing offset calculation (see 13.13.2.2.2) */
 	t_t = le64_to_cpu(mgmt->u.beacon.timestamp);
@@ -144,7 +118,7 @@ static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 				  sta->sta.addr,
 				  (long long) t_clockdrift);
 			clear_sta_flag(sta, WLAN_STA_TOFFSET_KNOWN);
-			goto no_sync;
+			return;
 		}
 
 		spin_lock_bh(&ifmsh->sync_offset_lock);
@@ -159,9 +133,6 @@ static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			  sta->sta.addr,
 			  (long long) sta->t_offset);
 	}
-
-no_sync:
-	rcu_read_unlock();
 }
 
 static void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
