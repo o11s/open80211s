@@ -560,10 +560,10 @@ asmlinkage long sys_utime(char __user *filename,
 asmlinkage long sys_utimes(char __user *filename,
 				struct timeval __user *utimes);
 asmlinkage long sys_lseek(unsigned int fd, off_t offset,
-			  unsigned int origin);
+			  unsigned int whence);
 asmlinkage long sys_llseek(unsigned int fd, unsigned long offset_high,
 			unsigned long offset_low, loff_t __user *result,
-			unsigned int origin);
+			unsigned int whence);
 asmlinkage long sys_read(unsigned int fd, char __user *buf, size_t count);
 asmlinkage long sys_readahead(int fd, loff_t offset, size_t count);
 asmlinkage long sys_readv(unsigned long fd,
@@ -833,10 +833,22 @@ int kernel_execve(const char *filename, const char *const argv[], const char *co
 #define kernel_execve(filename, argv, envp) \
 	do_execve(filename, \
 		(const char __user *const __user *)argv, \
-		(const char __user *const __user *)envp, \
-		current_pt_regs())
+		(const char __user *const __user *)envp)
 #endif
 
+asmlinkage long sys_fork(void);
+asmlinkage long sys_vfork(void);
+#ifdef CONFIG_CLONE_BACKWARDS
+asmlinkage long sys_clone(unsigned long, unsigned long, int __user *, int,
+	       int __user *);
+#else
+asmlinkage long sys_clone(unsigned long, unsigned long, int __user *,
+	       int __user *, int);
+#endif
+
+asmlinkage long sys_execve(const char __user *filename,
+		const char __user *const __user *argv,
+		const char __user *const __user *envp);
 
 asmlinkage long sys_perf_event_open(
 		struct perf_event_attr __user *attr_uptr,

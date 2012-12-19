@@ -284,12 +284,8 @@ asmlinkage ssize_t compat_sys_pwritev(unsigned long fd,
 		const struct compat_iovec __user *vec,
 		unsigned long vlen, u32 pos_low, u32 pos_high);
 
-int compat_do_execve(const char *filename, const compat_uptr_t __user *argv,
-		     const compat_uptr_t __user *envp, struct pt_regs *regs);
-#ifdef __ARCH_WANT_SYS_EXECVE
 asmlinkage long compat_sys_execve(const char __user *filename, const compat_uptr_t __user *argv,
 		     const compat_uptr_t __user *envp);
-#endif
 
 asmlinkage long compat_sys_select(int n, compat_ulong_t __user *inp,
 		compat_ulong_t __user *outp, compat_ulong_t __user *exp,
@@ -591,6 +587,9 @@ asmlinkage ssize_t compat_sys_process_vm_writev(compat_pid_t pid,
 
 asmlinkage long compat_sys_sendfile(int out_fd, int in_fd,
 				    compat_off_t __user *offset, compat_size_t count);
+
+asmlinkage long compat_sys_sched_rr_get_interval(compat_pid_t pid,
+						 struct compat_timespec __user *interval);
 
 #else
 

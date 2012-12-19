@@ -2743,9 +2743,15 @@ static struct irq_domain_ops db8500_irq_ops = {
 
 static int db8500_irq_init(struct device_node *np)
 {
-	db8500_irq_domain = irq_domain_add_legacy(
-		np, NUM_PRCMU_WAKEUPS, IRQ_PRCMU_BASE,
-		0, &db8500_irq_ops, NULL);
+	int irq_base = -1;
+
+	/* In the device tree case, just take some IRQs */
+	if (!np)
+		irq_base = IRQ_PRCMU_BASE;
+
+	db8500_irq_domain = irq_domain_add_simple(
+		np, NUM_PRCMU_WAKEUPS, irq_base,
+		&db8500_irq_ops, NULL);
 
 	if (!db8500_irq_domain) {
 		pr_err("Failed to create irqdomain\n");
@@ -2757,7 +2763,7 @@ static int db8500_irq_init(struct device_node *np)
 
 void __init db8500_prcmu_early_init(void)
 {
-	if (cpu_is_u8500v2()) {
+	if (cpu_is_u8500v2() || cpu_is_u9540()) {
 		void *tcpm_base = ioremap_nocache(U8500_PRCMU_TCPM_BASE, SZ_4K);
 
 		if (tcpm_base != NULL) {
@@ -2775,7 +2781,11 @@ void __init db8500_prcmu_early_init(void)
 			iounmap(tcpm_base);
 		}
 
-		tcdm_base = __io_address(U8500_PRCMU_TCDM_BASE);
+		if (cpu_is_u9540())
+			tcdm_base = ioremap_nocache(U8500_PRCMU_TCDM_BASE,
+						SZ_4K + SZ_8K) + SZ_8K;
+		else
+			tcdm_base = __io_address(U8500_PRCMU_TCDM_BASE);
 	} else {
 		pr_err("prcmu: Unsupported chip version\n");
 		BUG();

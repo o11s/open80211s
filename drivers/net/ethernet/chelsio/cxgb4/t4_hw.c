@@ -648,12 +648,12 @@ static int sf1_read(struct adapter *adapter, unsigned int byte_cnt, int cont,
 
 	if (!byte_cnt || byte_cnt > 4)
 		return -EINVAL;
-	if (t4_read_reg(adapter, SF_OP) & BUSY)
+	if (t4_read_reg(adapter, SF_OP) & SF_BUSY)
 		return -EBUSY;
 	cont = cont ? SF_CONT : 0;
 	lock = lock ? SF_LOCK : 0;
 	t4_write_reg(adapter, SF_OP, lock | cont | BYTECNT(byte_cnt - 1));
-	ret = t4_wait_op_done(adapter, SF_OP, BUSY, 0, SF_ATTEMPTS, 5);
+	ret = t4_wait_op_done(adapter, SF_OP, SF_BUSY, 0, SF_ATTEMPTS, 5);
 	if (!ret)
 		*valp = t4_read_reg(adapter, SF_DATA);
 	return ret;
@@ -676,14 +676,14 @@ static int sf1_write(struct adapter *adapter, unsigned int byte_cnt, int cont,
 {
 	if (!byte_cnt || byte_cnt > 4)
 		return -EINVAL;
-	if (t4_read_reg(adapter, SF_OP) & BUSY)
+	if (t4_read_reg(adapter, SF_OP) & SF_BUSY)
 		return -EBUSY;
 	cont = cont ? SF_CONT : 0;
 	lock = lock ? SF_LOCK : 0;
 	t4_write_reg(adapter, SF_DATA, val);
 	t4_write_reg(adapter, SF_OP, lock |
 		     cont | BYTECNT(byte_cnt - 1) | OP_WR);
-	return t4_wait_op_done(adapter, SF_OP, BUSY, 0, SF_ATTEMPTS, 5);
+	return t4_wait_op_done(adapter, SF_OP, SF_BUSY, 0, SF_ATTEMPTS, 5);
 }
 
 /**
@@ -2003,7 +2003,7 @@ void t4_tp_wr_bits_indirect(struct adapter *adap, unsigned int addr,
  *
  *	Initialize the congestion control parameters.
  */
-static void __devinit init_cong_ctrl(unsigned short *a, unsigned short *b)
+static void init_cong_ctrl(unsigned short *a, unsigned short *b)
 {
 	a[0] = a[1] = a[2] = a[3] = a[4] = a[5] = a[6] = a[7] = a[8] = 1;
 	a[9] = 2;
@@ -2252,14 +2252,14 @@ int t4_wol_pat_enable(struct adapter *adap, unsigned int port, unsigned int map,
 		t4_write_reg(adap, EPIO_REG(DATA0), mask0);
 		t4_write_reg(adap, EPIO_REG(OP), ADDRESS(i) | EPIOWR);
 		t4_read_reg(adap, EPIO_REG(OP));                /* flush */
-		if (t4_read_reg(adap, EPIO_REG(OP)) & BUSY)
+		if (t4_read_reg(adap, EPIO_REG(OP)) & SF_BUSY)
 			return -ETIMEDOUT;
 
 		/* write CRC */
 		t4_write_reg(adap, EPIO_REG(DATA0), crc);
 		t4_write_reg(adap, EPIO_REG(OP), ADDRESS(i + 32) | EPIOWR);
 		t4_read_reg(adap, EPIO_REG(OP));                /* flush */
-		if (t4_read_reg(adap, EPIO_REG(OP)) & BUSY)
+		if (t4_read_reg(adap, EPIO_REG(OP)) & SF_BUSY)
 			return -ETIMEDOUT;
 	}
 #undef EPIO_REG
@@ -2405,7 +2405,7 @@ int t4_fw_hello(struct adapter *adap, unsigned int mbox, unsigned int evt_mbox,
 retry:
 	memset(&c, 0, sizeof(c));
 	INIT_CMD(c, HELLO, WRITE);
-	c.err_to_mbasyncnot = htonl(
+	c.err_to_clearinit = htonl(
 		FW_HELLO_CMD_MASTERDIS(master == MASTER_CANT) |
 		FW_HELLO_CMD_MASTERFORCE(master == MASTER_MUST) |
 		FW_HELLO_CMD_MBMASTER(master == MASTER_MUST ? mbox :
@@ -2426,7 +2426,7 @@ retry:
 		return ret;
 	}
 
-	v = ntohl(c.err_to_mbasyncnot);
+	v = ntohl(c.err_to_clearinit);
 	master_mbox = FW_HELLO_CMD_MBMASTER_GET(v);
 	if (state) {
 		if (v & FW_HELLO_CMD_ERR)
@@ -2774,7 +2774,7 @@ int t4_fw_config_file(struct adapter *adap, unsigned int mbox,
 		htonl(FW_CMD_OP(FW_CAPS_CONFIG_CMD) |
 		      FW_CMD_REQUEST |
 		      FW_CMD_READ);
-	caps_cmd.retval_len16 =
+	caps_cmd.cfvalid_to_len16 =
 		htonl(FW_CAPS_CONFIG_CMD_CFVALID |
 		      FW_CAPS_CONFIG_CMD_MEMTYPE_CF(mtype) |
 		      FW_CAPS_CONFIG_CMD_MEMADDR64K_CF(maddr >> 16) |
@@ -2797,7 +2797,7 @@ int t4_fw_config_file(struct adapter *adap, unsigned int mbox,
 		htonl(FW_CMD_OP(FW_CAPS_CONFIG_CMD) |
 		      FW_CMD_REQUEST |
 		      FW_CMD_WRITE);
-	caps_cmd.retval_len16 = htonl(FW_LEN16(caps_cmd));
+	caps_cmd.cfvalid_to_len16 = htonl(FW_LEN16(caps_cmd));
 	return t4_wr_mbox(adap, mbox, &caps_cmd, sizeof(caps_cmd), NULL);
 }
 
@@ -3440,8 +3440,7 @@ int t4_handle_fw_rpl(struct adapter *adap, const __be64 *rpl)
 	return 0;
 }
 
-static void __devinit get_pci_mode(struct adapter *adapter,
-				   struct pci_params *p)
+static void get_pci_mode(struct adapter *adapter, struct pci_params *p)
 {
 	u16 val;
 
@@ -3460,8 +3459,7 @@ static void __devinit get_pci_mode(struct adapter *adapter,
  *	Initializes the SW state maintained for each link, including the link's
  *	capabilities and default speed/flow-control/autonegotiation settings.
  */
-static void __devinit init_link_config(struct link_config *lc,
-				       unsigned int caps)
+static void init_link_config(struct link_config *lc, unsigned int caps)
 {
 	lc->supported = caps;
 	lc->requested_speed = 0;
@@ -3485,7 +3483,7 @@ int t4_wait_dev_ready(struct adapter *adap)
 	return t4_read_reg(adap, PL_WHOAMI) != 0xffffffff ? 0 : -EIO;
 }
 
-static int __devinit get_flash_params(struct adapter *adap)
+static int get_flash_params(struct adapter *adap)
 {
 	int ret;
 	u32 info;
@@ -3521,7 +3519,7 @@ static int __devinit get_flash_params(struct adapter *adap)
  *	values for some adapter tunables, take PHYs out of reset, and
  *	initialize the MDIO interface.
  */
-int __devinit t4_prep_adapter(struct adapter *adapter)
+int t4_prep_adapter(struct adapter *adapter)
 {
 	int ret;
 
@@ -3549,7 +3547,7 @@ int __devinit t4_prep_adapter(struct adapter *adapter)
 	return 0;
 }
 
-int __devinit t4_port_init(struct adapter *adap, int mbox, int pf, int vf)
+int t4_port_init(struct adapter *adap, int mbox, int pf, int vf)
 {
 	u8 addr[6];
 	int ret, i, j = 0;

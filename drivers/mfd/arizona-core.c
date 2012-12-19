@@ -272,6 +272,7 @@ static struct mfd_cell early_devs[] = {
 static struct mfd_cell wm5102_devs[] = {
 	{ .name = "arizona-extcon" },
 	{ .name = "arizona-gpio" },
+	{ .name = "arizona-haptics" },
 	{ .name = "arizona-micsupp" },
 	{ .name = "arizona-pwm" },
 	{ .name = "wm5102-codec" },
@@ -280,6 +281,7 @@ static struct mfd_cell wm5102_devs[] = {
 static struct mfd_cell wm5110_devs[] = {
 	{ .name = "arizona-extcon" },
 	{ .name = "arizona-gpio" },
+	{ .name = "arizona-haptics" },
 	{ .name = "arizona-micsupp" },
 	{ .name = "arizona-pwm" },
 	{ .name = "wm5110-codec" },
@@ -290,6 +292,7 @@ int arizona_dev_init(struct arizona *arizona)
 	struct device *dev = arizona->dev;
 	const char *type_name;
 	unsigned int reg, val;
+	int (*apply_patch)(struct arizona *) = NULL;
 	int ret, i;
 
 	dev_set_drvdata(arizona->dev, arizona);
@@ -389,7 +392,7 @@ int arizona_dev_init(struct arizona *arizona)
 				arizona->type);
 			arizona->type = WM5102;
 		}
-		ret = wm5102_patch(arizona);
+		apply_patch = wm5102_patch;
 		break;
 #endif
 #ifdef CONFIG_MFD_WM5110
@@ -400,7 +403,7 @@ int arizona_dev_init(struct arizona *arizona)
 				arizona->type);
 			arizona->type = WM5110;
 		}
-		ret = wm5110_patch(arizona);
+		apply_patch = wm5110_patch;
 		break;
 #endif
 	default:
@@ -409,9 +412,6 @@ int arizona_dev_init(struct arizona *arizona)
 	}
 
 	dev_info(dev, "%s revision %c\n", type_name, arizona->rev + 'A');
-
-	if (ret != 0)
-		dev_err(arizona->dev, "Failed to apply patch: %d\n", ret);
 
 	/* If we have a /RESET GPIO we'll already be reset */
 	if (!arizona->pdata.reset) {
@@ -434,6 +434,15 @@ int arizona_dev_init(struct arizona *arizona)
 	if (ret != 0) {
 		dev_err(arizona->dev, "Device failed initial boot: %d\n", ret);
 		goto err_reset;
+	}
+
+	if (apply_patch) {
+		ret = apply_patch(arizona);
+		if (ret != 0) {
+			dev_err(arizona->dev, "Failed to apply patch: %d\n",
+				ret);
+			goto err_reset;
+		}
 	}
 
 	for (i = 0; i < ARRAY_SIZE(arizona->pdata.gpio_defaults); i++) {

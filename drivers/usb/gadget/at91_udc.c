@@ -31,6 +31,7 @@
 #include <linux/usb/gadget.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/platform_data/atmel.h>
 
 #include <asm/byteorder.h>
 #include <mach/hardware.h>
@@ -38,7 +39,6 @@
 #include <asm/irq.h>
 #include <asm/gpio.h>
 
-#include <mach/board.h>
 #include <mach/cpu.h>
 #include <mach/at91sam9261_matrix.h>
 #include <mach/at91_matrix.h>
@@ -51,7 +51,7 @@
  * full speed USB controllers, including the at91rm9200 (arm920T, with MMU),
  * at91sam926x (arm926ejs, with MMU), and several no-mmu versions.
  *
- * This driver expects the board has been wired with two GPIOs suppporting
+ * This driver expects the board has been wired with two GPIOs supporting
  * a VBUS sensing IRQ, and a D+ pullup.  (They may be omitted, but the
  * testing hasn't covered such cases.)
  *
