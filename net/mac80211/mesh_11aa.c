@@ -317,7 +317,7 @@ void ieee80211aa_init_sender(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
-			    u8 *sa, u16 ssn, bool retx)
+			    u8 *sa, u16 ssn)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct sk_buff *skb;
@@ -343,8 +343,6 @@ void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 	memcpy(bar->gcr_ga, sa, ETH_ALEN);
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT;
-	if (!retx)
-		IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
 	IEEE80211_SKB_CB(skb)->control.vif = &sdata->vif;
 	ieee80211_add_pending_skb(sdata->local, skb);
 }
@@ -401,8 +399,7 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 		ieee80211_send_bar_gcr(sdata,
 				       sta->sta.addr,
 				       sa,
-				       window_start,
-				       false);
+				       window_start);
 		count++;
 	}
         rcu_read_unlock();
@@ -546,7 +543,7 @@ bool is_new_window_start(struct ieee80211_sub_if_data *sdata,
 {
 	/* did we just finish or roll over a window? */
 	return (seqnum >= sender->curr_win + GCR_WIN_SIZE ||
-	    seqnum + GCR_WIN_SIZE < sender->curr_win);
+		seqnum + GCR_WIN_SIZE < sender->curr_win);
 }
 
 void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
@@ -818,7 +815,7 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 	int hdrlen = ieee80211_hdrlen(hdr->frame_control);
 	struct ieee80211s_hdr *mesh_hdr = (struct ieee80211s_hdr *) (skb->data + hdrlen);
 
-	if (!(ieee80211aa_enabled() && skb->dev && skb->dev->ieee80211_ptr &&
+	if (!(ieee80211aa_enabled() &&
 	    skb->dev->ieee80211_ptr->iftype == NL80211_IFTYPE_MESH_POINT &&
 	    is_multicast_ether_addr(hdr->addr1) && ieee80211_is_data_qos(fc) &&
 	    !is_broadcast_ether_addr(hdr->addr1)))
@@ -829,7 +826,6 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 		return;
 	info = IEEE80211_SKB_CB(skb);
 
-	rcu_read_lock();
 	if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
 		ieee80211aa_check_tx(sdata, hdr->addr3,
 			     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
@@ -845,5 +841,4 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 		skb = skb_dequeue(&sdata->mcast_rexmit_skb_queue);
 		dev_kfree_skb(skb);
 	}
-	rcu_read_unlock();
 }
