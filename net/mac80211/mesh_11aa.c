@@ -15,6 +15,8 @@ bool aa_allocated = false;
 static struct kmem_cache *aa_cache_tx;
 static struct kmem_cache *aa_cache_rx;
 
+static void ieee80211aa_retx(unsigned long data);
+
 void ieee80211aa_init(void)
 {
 	if (!aa_allocated) {
@@ -60,6 +62,8 @@ int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc_tx->bucket[i]);
 		INIT_LIST_HEAD(&sdata->u.mesh.aamc_rx->bucket[i]);
 	}
+	tasklet_init(&sdata->retx_tasklet, ieee80211aa_retx,
+		     (unsigned long) sdata);
 	aa_dbg("ieee80211aa_mcc_init completed");
 	return 0;
 }
@@ -269,14 +273,43 @@ void ieee80211aa_init_receiver(struct ieee80211_sub_if_data *sdata,
 	aa_dbg("ieee80211aa_init_receiver %pM", receiver->sa);
 }
 
+/* retransmit outstanding frames from sender, this is called from hard-IRQ (the
+ * BA timeout function), but defer to tasklet since we want to limit latency
+ * */
+void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
+			    struct ieee80211aa_sender *s)
+{
+	s->need_retx = true;
+	tasklet_schedule(&sdata->retx_tasklet);
+}
+
+static enum hrtimer_restart ieee80211_ba_timeout(struct hrtimer *timer)
+{
+	struct ieee80211aa_sender *s = container_of(timer,
+					struct ieee80211aa_sender,
+					ba_timer);
+	struct ieee80211_sub_if_data *sdata = s->sdata;
+
+	aa_dbg("BA expired ws:%d req:%d rcv:%d bitm:%d",
+	       s->prev_win, s->exp_bas, s->rcv_bas,
+	       bitmap_weight(s->scoreboard, GCR_WIN_SIZE));
+
+	ieee80211aa_retransmit(sdata, s);
+	return HRTIMER_NORESTART;
+}
+
 void ieee80211aa_init_sender(struct ieee80211_sub_if_data *sdata,
 			     struct ieee80211aa_sender *sender, u32 seqnum)
 {
 	u16 window_start = calculate_window_start(seqnum);
 	sender->curr_win = window_start;
 	sender->prev_win = window_start;
-	sender->ba_expire = window_start;
+	sender->sdata = sdata;
+	sender->need_retx = false;
 	spin_lock_init(&sender->lock);
+	hrtimer_init(&sender->ba_timer,
+		     CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	sender->ba_timer.function = ieee80211_ba_timeout;
 	/* Fill with 1s*/
 	bitmap_fill(sender->scoreboard, GCR_WIN_SIZE);
 
@@ -378,16 +411,18 @@ int ieee80211aa_send_bar_to_known_sta(struct ieee80211_sub_if_data *sdata,
 
 static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 				 struct ieee80211aa_sender *s, u8 *sa,
-				 u16 window_start, u16 sn_thr)
+				 u16 window_start)
 {
 	int exp_bas;
 
+	hrtimer_try_to_cancel(&s->ba_timer);
 	exp_bas = ieee80211aa_send_bar_to_known_sta(sdata, sa, window_start);
 
 	spin_lock_bh(&s->lock);
 	s->rcv_bas = 0;
 	s->exp_bas = exp_bas;
-	s->ba_expire = sn_thr + GCR_WIN_THRES;
+	hrtimer_start(&s->ba_timer, ns_to_ktime(AA_BA_TIMEOUT * 1000),
+		      HRTIMER_MODE_REL);
 
 	/* Fill scoreboard with 1s */
 	bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
@@ -406,21 +441,25 @@ void ieee80211aa_send_ba(struct ieee80211_sub_if_data *sdata,
 
 /* Data retransmission path */
 
-bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
-				  u8 *sa, u16 req_sn)
+bool ieee80211aa_retx_frame(struct ieee80211_sub_if_data *sdata,
+			    u8 *sa, u16 req_sn)
 {
 	struct ieee80211_local *local = sdata->local;
-	struct sk_buff *skb, *tmp;
+	struct sk_buff *skb;
 	struct ieee80211_hdr *hdr;
 	struct ieee80211s_hdr *mesh_hdr;
-	u16 seqnum;
 	unsigned long flags;
+	u16 seqnum;
 
 	/* TODO: Take a current scoreboard and window_start, and queue all
-	 * outstanding frames up at once */
-	/* TODO: use skb_unlink() once we call this from work queue */
+	 * outstanding frames up at once.
+	 * TODO: ^^ need frames to be ordered by seqnum with one queue per
+	 * sender for this */
+
+	/* need to take locks outside queue traversal since the tx path might
+	 * modify the queue */
 	spin_lock_irqsave(&sdata->mcast_rexmit_skb_queue.lock, flags);
-	skb_queue_walk_safe(&sdata->mcast_rexmit_skb_queue, skb, tmp) {
+	skb_queue_walk(&sdata->mcast_rexmit_skb_queue, skb) {
 		hdr = (struct ieee80211_hdr *) skb->data;
 		mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
 				ieee80211_hdrlen(hdr->frame_control));
@@ -444,9 +483,8 @@ bool ieee80211aa_retransmit_frame(struct ieee80211_sub_if_data *sdata,
 	return false;
 }
 
-/* retransmit outstanding frames from sender */
-void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
-			    struct ieee80211aa_sender *s, u8 *ga)
+void ieee80211aa_retx_frames(struct ieee80211_sub_if_data *sdata,
+			     struct ieee80211aa_sender *s, u8 *ga)
 {
 	int frames, frame_n;
 
@@ -462,7 +500,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 		while (frame_n < GCR_WIN_SIZE) {
 			u16 req_sn = s->prev_win + frame_n;
-			if (ieee80211aa_retransmit_frame(sdata, ga, req_sn))
+			if (ieee80211aa_retx_frame(sdata, ga, req_sn))
 				frames++;
 			frame_n = find_next_zero_bit(s->scoreboard,
 						     GCR_WIN_SIZE, frame_n + 1);
@@ -472,7 +510,7 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 
 	if (frames || s->rcv_bas != s->exp_bas) {
 		/* need BAs */
-		ieee80211aa_send_bar(sdata, s, ga, s->prev_win, s->ba_expire);
+		ieee80211aa_send_bar(sdata, s, ga, s->prev_win);
 		return;
 	} else {
 		/* we're done for this window */
@@ -483,17 +521,23 @@ void ieee80211aa_retransmit(struct ieee80211_sub_if_data *sdata,
 	}
 }
 
-void ieee80211aa_check_expired_rtx(struct ieee80211_sub_if_data *sdata,
-				  struct ieee80211aa_sender *sender, u32 seqnum)
+static void ieee80211aa_retx(unsigned long data)
 {
+	struct ieee80211_sub_if_data *sdata = (struct ieee80211_sub_if_data *) data;
+	struct aa_mc *aamc = sdata->u.mesh.aamc_tx;
+	int idx;
+	struct ieee80211aa_sender *sender;
 
-	/* time to retransmit if necessary */
-	if (sender->exp_bas && seqnum > sender->ba_expire) {
-		aa_dbg("BA expired sn:%d sn_thr:%d ws:%d req:%d rcv:%d bitm:%d",
-		       seqnum, sender->ba_expire, sender->prev_win,
-		       sender->exp_bas, sender->rcv_bas,
-		       bitmap_weight(sender->scoreboard, GCR_WIN_SIZE));
-		ieee80211aa_retransmit(sdata, sender, sender->sa);
+	if (WARN_ON(!aamc))
+		return;
+
+	for (idx = 0; idx < AA_BUCKETS; idx++) {
+		list_for_each_entry(sender, &aamc->bucket[idx], list) {
+			if (!sender->need_retx)
+				continue;
+			ieee80211aa_retx_frames(sdata, sender, sender->sa);
+			sender->need_retx = false;
+		}
 	}
 }
 
@@ -511,7 +555,7 @@ void ieee80211aa_process_tx_data(struct ieee80211_sub_if_data *sdata,
 	if (is_new_window_start(sdata, sender, seqnum)) {
 		u16 window_start = calculate_window_start(seqnum);
 		ieee80211aa_send_bar(sdata, sender, sender->sa,
-				     sender->curr_win, sender->ba_expire);
+				     sender->curr_win);
 		/* new window */
 		spin_lock_bh(&sender->lock);
 		sender->curr_win = window_start;
@@ -696,9 +740,9 @@ void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			continue;
 
 		retx = ieee80211aa_process_ba(sdata, sender, ba, window_start);
-		/* After process the bar, retx if necessary  */
+		/* all BAs received */
 		if (retx)
-			ieee80211aa_retransmit(sdata, sender, ba->gcr_ga);
+			ieee80211aa_retransmit(sdata, sender);
 		break;
 	}
 }
@@ -719,7 +763,6 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 		if (!ether_addr_equal(sa, sender->sa))
 			continue;
 		ieee80211aa_process_tx_data(sdata, sender, seqnum);
-		ieee80211aa_check_expired_rtx(sdata, sender, seqnum);
 		return;
 	}
 	/* If it doesn't exist just create the entry */

@@ -18,13 +18,11 @@
 #define aa_dbg(fmt, args...)   do { (void)(0); } while (0)
 #endif
 
+/* time before which last outstanding BA must be received or retrigger BAR */
+#define AA_BA_TIMEOUT	500	/* us */
 /* 11aa multicast cache */
 /* AA_BUCKETS must be a power of 2, maximum 256 */
 #define AA_BUCKETS		256
-#define AA_QUEUE_MAX_LEN	4
-/* AA_MAX_SEQNUMS must be a power of 2, maximum 256 */
-#define AA_MAX_SEQNUMS	((u8) 8)
-#define AA_TIMEOUT		(3 * HZ)
 
 /* ieee80211aa required fields */
 
@@ -34,12 +32,13 @@
 
 struct ieee80211aa_sender {
 	struct list_head list;
+	struct ieee80211_sub_if_data *sdata;
+	bool need_retx;
 	u8 sa[ETH_ALEN];
 	spinlock_t lock;
 	u16 curr_win; /* sn marking start of current window */
 	u16 prev_win; /* sn marking start of previous window */
-	/* XXX: this threshold "timer" should be a real timer */
-	u16 ba_expire; /* Maximum seq_num count before we determine BAR respones were lost */
+	struct hrtimer ba_timer;
 	int exp_bas; /* Number of BA expected */
 	int rcv_bas; /* Number of BA received */
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE)];
@@ -52,13 +51,6 @@ struct ieee80211aa_receiver {
 	u32 window_start; // current seq_num when the window has started
 	unsigned long scoreboard [BITS_TO_LONGS(GCR_WIN_SIZE_RCV)];
 };
-
-/*struct aa_entry {
-	struct list_head list;
-	u8 sa[ETH_ALEN];
-	struct ieee80211aa_sender sender;
-	struct ieee80211aa_receiver receiver;
-};*/
 
 struct aa_mc {
 	struct list_head bucket[AA_BUCKETS];

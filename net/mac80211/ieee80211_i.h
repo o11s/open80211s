@@ -722,6 +722,7 @@ struct ieee80211_sub_if_data {
 	/* 11aa */
 	struct sk_buff_head mcast_rexmit_skb_queue;
 	int mcast_rexmit_skb_max_size;
+	struct tasklet_struct retx_tasklet;
 
 	bool arp_filter_state;
 
