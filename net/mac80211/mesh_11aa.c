@@ -419,8 +419,9 @@ static void ieee80211aa_send_bar(struct ieee80211_sub_if_data *sdata,
 	spin_lock_bh(&s->lock);
 	s->rcv_bas = 0;
 	s->exp_bas = exp_bas;
-	hrtimer_start(&s->ba_timer, ns_to_ktime(AA_BA_TIMEOUT * 1000),
-		      HRTIMER_MODE_REL);
+	if (exp_bas)
+		hrtimer_start(&s->ba_timer, ns_to_ktime(AA_BA_TIMEOUT * 1000),
+			      HRTIMER_MODE_REL);
 
 	/* Fill scoreboard with 1s */
 	bitmap_fill(s->scoreboard, GCR_WIN_SIZE);
@@ -506,16 +507,13 @@ void ieee80211aa_retx_frames(struct ieee80211_sub_if_data *sdata,
 		aa_dbg("Retransmitted %d frames", frames);
 	}
 
-	if (frames || s->rcv_bas != s->exp_bas) {
+	/* XXX: removing the exp_bas check results in (steady) ~2% losses? */
+	if (frames || s->exp_bas != s->rcv_bas) {
 		/* need BAs */
 		ieee80211aa_send_bar(sdata, s, ga, s->prev_win);
-		return;
 	} else {
 		/* we're done for this window */
-		aa_dbg("We're done for window %d", s->prev_win);
-		spin_lock_bh(&s->lock);
-		s->exp_bas = 0;
-		spin_unlock_bh(&s->lock);
+		aa_dbg("retransmission window %d complete", s->prev_win);
 	}
 }
 
@@ -694,8 +692,10 @@ bool ieee80211aa_apply_ba_scoreboard(struct ieee80211_sub_if_data *sdata,
 	spin_unlock_bh(&sender->lock);
 
 	/* all BAs received, retx */
-	if (sender->rcv_bas == sender->exp_bas)
+	if (sender->rcv_bas == sender->exp_bas) {
+		hrtimer_try_to_cancel(&sender->ba_timer);
 		return true;
+	}
 	return false;
 }
 
