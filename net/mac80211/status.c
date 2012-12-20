@@ -437,15 +437,16 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 			control = le16_to_cpu(bar->control);
 
 			if (control & IEEE80211_BAR_CTRL_GCR) {
-				if (!(info->flags &
-				      IEEE80211_TX_INTFL_RETRANSMISSION)) {
-					ieee80211_send_bar_gcr(
-					  sta->sdata,
-					  hdr->addr1,
-					  ((struct ieee80211_bar_gcr *)bar)->gcr_ga,
-					  ((struct ieee80211_bar_gcr *)bar)->start_seq_num,
-					  true);
-				}
+				/* TODO: limit retransmissions */
+				memset(&info->control, 0, sizeof(info->control));
+				info->control.jiffies = jiffies;
+				info->control.vif = &sta->sdata->vif;
+				info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING |
+					       IEEE80211_TX_INTFL_RETRANSMISSION;
+				info->flags &= ~IEEE80211_TX_TEMPORARY_FLAGS;
+				ieee80211_add_pending_skb(local, skb);
+				rcu_read_unlock();
+				return;
 			}
 			else if (!(control & IEEE80211_BAR_CTRL_MULTI_TID)) {
 				u16 ssn = le16_to_cpu(bar->start_seq_num);

@@ -89,7 +89,7 @@ void ieee80211aa_check_tx(struct ieee80211_sub_if_data *sdata,
 void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
 			  u8 *sa, u32 seqnum);
 void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
-			    u8 *sa, u16 ssn, bool retx);
+			    u8 *sa, u16 ssn);
 #else /* !CONFIG_MAC80211_MESH_11AA */
 static inline bool ieee80211aa_enabled(void)
 {
