@@ -83,6 +83,7 @@ void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 		list_for_each_entry_safe(tx_p, tx_n, &aamc_tx->bucket[i], list) {
 			aa_dbg("baleeting list entry %p in bucket %d", &tx_p->list, i);
 			aa_dbg("pointers next: %p, prev: %p", tx_p->list.next, tx_p->list.prev);
+			hrtimer_cancel(&tx_p->ba_timer);
 			list_del(&tx_p->list);
 			kmem_cache_free(aa_cache_tx, tx_p);
 		}
@@ -93,6 +94,7 @@ void ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 			kmem_cache_free(aa_cache_rx, rx_p);
 		}
 	}
+	tasklet_kill(&sdata->retx_tasklet);
 	kfree(aamc_tx);
 	kfree(aamc_rx);
 	sdata->u.mesh.aamc_tx = NULL;
