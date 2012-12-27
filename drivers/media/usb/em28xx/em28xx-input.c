@@ -57,8 +57,8 @@ MODULE_PARM_DESC(ir_debug, "enable debug messages [IR]");
 struct em28xx_ir_poll_result {
 	unsigned int toggle_bit:1;
 	unsigned int read_count:7;
-	u8 rc_address;
-	u8 rc_data[4]; /* 1 byte on em2860/2880, 4 on em2874 */
+
+	u32 scancode;
 };
 
 struct em28xx_IR {
@@ -72,6 +72,7 @@ struct em28xx_IR {
 	struct delayed_work work;
 	unsigned int full_code:1;
 	unsigned int last_readcount;
+	u64 rc_type;
 
 	int  (*get_key)(struct em28xx_IR *, struct em28xx_ir_poll_result *);
 };
@@ -236,11 +237,8 @@ static int default_polling_getkey(struct em28xx_IR *ir,
 	/* Infrared read count (Reg 0x45[6:0] */
 	poll_result->read_count = (msg[0] & 0x7f);
 
-	/* Remote Control Address (Reg 0x46) */
-	poll_result->rc_address = msg[1];
-
-	/* Remote Control Data (Reg 0x47) */
-	poll_result->rc_data[0] = msg[2];
+	/* Remote Control Address/Data (Regs 0x46/0x47) */
+	poll_result->scancode = msg[1] << 8 | msg[2];
 
 	return 0;
 }
@@ -266,13 +264,35 @@ static int em2874_polling_getkey(struct em28xx_IR *ir,
 	/* Infrared read count (Reg 0x51[6:0] */
 	poll_result->read_count = (msg[0] & 0x7f);
 
-	/* Remote Control Address (Reg 0x52) */
-	poll_result->rc_address = msg[1];
-
-	/* Remote Control Data (Reg 0x53-55) */
-	poll_result->rc_data[0] = msg[2];
-	poll_result->rc_data[1] = msg[3];
-	poll_result->rc_data[2] = msg[4];
+	/*
+	 * Remote Control Address (Reg 0x52)
+	 * Remote Control Data (Reg 0x53-0x55)
+	 */
+	switch (ir->rc_type) {
+	case RC_BIT_RC5:
+		poll_result->scancode = msg[1] << 8 | msg[2];
+		break;
+	case RC_BIT_NEC:
+		if ((msg[3] ^ msg[4]) != 0xff)		/* 32 bits NEC */
+			poll_result->scancode = (msg[1] << 24) |
+						(msg[2] << 16) |
+						(msg[3] << 8)  |
+						 msg[4];
+		else if ((msg[1] ^ msg[2]) != 0xff)	/* 24 bits NEC */
+			poll_result->scancode = (msg[1] << 16) |
+						(msg[2] << 8)  |
+						 msg[3];
+		else					/* Normal NEC */
+			poll_result->scancode = msg[1] << 8 | msg[3];
+		break;
+	case RC_BIT_RC6_0:
+		poll_result->scancode = msg[1] << 8 | msg[2];
+		break;
+	default:
+		poll_result->scancode = (msg[1] << 24) | (msg[2] << 16) |
+					(msg[3] << 8)  | msg[4];
+		break;
+	}
 
 	return 0;
 }
@@ -294,17 +314,16 @@ static void em28xx_ir_handle_key(struct em28xx_IR *ir)
 	}
 
 	if (unlikely(poll_result.read_count != ir->last_readcount)) {
-		dprintk("%s: toggle: %d, count: %d, key 0x%02x%02x\n", __func__,
+		dprintk("%s: toggle: %d, count: %d, key 0x%04x\n", __func__,
 			poll_result.toggle_bit, poll_result.read_count,
-			poll_result.rc_address, poll_result.rc_data[0]);
+			poll_result.scancode);
 		if (ir->full_code)
 			rc_keydown(ir->rc,
-				   poll_result.rc_address << 8 |
-				   poll_result.rc_data[0],
+				   poll_result.scancode,
 				   poll_result.toggle_bit);
 		else
 			rc_keydown(ir->rc,
-				   poll_result.rc_data[0],
+				   poll_result.scancode & 0xff,
 				   poll_result.toggle_bit);
 
 		if (ir->dev->chip_id == CHIP_ID_EM2874 ||
@@ -345,49 +364,92 @@ static void em28xx_ir_stop(struct rc_dev *rc)
 	cancel_delayed_work_sync(&ir->work);
 }
 
-static int em28xx_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
+static int em2860_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
 {
-	int rc = 0;
 	struct em28xx_IR *ir = rc_dev->priv;
 	struct em28xx *dev = ir->dev;
-	u8 ir_config = EM2874_IR_RC5;
 
-	/* Adjust xclk based o IR table for RC5/NEC tables */
-
+	/* Adjust xclk based on IR table for RC5/NEC tables */
 	if (*rc_type & RC_BIT_RC5) {
 		dev->board.xclk |= EM28XX_XCLK_IR_RC5_MODE;
 		ir->full_code = 1;
 		*rc_type = RC_BIT_RC5;
 	} else if (*rc_type & RC_BIT_NEC) {
 		dev->board.xclk &= ~EM28XX_XCLK_IR_RC5_MODE;
-		ir_config = EM2874_IR_NEC;
 		ir->full_code = 1;
 		*rc_type = RC_BIT_NEC;
-	} else if (*rc_type != RC_BIT_UNKNOWN)
-		rc = -EINVAL;
+	} else if (*rc_type & RC_BIT_UNKNOWN) {
+		*rc_type = RC_BIT_UNKNOWN;
+	} else {
+		*rc_type = ir->rc_type;
+		return -EINVAL;
+	}
+	ir->get_key = default_polling_getkey;
+	em28xx_write_reg_bits(dev, EM28XX_R0F_XCLK, dev->board.xclk,
+			      EM28XX_XCLK_IR_RC5_MODE);
+
+	ir->rc_type = *rc_type;
+
+	return 0;
+}
+
+static int em2874_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
+{
+	struct em28xx_IR *ir = rc_dev->priv;
+	struct em28xx *dev = ir->dev;
+	u8 ir_config = EM2874_IR_RC5;
+
+	/* Adjust xclk and set type based on IR table for RC5/NEC/RC6 tables */
+	if (*rc_type & RC_BIT_RC5) {
+		dev->board.xclk |= EM28XX_XCLK_IR_RC5_MODE;
+		ir->full_code = 1;
+		*rc_type = RC_BIT_RC5;
+	} else if (*rc_type & RC_BIT_NEC) {
+		dev->board.xclk &= ~EM28XX_XCLK_IR_RC5_MODE;
+		ir_config = EM2874_IR_NEC | EM2874_IR_NEC_NO_PARITY;
+		ir->full_code = 1;
+		*rc_type = RC_BIT_NEC;
+	} else if (*rc_type & RC_BIT_RC6_0) {
+		dev->board.xclk |= EM28XX_XCLK_IR_RC5_MODE;
+		ir_config = EM2874_IR_RC6_MODE_0;
+		ir->full_code = 1;
+		*rc_type = RC_BIT_RC6_0;
+	} else if (*rc_type & RC_BIT_UNKNOWN) {
+		*rc_type = RC_BIT_UNKNOWN;
+	} else {
+		*rc_type = ir->rc_type;
+		return -EINVAL;
+	}
+
+	ir->get_key = em2874_polling_getkey;
+	em28xx_write_regs(dev, EM2874_R50_IR_CONFIG, &ir_config, 1);
 
 	em28xx_write_reg_bits(dev, EM28XX_R0F_XCLK, dev->board.xclk,
 			      EM28XX_XCLK_IR_RC5_MODE);
+
+	ir->rc_type = *rc_type;
+
+	return 0;
+}
+static int em28xx_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
+{
+	struct em28xx_IR *ir = rc_dev->priv;
+	struct em28xx *dev = ir->dev;
 
 	/* Setup the proper handler based on the chip */
 	switch (dev->chip_id) {
 	case CHIP_ID_EM2860:
 	case CHIP_ID_EM2883:
-		ir->get_key = default_polling_getkey;
-		break;
+		return em2860_ir_change_protocol(rc_dev, rc_type);
 	case CHIP_ID_EM2884:
 	case CHIP_ID_EM2874:
 	case CHIP_ID_EM28174:
-		ir->get_key = em2874_polling_getkey;
-		em28xx_write_regs(dev, EM2874_R50_IR_CONFIG, &ir_config, 1);
-		break;
+		return em2874_ir_change_protocol(rc_dev, rc_type);
 	default:
 		printk("Unrecognized em28xx chip id 0x%02x: IR not supported\n",
 			dev->chip_id);
-		rc = -EINVAL;
+		return -EINVAL;
 	}
-
-	return rc;
 }
 
 static void em28xx_register_i2c_ir(struct em28xx *dev)
@@ -538,7 +600,7 @@ static int em28xx_ir_init(struct em28xx *dev)
 	ir = kzalloc(sizeof(*ir), GFP_KERNEL);
 	rc = rc_allocate_device();
 	if (!ir || !rc)
-		goto err_out_free;
+		goto error;
 
 	/* record handles to ourself */
 	ir->dev = dev;
@@ -555,11 +617,26 @@ static int em28xx_ir_init(struct em28xx *dev)
 	rc->open = em28xx_ir_start;
 	rc->close = em28xx_ir_stop;
 
+	switch (dev->chip_id) {
+	case CHIP_ID_EM2860:
+	case CHIP_ID_EM2883:
+		rc->allowed_protos = RC_BIT_RC5 | RC_BIT_NEC;
+		break;
+	case CHIP_ID_EM2884:
+	case CHIP_ID_EM2874:
+	case CHIP_ID_EM28174:
+		rc->allowed_protos = RC_BIT_RC5 | RC_BIT_NEC | RC_BIT_RC6_0;
+		break;
+	default:
+		err = -ENODEV;
+		goto error;
+	}
+
 	/* By default, keep protocol field untouched */
 	rc_type = RC_BIT_UNKNOWN;
 	err = em28xx_ir_change_protocol(rc, &rc_type);
 	if (err)
-		goto err_out_free;
+		goto error;
 
 	/* This is how often we ask the chip for IR information */
 	ir->polling = 100; /* ms */
@@ -584,7 +661,7 @@ static int em28xx_ir_init(struct em28xx *dev)
 	/* all done */
 	err = rc_register_device(rc);
 	if (err)
-		goto err_out_stop;
+		goto error;
 
 	em28xx_register_i2c_ir(dev);
 
@@ -597,9 +674,8 @@ static int em28xx_ir_init(struct em28xx *dev)
 
 	return 0;
 
- err_out_stop:
+error:
 	dev->ir = NULL;
- err_out_free:
 	rc_free_device(rc);
 	kfree(ir);
 	return err;

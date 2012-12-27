@@ -187,7 +187,7 @@ struct csis_state {
 	const struct csis_pix_format *csis_fmt;
 	struct v4l2_mbus_framefmt format;
 
-	struct spinlock slock;
+	spinlock_t slock;
 	struct csis_pktbuf pkt_buf;
 	struct s5pcsis_event events[S5PCSIS_NUM_EVENTS];
 };
@@ -220,6 +220,18 @@ static const struct csis_pix_format s5pcsis_formats[] = {
 		.code = V4L2_MBUS_FMT_S5C_UYVY_JPEG_1X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_USER(1),
 		.data_alignment = 32,
+	}, {
+		.code = V4L2_MBUS_FMT_SGRBG8_1X8,
+		.fmt_reg = S5PCSIS_CFG_FMT_RAW8,
+		.data_alignment = 24,
+	}, {
+		.code = V4L2_MBUS_FMT_SGRBG10_1X10,
+		.fmt_reg = S5PCSIS_CFG_FMT_RAW10,
+		.data_alignment = 24,
+	}, {
+		.code = V4L2_MBUS_FMT_SGRBG12_1X12,
+		.fmt_reg = S5PCSIS_CFG_FMT_RAW12,
+		.data_alignment = 24,
 	}
 };
 
@@ -261,7 +273,8 @@ static void s5pcsis_reset(struct csis_state *state)
 
 static void s5pcsis_system_enable(struct csis_state *state, int on)
 {
-	u32 val;
+	struct s5p_platform_mipi_csis *pdata = state->pdev->dev.platform_data;
+	u32 val, mask;
 
 	val = s5pcsis_read(state, S5PCSIS_CTRL);
 	if (on)
@@ -271,10 +284,11 @@ static void s5pcsis_system_enable(struct csis_state *state, int on)
 	s5pcsis_write(state, S5PCSIS_CTRL, val);
 
 	val = s5pcsis_read(state, S5PCSIS_DPHYCTRL);
-	if (on)
-		val |= S5PCSIS_DPHYCTRL_ENABLE;
-	else
-		val &= ~S5PCSIS_DPHYCTRL_ENABLE;
+	val &= ~S5PCSIS_DPHYCTRL_ENABLE;
+	if (on) {
+		mask = (1 << (pdata->lanes + 1)) - 1;
+		val |= (mask & S5PCSIS_DPHYCTRL_ENABLE);
+	}
 	s5pcsis_write(state, S5PCSIS_DPHYCTRL, val);
 }
 
@@ -369,6 +383,30 @@ err:
 	return -ENXIO;
 }
 
+static void dump_regs(struct csis_state *state, const char *label)
+{
+	struct {
+		u32 offset;
+		const char * const name;
+	} registers[] = {
+		{ 0x00, "CTRL" },
+		{ 0x04, "DPHYCTRL" },
+		{ 0x08, "CONFIG" },
+		{ 0x0c, "DPHYSTS" },
+		{ 0x10, "INTMSK" },
+		{ 0x2c, "RESOL" },
+		{ 0x38, "SDW_CONFIG" },
+	};
+	u32 i;
+
+	v4l2_info(&state->sd, "--- %s ---\n", label);
+
+	for (i = 0; i < ARRAY_SIZE(registers); i++) {
+		u32 cfg = s5pcsis_read(state, registers[i].offset);
+		v4l2_info(&state->sd, "%10s: 0x%08x\n", registers[i].name, cfg);
+	}
+}
+
 static void s5pcsis_start_stream(struct csis_state *state)
 {
 	s5pcsis_reset(state);
@@ -401,12 +439,12 @@ static void s5pcsis_log_counters(struct csis_state *state, bool non_errors)
 
 	spin_lock_irqsave(&state->slock, flags);
 
-	for (i--; i >= 0; i--)
-		if (state->events[i].counter >= 0)
+	for (i--; i >= 0; i--) {
+		if (state->events[i].counter > 0 || debug)
 			v4l2_info(&state->sd, "%s events: %d\n",
 				  state->events[i].name,
 				  state->events[i].counter);
-
+	}
 	spin_unlock_irqrestore(&state->slock, flags);
 }
 
@@ -569,7 +607,11 @@ static int s5pcsis_log_status(struct v4l2_subdev *sd)
 {
 	struct csis_state *state = sd_to_csis_state(sd);
 
+	mutex_lock(&state->lock);
 	s5pcsis_log_counters(state, true);
+	if (debug && (state->flags & ST_POWERED))
+		dump_regs(state, __func__);
+	mutex_unlock(&state->lock);
 	return 0;
 }
 

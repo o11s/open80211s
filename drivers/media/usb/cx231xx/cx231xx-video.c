@@ -235,7 +235,7 @@ static inline void buffer_filled(struct cx231xx *dev,
 	cx231xx_isocdbg("[%p/%d] wakeup\n", buf, buf->vb.i);
 	buf->vb.state = VIDEOBUF_DONE;
 	buf->vb.field_count++;
-	do_gettimeofday(&buf->vb.ts);
+	v4l2_get_timestamp(&buf->vb.ts);
 
 	if (dev->USE_ISO)
 		dev->video_mode.isoc_ctl.buf = NULL;
@@ -2627,8 +2627,7 @@ int cx231xx_register_analog_devices(struct cx231xx *dev)
 		     dev->name, video_device_node_name(dev->vdev));
 
 	/* Initialize VBI template */
-	memcpy(&cx231xx_vbi_template, &cx231xx_video_template,
-	       sizeof(cx231xx_vbi_template));
+	cx231xx_vbi_template = cx231xx_video_template;
 	strcpy(cx231xx_vbi_template.name, "cx231xx-vbi");
 
 	/* Allocate and fill vbi video_device struct */

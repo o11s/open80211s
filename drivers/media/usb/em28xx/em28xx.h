@@ -4,6 +4,7 @@
    Copyright (C) 2005 Markus Rechberger <mrechberger@gmail.com>
 		      Ludovico Cavedon <cavedon@sssup.it>
 		      Mauro Carvalho Chehab <mchehab@infradead.org>
+   Copyright (C) 2012 Frank Schäfer <fschaefer.oss@googlemail.com>
 
    Based on the em2800 driver from Sascha Sommer <saschasommer@freenet.de>
 
@@ -157,12 +158,18 @@
 #define EM28XX_NUM_BUFS 5
 #define EM28XX_DVB_NUM_BUFS 5
 
-/* number of packets for each buffer
+/* isoc transfers: number of packets for each buffer
    windows requests only 64 packets .. so we better do the same
    this is what I found out for all alternate numbers there!
  */
-#define EM28XX_NUM_PACKETS 64
-#define EM28XX_DVB_MAX_PACKETS 64
+#define EM28XX_NUM_ISOC_PACKETS 64
+#define EM28XX_DVB_NUM_ISOC_PACKETS 64
+
+/* bulk transfers: transfer buffer size = packet size * packet multiplier
+   USB 2.0 spec says bulk packet size is always 512 bytes
+ */
+#define EM28XX_BULK_PACKET_MULTIPLIER 384
+#define EM28XX_DVB_BULK_PACKET_MULTIPLIER 384
 
 #define EM28XX_INTERLACED_DEFAULT 1
 
@@ -187,10 +194,6 @@
 			Interval: 125us
 */
 
-/* time to wait when stopping the isoc transfer */
-#define EM28XX_URB_TIMEOUT \
-			msecs_to_jiffies(EM28XX_NUM_BUFS * EM28XX_NUM_PACKETS)
-
 /* time in msecs to wait for i2c writes to finish */
 #define EM2800_I2C_WRITE_TIMEOUT 20
 
@@ -203,7 +206,7 @@ enum em28xx_mode {
 
 struct em28xx;
 
-struct em28xx_usb_isoc_bufs {
+struct em28xx_usb_bufs {
 		/* max packet size of isoc transaction */
 	int				max_pkt_size;
 
@@ -213,26 +216,26 @@ struct em28xx_usb_isoc_bufs {
 		/* number of allocated urbs */
 	int				num_bufs;
 
-		/* urb for isoc transfers */
+		/* urb for isoc/bulk transfers */
 	struct urb			**urb;
 
-		/* transfer buffers for isoc transfer */
+		/* transfer buffers for isoc/bulk transfer */
 	char				**transfer_buffer;
 };
 
-struct em28xx_usb_isoc_ctl {
-		/* isoc transfer buffers for analog mode */
-	struct em28xx_usb_isoc_bufs	analog_bufs;
+struct em28xx_usb_ctl {
+		/* isoc/bulk transfer buffers for analog mode */
+	struct em28xx_usb_bufs		analog_bufs;
 
-		/* isoc transfer buffers for digital mode */
-	struct em28xx_usb_isoc_bufs	digital_bufs;
+		/* isoc/bulk transfer buffers for digital mode */
+	struct em28xx_usb_bufs		digital_bufs;
 
 		/* Stores already requested buffers */
 	struct em28xx_buffer    	*vid_buf;
 	struct em28xx_buffer    	*vbi_buf;
 
-		/* isoc urb callback */
-	int (*isoc_copy) (struct em28xx *dev, struct urb *urb);
+		/* copy data from URB */
+	int (*urb_data_copy) (struct em28xx *dev, struct urb *urb);
 
 };
 
@@ -249,17 +252,21 @@ struct em28xx_buffer {
 	/* common v4l buffer stuff -- must be first */
 	struct videobuf_buffer vb;
 
-	struct list_head frame;
 	int top_field;
+
+	/* counter to control buffer fill */
+	unsigned int pos;
+	/* NOTE; in interlaced mode, this value is reset to zero at
+	 * the start of each new field (not frame !)		   */
+
+	/* pointer to vmalloc memory address in vb */
+	char *vb_buf;
 };
 
 struct em28xx_dmaqueue {
 	struct list_head       active;
 
 	wait_queue_head_t          wq;
-
-	/* Counters to control buffer fill */
-	int                        pos;
 };
 
 /* inputs */
@@ -497,7 +504,7 @@ struct em28xx {
 	int sensor_xres, sensor_yres;
 	int sensor_xtal;
 
-	/* Allows progressive (e. g. non-interlaced) mode */
+	/* Progressive (non-interlaced) mode */
 	int progressive;
 
 	/* Vinmode/Vinctl used at the driver */
@@ -557,10 +564,10 @@ struct em28xx {
 	/* states */
 	enum em28xx_dev_state state;
 
-	/* vbi related state tracking */
+	/* capture state tracking */
 	int capture_type;
+	unsigned char top_field:1;
 	int vbi_read;
-	unsigned char cur_field;
 	unsigned int vbi_width;
 	unsigned int vbi_height; /* lines per field */
 
@@ -582,17 +589,28 @@ struct em28xx {
 	/* Isoc control struct */
 	struct em28xx_dmaqueue vidq;
 	struct em28xx_dmaqueue vbiq;
-	struct em28xx_usb_isoc_ctl isoc_ctl;
+	struct em28xx_usb_ctl usb_ctl;
 	spinlock_t slock;
 
 	/* usb transfer */
 	struct usb_device *udev;	/* the usb device */
-	int alt;		/* alternate */
-	int max_pkt_size;	/* max packet size of isoc transaction */
-	int num_alt;		/* Number of alternative settings */
-	unsigned int *alt_max_pkt_size;	/* array of wMaxPacketSize */
-	int dvb_alt;				/* alternate for DVB */
-	unsigned int dvb_max_pkt_size;		/* wMaxPacketSize for DVB */
+	u8 analog_ep_isoc;	/* address of isoc endpoint for analog */
+	u8 analog_ep_bulk;	/* address of bulk endpoint for analog */
+	u8 dvb_ep_isoc;		/* address of isoc endpoint for DVB */
+	u8 dvb_ep_bulk;		/* address of bulk endpoint for DVC */
+	int alt;		/* alternate setting */
+	int max_pkt_size;	/* max packet size of the selected ep at alt */
+	int packet_multiplier;	/* multiplier for wMaxPacketSize, used for
+				   URB buffer size definition */
+	int num_alt;		/* number of alternative settings */
+	unsigned int *alt_max_pkt_size_isoc; /* array of isoc wMaxPacketSize */
+	unsigned int analog_xfer_bulk:1;	/* use bulk instead of isoc
+						   transfers for analog      */
+	int dvb_alt_isoc;	/* alternate setting for DVB isoc transfers */
+	unsigned int dvb_max_pkt_size_isoc;	/* isoc max packet size of the
+						   selected DVB ep at dvb_alt */
+	unsigned int dvb_xfer_bulk:1;		/* use bulk instead of isoc
+						   transfers for DVB          */
 	char urb_buf[URB_MAX_CTRL_SIZE];	/* urb control msg buffer */
 
 	/* helper funcs that call usb_control_msg */
@@ -666,12 +684,14 @@ int em28xx_vbi_supported(struct em28xx *dev);
 int em28xx_set_outfmt(struct em28xx *dev);
 int em28xx_resolution_set(struct em28xx *dev);
 int em28xx_set_alternate(struct em28xx *dev);
-int em28xx_alloc_isoc(struct em28xx *dev, enum em28xx_mode mode,
-		      int max_packets, int num_bufs, int max_pkt_size);
-int em28xx_init_isoc(struct em28xx *dev, enum em28xx_mode mode,
-		     int max_packets, int num_bufs, int max_pkt_size,
-		     int (*isoc_copy) (struct em28xx *dev, struct urb *urb));
-void em28xx_uninit_isoc(struct em28xx *dev, enum em28xx_mode mode);
+int em28xx_alloc_urbs(struct em28xx *dev, enum em28xx_mode mode, int xfer_bulk,
+		      int num_bufs, int max_pkt_size, int packet_multiplier);
+int em28xx_init_usb_xfer(struct em28xx *dev, enum em28xx_mode mode,
+			 int xfer_bulk,
+			 int num_bufs, int max_pkt_size, int packet_multiplier,
+			 int (*urb_data_copy)
+					(struct em28xx *dev, struct urb *urb));
+void em28xx_uninit_usb_xfer(struct em28xx *dev, enum em28xx_mode mode);
 void em28xx_stop_urbs(struct em28xx *dev);
 int em28xx_isoc_dvb_max_packetsize(struct em28xx *dev);
 int em28xx_set_mode(struct em28xx *dev, enum em28xx_mode set_mode);

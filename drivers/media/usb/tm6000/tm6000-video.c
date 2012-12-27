@@ -57,7 +57,7 @@
 static unsigned int vid_limit = 16;	/* Video memory limit, in Mb */
 static int video_nr = -1;		/* /dev/videoN, -1 for autodetect */
 static int radio_nr = -1;		/* /dev/radioN, -1 for autodetect */
-static int keep_urb;			/* keep urb buffers allocated */
+static bool keep_urb;			/* keep urb buffers allocated */
 
 /* Debug level */
 int tm6000_debug;
@@ -194,7 +194,7 @@ static inline void buffer_filled(struct tm6000_core *dev,
 	dprintk(dev, V4L2_DEBUG_ISOC, "[%p/%d] wakeup\n", buf, buf->vb.i);
 	buf->vb.state = VIDEOBUF_DONE;
 	buf->vb.field_count++;
-	do_gettimeofday(&buf->vb.ts);
+	v4l2_get_timestamp(&buf->vb.ts);
 
 	list_del(&buf->vb.queue);
 	wake_up(&buf->vb.done);

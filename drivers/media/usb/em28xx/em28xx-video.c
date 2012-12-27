@@ -6,6 +6,7 @@
 		      Markus Rechberger <mrechberger@gmail.com>
 		      Mauro Carvalho Chehab <mchehab@infradead.org>
 		      Sascha Sommer <saschasommer@freenet.de>
+   Copyright (C) 2012 Frank Schäfer <fschaefer.oss@googlemail.com>
 
 	Some parts based on SN9C10x PC Camera Controllers GPL driver made
 		by Luca Risolia <luca.risolia@studio.unibo.it>
@@ -153,72 +154,44 @@ static struct v4l2_queryctrl ac97_qctrl[] = {
    ------------------------------------------------------------------*/
 
 /*
- * Announces that a buffer were filled and request the next
+ * Finish the current buffer
  */
-static inline void buffer_filled(struct em28xx *dev,
-				  struct em28xx_dmaqueue *dma_q,
-				  struct em28xx_buffer *buf)
+static inline void finish_buffer(struct em28xx *dev,
+				 struct em28xx_buffer *buf)
 {
-	/* Advice that buffer was filled */
 	em28xx_isocdbg("[%p/%d] wakeup\n", buf, buf->vb.i);
 	buf->vb.state = VIDEOBUF_DONE;
 	buf->vb.field_count++;
-	do_gettimeofday(&buf->vb.ts);
-
-	dev->isoc_ctl.vid_buf = NULL;
-
-	list_del(&buf->vb.queue);
-	wake_up(&buf->vb.done);
-}
-
-static inline void vbi_buffer_filled(struct em28xx *dev,
-				     struct em28xx_dmaqueue *dma_q,
-				     struct em28xx_buffer *buf)
-{
-	/* Advice that buffer was filled */
-	em28xx_isocdbg("[%p/%d] wakeup\n", buf, buf->vb.i);
-
-	buf->vb.state = VIDEOBUF_DONE;
-	buf->vb.field_count++;
-	do_gettimeofday(&buf->vb.ts);
-
-	dev->isoc_ctl.vbi_buf = NULL;
-
+	v4l2_get_timestamp(&buf->vb.ts);
 	list_del(&buf->vb.queue);
 	wake_up(&buf->vb.done);
 }
 
 /*
- * Identify the buffer header type and properly handles
+ * Copy picture data from USB buffer to videobuf buffer
  */
 static void em28xx_copy_video(struct em28xx *dev,
-			      struct em28xx_dmaqueue  *dma_q,
 			      struct em28xx_buffer *buf,
-			      unsigned char *p,
-			      unsigned char *outp, unsigned long len)
+			      unsigned char *usb_buf,
+			      unsigned long len)
 {
 	void *fieldstart, *startwrite, *startread;
 	int  linesdone, currlinedone, offset, lencopy, remain;
 	int bytesperline = dev->width << 1;
 
-	if (dma_q->pos + len > buf->vb.size)
-		len = buf->vb.size - dma_q->pos;
+	if (buf->pos + len > buf->vb.size)
+		len = buf->vb.size - buf->pos;
 
-	startread = p;
+	startread = usb_buf;
 	remain = len;
 
-	if (dev->progressive)
-		fieldstart = outp;
-	else {
-		/* Interlaces two half frames */
-		if (buf->top_field)
-			fieldstart = outp;
-		else
-			fieldstart = outp + bytesperline;
-	}
+	if (dev->progressive || buf->top_field)
+		fieldstart = buf->vb_buf;
+	else /* interlaced mode, even nr. of lines */
+		fieldstart = buf->vb_buf + bytesperline;
 
-	linesdone = dma_q->pos / bytesperline;
-	currlinedone = dma_q->pos % bytesperline;
+	linesdone = buf->pos / bytesperline;
+	currlinedone = buf->pos % bytesperline;
 
 	if (dev->progressive)
 		offset = linesdone * bytesperline + currlinedone;
@@ -229,11 +202,12 @@ static void em28xx_copy_video(struct em28xx *dev,
 	lencopy = bytesperline - currlinedone;
 	lencopy = lencopy > remain ? remain : lencopy;
 
-	if ((char *)startwrite + lencopy > (char *)outp + buf->vb.size) {
+	if ((char *)startwrite + lencopy > (char *)buf->vb_buf + buf->vb.size) {
 		em28xx_isocdbg("Overflow of %zi bytes past buffer end (1)\n",
-			       ((char *)startwrite + lencopy) -
-			       ((char *)outp + buf->vb.size));
-		remain = (char *)outp + buf->vb.size - (char *)startwrite;
+			      ((char *)startwrite + lencopy) -
+			      ((char *)buf->vb_buf + buf->vb.size));
+		remain = (char *)buf->vb_buf + buf->vb.size -
+			 (char *)startwrite;
 		lencopy = remain;
 	}
 	if (lencopy <= 0)
@@ -243,20 +217,23 @@ static void em28xx_copy_video(struct em28xx *dev,
 	remain -= lencopy;
 
 	while (remain > 0) {
-		startwrite += lencopy + bytesperline;
+		if (dev->progressive)
+			startwrite += lencopy;
+		else
+			startwrite += lencopy + bytesperline;
 		startread += lencopy;
 		if (bytesperline > remain)
 			lencopy = remain;
 		else
 			lencopy = bytesperline;
 
-		if ((char *)startwrite + lencopy > (char *)outp +
+		if ((char *)startwrite + lencopy > (char *)buf->vb_buf +
 		    buf->vb.size) {
 			em28xx_isocdbg("Overflow of %zi bytes past buffer end"
 				       "(2)\n",
 				       ((char *)startwrite + lencopy) -
-				       ((char *)outp + buf->vb.size));
-			lencopy = remain = (char *)outp + buf->vb.size -
+				       ((char *)buf->vb_buf + buf->vb.size));
+			lencopy = remain = (char *)buf->vb_buf + buf->vb.size -
 					   (char *)startwrite;
 		}
 		if (lencopy <= 0)
@@ -267,57 +244,29 @@ static void em28xx_copy_video(struct em28xx *dev,
 		remain -= lencopy;
 	}
 
-	dma_q->pos += len;
+	buf->pos += len;
 }
 
+/*
+ * Copy VBI data from USB buffer to videobuf buffer
+ */
 static void em28xx_copy_vbi(struct em28xx *dev,
-			      struct em28xx_dmaqueue  *dma_q,
-			      struct em28xx_buffer *buf,
-			      unsigned char *p,
-			      unsigned char *outp, unsigned long len)
+			    struct em28xx_buffer *buf,
+			    unsigned char *usb_buf,
+			    unsigned long len)
 {
-	void *startwrite, *startread;
-	int  offset;
-	int bytesperline;
+	unsigned int offset;
 
-	if (dev == NULL) {
-		em28xx_isocdbg("dev is null\n");
-		return;
-	}
-	bytesperline = dev->vbi_width;
+	if (buf->pos + len > buf->vb.size)
+		len = buf->vb.size - buf->pos;
 
-	if (dma_q == NULL) {
-		em28xx_isocdbg("dma_q is null\n");
-		return;
-	}
-	if (buf == NULL) {
-		return;
-	}
-	if (p == NULL) {
-		em28xx_isocdbg("p is null\n");
-		return;
-	}
-	if (outp == NULL) {
-		em28xx_isocdbg("outp is null\n");
-		return;
-	}
-
-	if (dma_q->pos + len > buf->vb.size)
-		len = buf->vb.size - dma_q->pos;
-
-	startread = p;
-
-	startwrite = outp + dma_q->pos;
-	offset = dma_q->pos;
-
+	offset = buf->pos;
 	/* Make sure the bottom field populates the second half of the frame */
-	if (buf->top_field == 0) {
-		startwrite += bytesperline * dev->vbi_height;
-		offset += bytesperline * dev->vbi_height;
-	}
+	if (buf->top_field == 0)
+		offset += dev->vbi_width * dev->vbi_height;
 
-	memcpy(startwrite, startread, len);
-	dma_q->pos += len;
+	memcpy(buf->vb_buf + offset, usb_buf, len);
+	buf->pos += len;
 }
 
 static inline void print_err_status(struct em28xx *dev,
@@ -360,166 +309,135 @@ static inline void print_err_status(struct em28xx *dev,
 }
 
 /*
- * video-buf generic routine to get the next available buffer
+ * get the next available buffer from dma queue
  */
-static inline void get_next_buf(struct em28xx_dmaqueue *dma_q,
-					  struct em28xx_buffer **buf)
+static inline struct em28xx_buffer *get_next_buf(struct em28xx *dev,
+						 struct em28xx_dmaqueue *dma_q)
 {
-	struct em28xx *dev = container_of(dma_q, struct em28xx, vidq);
+	struct em28xx_buffer *buf;
 	char *outp;
 
 	if (list_empty(&dma_q->active)) {
 		em28xx_isocdbg("No active queue to serve\n");
-		dev->isoc_ctl.vid_buf = NULL;
-		*buf = NULL;
-		return;
+		return NULL;
 	}
 
 	/* Get the next buffer */
-	*buf = list_entry(dma_q->active.next, struct em28xx_buffer, vb.queue);
-
+	buf = list_entry(dma_q->active.next, struct em28xx_buffer, vb.queue);
 	/* Cleans up buffer - Useful for testing for frame/URB loss */
-	outp = videobuf_to_vmalloc(&(*buf)->vb);
-	memset(outp, 0, (*buf)->vb.size);
+	outp = videobuf_to_vmalloc(&buf->vb);
+	memset(outp, 0, buf->vb.size);
+	buf->pos = 0;
+	buf->vb_buf = outp;
 
-	dev->isoc_ctl.vid_buf = *buf;
-
-	return;
+	return buf;
 }
 
 /*
- * video-buf generic routine to get the next available VBI buffer
+ * Finish the current buffer if completed and prepare for the next field
  */
-static inline void vbi_get_next_buf(struct em28xx_dmaqueue *dma_q,
-				    struct em28xx_buffer **buf)
+static struct em28xx_buffer *
+finish_field_prepare_next(struct em28xx *dev,
+			  struct em28xx_buffer *buf,
+			  struct em28xx_dmaqueue *dma_q)
 {
-	struct em28xx *dev = container_of(dma_q, struct em28xx, vbiq);
-	char *outp;
-
-	if (list_empty(&dma_q->active)) {
-		em28xx_isocdbg("No active queue to serve\n");
-		dev->isoc_ctl.vbi_buf = NULL;
-		*buf = NULL;
-		return;
+	if (dev->progressive || dev->top_field) { /* Brand new frame */
+		if (buf != NULL)
+			finish_buffer(dev, buf);
+		buf = get_next_buf(dev, dma_q);
+	}
+	if (buf != NULL) {
+		buf->top_field = dev->top_field;
+		buf->pos = 0;
 	}
 
-	/* Get the next buffer */
-	*buf = list_entry(dma_q->active.next, struct em28xx_buffer, vb.queue);
-	/* Cleans up buffer - Useful for testing for frame/URB loss */
-	outp = videobuf_to_vmalloc(&(*buf)->vb);
-	memset(outp, 0x00, (*buf)->vb.size);
-
-	dev->isoc_ctl.vbi_buf = *buf;
-
-	return;
+	return buf;
 }
 
 /*
- * Controls the isoc copy of each urb packet
+ * Process data packet according to the em2710/em2750/em28xx frame data format
  */
-static inline int em28xx_isoc_copy(struct em28xx *dev, struct urb *urb)
+static inline void process_frame_data_em28xx(struct em28xx *dev,
+					     unsigned char *data_pkt,
+					     unsigned int  data_len)
 {
-	struct em28xx_buffer    *buf;
-	struct em28xx_dmaqueue  *dma_q = &dev->vidq;
-	unsigned char *outp = NULL;
-	int i, len = 0, rc = 1;
-	unsigned char *p;
-
-	if (!dev)
-		return 0;
-
-	if ((dev->state & DEV_DISCONNECTED) || (dev->state & DEV_MISCONFIGURED))
-		return 0;
-
-	if (urb->status < 0) {
-		print_err_status(dev, -1, urb->status);
-		if (urb->status == -ENOENT)
-			return 0;
-	}
-
-	buf = dev->isoc_ctl.vid_buf;
-	if (buf != NULL)
-		outp = videobuf_to_vmalloc(&buf->vb);
-
-	for (i = 0; i < urb->number_of_packets; i++) {
-		int status = urb->iso_frame_desc[i].status;
-
-		if (status < 0) {
-			print_err_status(dev, i, status);
-			if (urb->iso_frame_desc[i].status != -EPROTO)
-				continue;
-		}
-
-		len = urb->iso_frame_desc[i].actual_length - 4;
-
-		if (urb->iso_frame_desc[i].actual_length <= 0) {
-			/* em28xx_isocdbg("packet %d is empty",i); - spammy */
-			continue;
-		}
-		if (urb->iso_frame_desc[i].actual_length >
-						dev->max_pkt_size) {
-			em28xx_isocdbg("packet bigger than packet size");
-			continue;
-		}
-
-		p = urb->transfer_buffer + urb->iso_frame_desc[i].offset;
-
-		/* FIXME: incomplete buffer checks where removed to make
-		   logic simpler. Impacts of those changes should be evaluated
-		 */
-		if (p[0] == 0x33 && p[1] == 0x95 && p[2] == 0x00) {
-			em28xx_isocdbg("VBI HEADER!!!\n");
-			/* FIXME: Should add vbi copy */
-			continue;
-		}
-		if (p[0] == 0x22 && p[1] == 0x5a) {
-			em28xx_isocdbg("Video frame %d, length=%i, %s\n", p[2],
-				       len, (p[2] & 1) ? "odd" : "even");
-
-			if (dev->progressive || !(p[2] & 1)) {
-				if (buf != NULL)
-					buffer_filled(dev, dma_q, buf);
-				get_next_buf(dma_q, &buf);
-				if (buf == NULL)
-					outp = NULL;
-				else
-					outp = videobuf_to_vmalloc(&buf->vb);
-			}
-
-			if (buf != NULL) {
-				if (p[2] & 1)
-					buf->top_field = 0;
-				else
-					buf->top_field = 1;
-			}
-
-			dma_q->pos = 0;
-		}
-		if (buf != NULL) {
-			if (p[0] != 0x88 && p[0] != 0x22) {
-				em28xx_isocdbg("frame is not complete\n");
-				len += 4;
-			} else {
-				p += 4;
-			}
-			em28xx_copy_video(dev, dma_q, buf, p, outp, len);
-		}
-	}
-	return rc;
-}
-
-/* Version of isoc handler that takes into account a mixture of video and
-   VBI data */
-static inline int em28xx_isoc_copy_vbi(struct em28xx *dev, struct urb *urb)
-{
-	struct em28xx_buffer    *buf, *vbi_buf;
+	struct em28xx_buffer    *buf = dev->usb_ctl.vid_buf;
+	struct em28xx_buffer    *vbi_buf = dev->usb_ctl.vbi_buf;
 	struct em28xx_dmaqueue  *dma_q = &dev->vidq;
 	struct em28xx_dmaqueue  *vbi_dma_q = &dev->vbiq;
-	unsigned char *outp = NULL;
-	unsigned char *vbioutp = NULL;
-	int i, len = 0, rc = 1;
-	unsigned char *p;
-	int vbi_size;
+
+	/* capture type 0 = vbi start
+	   capture type 1 = vbi in progress
+	   capture type 2 = video start
+	   capture type 3 = video in progress */
+	if (data_len >= 4) {
+		/* NOTE: Headers are always 4 bytes and
+		 * never split across packets */
+		if (data_pkt[0] == 0x88 && data_pkt[1] == 0x88 &&
+		    data_pkt[2] == 0x88 && data_pkt[3] == 0x88) {
+			/* Continuation */
+			data_pkt += 4;
+			data_len -= 4;
+		} else if (data_pkt[0] == 0x33 && data_pkt[1] == 0x95) {
+			/* Field start (VBI mode) */
+			dev->capture_type = 0;
+			dev->vbi_read = 0;
+			em28xx_isocdbg("VBI START HEADER !!!\n");
+			dev->top_field = !(data_pkt[2] & 1);
+			data_pkt += 4;
+			data_len -= 4;
+		} else if (data_pkt[0] == 0x22 && data_pkt[1] == 0x5a) {
+			/* Field start (VBI disabled) */
+			dev->capture_type = 2;
+			em28xx_isocdbg("VIDEO START HEADER !!!\n");
+			dev->top_field = !(data_pkt[2] & 1);
+			data_pkt += 4;
+			data_len -= 4;
+		}
+	}
+	/* NOTE: With bulk transfers, intermediate data packets
+	 * have no continuation header */
+
+	if (dev->capture_type == 0) {
+		vbi_buf = finish_field_prepare_next(dev, vbi_buf, vbi_dma_q);
+		dev->usb_ctl.vbi_buf = vbi_buf;
+		dev->capture_type = 1;
+	}
+
+	if (dev->capture_type == 1) {
+		int vbi_size = dev->vbi_width * dev->vbi_height;
+		int vbi_data_len = ((dev->vbi_read + data_len) > vbi_size) ?
+				   (vbi_size - dev->vbi_read) : data_len;
+
+		/* Copy VBI data */
+		if (vbi_buf != NULL)
+			em28xx_copy_vbi(dev, vbi_buf, data_pkt, vbi_data_len);
+		dev->vbi_read += vbi_data_len;
+
+		if (vbi_data_len < data_len) {
+			/* Continue with copying video data */
+			dev->capture_type = 2;
+			data_pkt += vbi_data_len;
+			data_len -= vbi_data_len;
+		}
+	}
+
+	if (dev->capture_type == 2) {
+		buf = finish_field_prepare_next(dev, buf, dma_q);
+		dev->usb_ctl.vid_buf = buf;
+		dev->capture_type = 3;
+	}
+
+	if (dev->capture_type == 3 && buf != NULL && data_len > 0)
+		em28xx_copy_video(dev, buf, data_pkt, data_len);
+}
+
+/* Processes and copies the URB data content (video and VBI data) */
+static inline int em28xx_urb_data_copy(struct em28xx *dev, struct urb *urb)
+{
+	int xfer_bulk, num_packets, i;
+	unsigned char *usb_data_pkt;
+	unsigned int usb_data_len;
 
 	if (!dev)
 		return 0;
@@ -527,154 +445,48 @@ static inline int em28xx_isoc_copy_vbi(struct em28xx *dev, struct urb *urb)
 	if ((dev->state & DEV_DISCONNECTED) || (dev->state & DEV_MISCONFIGURED))
 		return 0;
 
-	if (urb->status < 0) {
+	if (urb->status < 0)
 		print_err_status(dev, -1, urb->status);
-		if (urb->status == -ENOENT)
-			return 0;
-	}
 
-	buf = dev->isoc_ctl.vid_buf;
-	if (buf != NULL)
-		outp = videobuf_to_vmalloc(&buf->vb);
+	xfer_bulk = usb_pipebulk(urb->pipe);
 
-	vbi_buf = dev->isoc_ctl.vbi_buf;
-	if (vbi_buf != NULL)
-		vbioutp = videobuf_to_vmalloc(&vbi_buf->vb);
+	if (xfer_bulk) /* bulk */
+		num_packets = 1;
+	else /* isoc */
+		num_packets = urb->number_of_packets;
 
-	for (i = 0; i < urb->number_of_packets; i++) {
-		int status = urb->iso_frame_desc[i].status;
+	for (i = 0; i < num_packets; i++) {
+		if (xfer_bulk) { /* bulk */
+			usb_data_len = urb->actual_length;
 
-		if (status < 0) {
-			print_err_status(dev, i, status);
-			if (urb->iso_frame_desc[i].status != -EPROTO)
+			usb_data_pkt = urb->transfer_buffer;
+		} else { /* isoc */
+			if (urb->iso_frame_desc[i].status < 0) {
+				print_err_status(dev, i,
+						 urb->iso_frame_desc[i].status);
+				if (urb->iso_frame_desc[i].status != -EPROTO)
+					continue;
+			}
+
+			usb_data_len = urb->iso_frame_desc[i].actual_length;
+			if (usb_data_len > dev->max_pkt_size) {
+				em28xx_isocdbg("packet bigger than packet size");
 				continue;
+			}
+
+			usb_data_pkt = urb->transfer_buffer +
+				       urb->iso_frame_desc[i].offset;
 		}
 
-		len = urb->iso_frame_desc[i].actual_length;
-		if (urb->iso_frame_desc[i].actual_length <= 0) {
-			/* em28xx_isocdbg("packet %d is empty",i); - spammy */
+		if (usb_data_len == 0) {
+			/* NOTE: happens very often with isoc transfers */
+			/* em28xx_usbdbg("packet %d is empty",i); - spammy */
 			continue;
 		}
-		if (urb->iso_frame_desc[i].actual_length >
-						dev->max_pkt_size) {
-			em28xx_isocdbg("packet bigger than packet size");
-			continue;
-		}
 
-		p = urb->transfer_buffer + urb->iso_frame_desc[i].offset;
-
-		/* capture type 0 = vbi start
-		   capture type 1 = video start
-		   capture type 2 = video in progress */
-		if (p[0] == 0x33 && p[1] == 0x95) {
-			dev->capture_type = 0;
-			dev->vbi_read = 0;
-			em28xx_isocdbg("VBI START HEADER!!!\n");
-			dev->cur_field = p[2];
-			p += 4;
-			len -= 4;
-		} else if (p[0] == 0x88 && p[1] == 0x88 &&
-			   p[2] == 0x88 && p[3] == 0x88) {
-			/* continuation */
-			p += 4;
-			len -= 4;
-		} else if (p[0] == 0x22 && p[1] == 0x5a) {
-			/* start video */
-			p += 4;
-			len -= 4;
-		}
-
-		vbi_size = dev->vbi_width * dev->vbi_height;
-
-		if (dev->capture_type == 0) {
-			if (dev->vbi_read >= vbi_size) {
-				/* We've already read all the VBI data, so
-				   treat the rest as video */
-				em28xx_isocdbg("dev->vbi_read > vbi_size\n");
-			} else if ((dev->vbi_read + len) < vbi_size) {
-				/* This entire frame is VBI data */
-				if (dev->vbi_read == 0 &&
-				    (!(dev->cur_field & 1))) {
-					/* Brand new frame */
-					if (vbi_buf != NULL)
-						vbi_buffer_filled(dev,
-								  vbi_dma_q,
-								  vbi_buf);
-					vbi_get_next_buf(vbi_dma_q, &vbi_buf);
-					if (vbi_buf == NULL)
-						vbioutp = NULL;
-					else
-						vbioutp = videobuf_to_vmalloc(
-							&vbi_buf->vb);
-				}
-
-				if (dev->vbi_read == 0) {
-					vbi_dma_q->pos = 0;
-					if (vbi_buf != NULL) {
-						if (dev->cur_field & 1)
-							vbi_buf->top_field = 0;
-						else
-							vbi_buf->top_field = 1;
-					}
-				}
-
-				dev->vbi_read += len;
-				em28xx_copy_vbi(dev, vbi_dma_q, vbi_buf, p,
-						vbioutp, len);
-			} else {
-				/* Some of this frame is VBI data and some is
-				   video data */
-				int vbi_data_len = vbi_size - dev->vbi_read;
-				dev->vbi_read += vbi_data_len;
-				em28xx_copy_vbi(dev, vbi_dma_q, vbi_buf, p,
-						vbioutp, vbi_data_len);
-				dev->capture_type = 1;
-				p += vbi_data_len;
-				len -= vbi_data_len;
-			}
-		}
-
-		if (dev->capture_type == 1) {
-			dev->capture_type = 2;
-			if (dev->progressive || !(dev->cur_field & 1)) {
-				if (buf != NULL)
-					buffer_filled(dev, dma_q, buf);
-				get_next_buf(dma_q, &buf);
-				if (buf == NULL)
-					outp = NULL;
-				else
-					outp = videobuf_to_vmalloc(&buf->vb);
-			}
-			if (buf != NULL) {
-				if (dev->cur_field & 1)
-					buf->top_field = 0;
-				else
-					buf->top_field = 1;
-			}
-
-			dma_q->pos = 0;
-		}
-
-		if (buf != NULL && dev->capture_type == 2) {
-			if (len >= 4 && p[0] == 0x88 && p[1] == 0x88 &&
-			    p[2] == 0x88 && p[3] == 0x88) {
-				p += 4;
-				len -= 4;
-			}
-			if (len >= 4 && p[0] == 0x22 && p[1] == 0x5a) {
-				em28xx_isocdbg("Video frame %d, len=%i, %s\n",
-					       p[2], len, (p[2] & 1) ?
-					       "odd" : "even");
-				p += 4;
-				len -= 4;
-			}
-
-			if (len > 0)
-				em28xx_copy_video(dev, dma_q, buf, p, outp,
-						  len);
-		}
+		process_frame_data_em28xx(dev, usb_data_pkt, usb_data_len);
 	}
-	return rc;
+	return 1;
 }
 
 
@@ -727,8 +539,8 @@ static void free_buffer(struct videobuf_queue *vq, struct em28xx_buffer *buf)
 	   VIDEOBUF_ACTIVE, it won't be, though.
 	*/
 	spin_lock_irqsave(&dev->slock, flags);
-	if (dev->isoc_ctl.vid_buf == buf)
-		dev->isoc_ctl.vid_buf = NULL;
+	if (dev->usb_ctl.vid_buf == buf)
+		dev->usb_ctl.vid_buf = NULL;
 	spin_unlock_irqrestore(&dev->slock, flags);
 
 	videobuf_vmalloc_free(&buf->vb);
@@ -760,22 +572,17 @@ buffer_prepare(struct videobuf_queue *vq, struct videobuf_buffer *vb,
 			goto fail;
 	}
 
-	if (!dev->isoc_ctl.analog_bufs.num_bufs)
+	if (!dev->usb_ctl.analog_bufs.num_bufs)
 		urb_init = 1;
 
 	if (urb_init) {
-		if (em28xx_vbi_supported(dev) == 1)
-			rc = em28xx_init_isoc(dev, EM28XX_ANALOG_MODE,
-					      EM28XX_NUM_PACKETS,
-					      EM28XX_NUM_BUFS,
-					      dev->max_pkt_size,
-					      em28xx_isoc_copy_vbi);
-		else
-			rc = em28xx_init_isoc(dev, EM28XX_ANALOG_MODE,
-					      EM28XX_NUM_PACKETS,
-					      EM28XX_NUM_BUFS,
-					      dev->max_pkt_size,
-					      em28xx_isoc_copy);
+		dev->capture_type = -1;
+		rc = em28xx_init_usb_xfer(dev, EM28XX_ANALOG_MODE,
+					  dev->analog_xfer_bulk,
+					  EM28XX_NUM_BUFS,
+					  dev->max_pkt_size,
+					  dev->packet_multiplier,
+					  em28xx_urb_data_copy);
 		if (rc < 0)
 			goto fail;
 	}
@@ -2263,7 +2070,7 @@ static int em28xx_v4l2_close(struct file *filp)
 		   free the remaining resources */
 		if (dev->state & DEV_DISCONNECTED) {
 			em28xx_release_resources(dev);
-			kfree(dev->alt_max_pkt_size);
+			kfree(dev->alt_max_pkt_size_isoc);
 			mutex_unlock(&dev->lock);
 			kfree(dev);
 			kfree(fh);
@@ -2274,7 +2081,7 @@ static int em28xx_v4l2_close(struct file *filp)
 		v4l2_device_call_all(&dev->v4l2_dev, 0, core, s_power, 0);
 
 		/* do this before setting alternate! */
-		em28xx_uninit_isoc(dev, EM28XX_ANALOG_MODE);
+		em28xx_uninit_usb_xfer(dev, EM28XX_ANALOG_MODE);
 		em28xx_set_mode(dev, EM28XX_SUSPEND);
 
 		/* set alternate 0 */
