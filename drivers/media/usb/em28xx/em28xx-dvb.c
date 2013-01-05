@@ -27,7 +27,9 @@
 
 #include "em28xx.h"
 #include <media/v4l2-common.h>
-#include <media/videobuf-vmalloc.h>
+#include <dvb_demux.h>
+#include <dvb_net.h>
+#include <dmxdev.h>
 #include <media/tuner.h>
 #include "tuner-simple.h"
 #include <linux/gpio.h>
@@ -133,7 +135,7 @@ static inline int em28xx_dvb_urb_data_copy(struct em28xx *dev, struct urb *urb)
 	if (!dev)
 		return 0;
 
-	if ((dev->state & DEV_DISCONNECTED) || (dev->state & DEV_MISCONFIGURED))
+	if (dev->disconnected)
 		return 0;
 
 	if (urb->status < 0)
@@ -1320,7 +1322,7 @@ static int em28xx_dvb_fini(struct em28xx *dev)
 	if (dev->dvb) {
 		struct em28xx_dvb *dvb = dev->dvb;
 
-		if (dev->state & DEV_DISCONNECTED) {
+		if (dev->disconnected) {
 			/* We cannot tell the device to sleep
 			 * once it has been unplugged. */
 			if (dvb->fe[0])

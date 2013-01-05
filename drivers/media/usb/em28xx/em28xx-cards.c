@@ -57,7 +57,7 @@ module_param(disable_usb_speed_check, int, 0444);
 MODULE_PARM_DESC(disable_usb_speed_check,
 		 "override min bandwidth requirement of 480M bps");
 
-static unsigned int card[]     = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
+static unsigned int card[]     = {[0 ... (EM28XX_MAXBOARDS - 1)] = -1U };
 module_param_array(card,  int, NULL, 0444);
 MODULE_PARM_DESC(card,     "card type");
 
@@ -2912,7 +2912,7 @@ static void request_module_async(struct work_struct *work)
 
 	if (dev->board.has_dvb)
 		request_module("em28xx-dvb");
-	if (dev->board.ir_codes && !disable_ir)
+	if ((dev->board.ir_codes || dev->board.has_ir_i2c) && !disable_ir)
 		request_module("em28xx-rc");
 #endif /* CONFIG_MODULES */
 }
@@ -2941,6 +2941,8 @@ void em28xx_release_resources(struct em28xx *dev)
 
 	em28xx_i2c_unregister(dev);
 
+	v4l2_ctrl_handler_free(&dev->ctrl_handler);
+
 	v4l2_device_unregister(&dev->v4l2_dev);
 
 	usb_put_dev(dev->udev);
@@ -2957,11 +2959,14 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 			   struct usb_interface *interface,
 			   int minor)
 {
+	struct v4l2_ctrl_handler *hdl = &dev->ctrl_handler;
 	int retval;
 	static const char *default_chip_name = "em28xx";
 	const char *chip_name = default_chip_name;
 
 	dev->udev = udev;
+	mutex_init(&dev->vb_queue_lock);
+	mutex_init(&dev->vb_vbi_queue_lock);
 	mutex_init(&dev->ctrl_urb_lock);
 	spin_lock_init(&dev->slock);
 
@@ -3084,6 +3089,9 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 		return retval;
 	}
 
+	v4l2_ctrl_handler_init(hdl, 4);
+	dev->v4l2_dev.ctrl_handler = hdl;
+
 	/* register i2c bus */
 	retval = em28xx_i2c_register(dev);
 	if (retval < 0) {
@@ -3108,6 +3116,18 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 		em28xx_errdev("%s: Error while setting audio - error [%d]!\n",
 			__func__, retval);
 		goto fail;
+	}
+	if (dev->audio_mode.ac97 != EM28XX_NO_AC97) {
+		v4l2_ctrl_new_std(hdl, &em28xx_ctrl_ops,
+			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
+		v4l2_ctrl_new_std(hdl, &em28xx_ctrl_ops,
+			V4L2_CID_AUDIO_VOLUME, 0, 0x1f, 1, 0x1f);
+	} else {
+		/* install the em28xx notify callback */
+		v4l2_ctrl_notify(v4l2_ctrl_find(hdl, V4L2_CID_AUDIO_MUTE),
+				em28xx_ctrl_notify, dev);
+		v4l2_ctrl_notify(v4l2_ctrl_find(hdl, V4L2_CID_AUDIO_VOLUME),
+				em28xx_ctrl_notify, dev);
 	}
 
 	/* wake i2c devices */
@@ -3138,6 +3158,11 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 		msleep(3);
 	}
 
+	v4l2_ctrl_handler_setup(&dev->ctrl_handler);
+	retval = dev->ctrl_handler.error;
+	if (retval)
+		goto fail;
+
 	retval = em28xx_register_analog_devices(dev);
 	if (retval < 0) {
 		goto fail;
@@ -3150,6 +3175,7 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 
 fail:
 	em28xx_i2c_unregister(dev);
+	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 
 unregister_dev:
 	v4l2_device_unregister(&dev->v4l2_dev);
@@ -3387,6 +3413,9 @@ static int em28xx_usb_probe(struct usb_interface *interface,
 	/* save our data pointer in this interface device */
 	usb_set_intfdata(interface, dev);
 
+	/* initialize videobuf2 stuff */
+	em28xx_vb2_setup(dev);
+
 	/* allocate device struct */
 	mutex_init(&dev->lock);
 	mutex_lock(&dev->lock);
@@ -3478,6 +3507,8 @@ static void em28xx_usb_disconnect(struct usb_interface *interface)
 	if (!dev)
 		return;
 
+	dev->disconnected = 1;
+
 	if (dev->is_audio_only) {
 		mutex_lock(&dev->lock);
 		em28xx_close_extension(dev);
@@ -3489,32 +3520,25 @@ static void em28xx_usb_disconnect(struct usb_interface *interface)
 
 	flush_request_modules(dev);
 
-	/* wait until all current v4l2 io is finished then deallocate
-	   resources */
 	mutex_lock(&dev->lock);
 
 	v4l2_device_disconnect(&dev->v4l2_dev);
 
 	if (dev->users) {
-		em28xx_warn
-		    ("device %s is open! Deregistration and memory "
-		     "deallocation are deferred on close.\n",
-		     video_device_node_name(dev->vdev));
+		em28xx_warn("device %s is open! Deregistration and memory deallocation are deferred on close.\n",
+			    video_device_node_name(dev->vdev));
 
-		dev->state |= DEV_MISCONFIGURED;
-		em28xx_uninit_usb_xfer(dev, dev->mode);
-		dev->state |= DEV_DISCONNECTED;
-	} else {
-		dev->state |= DEV_DISCONNECTED;
-		em28xx_release_resources(dev);
+		em28xx_uninit_usb_xfer(dev, EM28XX_ANALOG_MODE);
+		em28xx_uninit_usb_xfer(dev, EM28XX_DIGITAL_MODE);
 	}
 
-	/* free DVB isoc buffers */
-	em28xx_uninit_usb_xfer(dev, EM28XX_DIGITAL_MODE);
+	em28xx_close_extension(dev);
+	/* NOTE: must be called BEFORE the resources are released */
+
+	if (!dev->users)
+		em28xx_release_resources(dev);
 
 	mutex_unlock(&dev->lock);
-
-	em28xx_close_extension(dev);
 
 	if (!dev->users) {
 		kfree(dev->alt_max_pkt_size_isoc);

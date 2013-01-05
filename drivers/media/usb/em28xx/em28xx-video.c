@@ -40,6 +40,7 @@
 #include "em28xx.h"
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/msp3400.h>
 #include <media/tuner.h>
@@ -75,9 +76,9 @@ MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL");
 MODULE_VERSION(EM28XX_VERSION);
 
-static unsigned int video_nr[] = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
-static unsigned int vbi_nr[]   = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
-static unsigned int radio_nr[] = {[0 ... (EM28XX_MAXBOARDS - 1)] = UNSET };
+static unsigned int video_nr[] = {[0 ... (EM28XX_MAXBOARDS - 1)] = -1U };
+static unsigned int vbi_nr[]   = {[0 ... (EM28XX_MAXBOARDS - 1)] = -1U };
+static unsigned int radio_nr[] = {[0 ... (EM28XX_MAXBOARDS - 1)] = -1U };
 
 module_param_array(video_nr, int, NULL, 0444);
 module_param_array(vbi_nr, int, NULL, 0444);
@@ -125,30 +126,6 @@ static struct em28xx_fmt format[] = {
 	},
 };
 
-/* supported controls */
-/* Common to all boards */
-static struct v4l2_queryctrl ac97_qctrl[] = {
-	{
-		.id = V4L2_CID_AUDIO_VOLUME,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Volume",
-		.minimum = 0x0,
-		.maximum = 0x1f,
-		.step = 0x1,
-		.default_value = 0x1f,
-		.flags = V4L2_CTRL_FLAG_SLIDER,
-	}, {
-		.id = V4L2_CID_AUDIO_MUTE,
-		.type = V4L2_CTRL_TYPE_BOOLEAN,
-		.name = "Mute",
-		.minimum = 0,
-		.maximum = 1,
-		.step = 1,
-		.default_value = 1,
-		.flags = 0,
-	}
-};
-
 /* ------------------------------------------------------------------
 	DMA and thread functions
    ------------------------------------------------------------------*/
@@ -159,12 +136,13 @@ static struct v4l2_queryctrl ac97_qctrl[] = {
 static inline void finish_buffer(struct em28xx *dev,
 				 struct em28xx_buffer *buf)
 {
-	em28xx_isocdbg("[%p/%d] wakeup\n", buf, buf->vb.i);
-	buf->vb.state = VIDEOBUF_DONE;
-	buf->vb.field_count++;
-	v4l2_get_timestamp(&buf->vb.ts);
-	list_del(&buf->vb.queue);
-	wake_up(&buf->vb.done);
+	em28xx_isocdbg("[%p/%d] wakeup\n", buf, buf->top_field);
+
+	buf->vb.v4l2_buf.sequence = dev->field_count++;
+	buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED;
+	v4l2_get_timestamp(&buf->vb.v4l2_buf.timestamp);
+
+	vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
 }
 
 /*
@@ -179,8 +157,8 @@ static void em28xx_copy_video(struct em28xx *dev,
 	int  linesdone, currlinedone, offset, lencopy, remain;
 	int bytesperline = dev->width << 1;
 
-	if (buf->pos + len > buf->vb.size)
-		len = buf->vb.size - buf->pos;
+	if (buf->pos + len > buf->length)
+		len = buf->length - buf->pos;
 
 	startread = usb_buf;
 	remain = len;
@@ -202,11 +180,11 @@ static void em28xx_copy_video(struct em28xx *dev,
 	lencopy = bytesperline - currlinedone;
 	lencopy = lencopy > remain ? remain : lencopy;
 
-	if ((char *)startwrite + lencopy > (char *)buf->vb_buf + buf->vb.size) {
+	if ((char *)startwrite + lencopy > (char *)buf->vb_buf + buf->length) {
 		em28xx_isocdbg("Overflow of %zi bytes past buffer end (1)\n",
 			      ((char *)startwrite + lencopy) -
-			      ((char *)buf->vb_buf + buf->vb.size));
-		remain = (char *)buf->vb_buf + buf->vb.size -
+			      ((char *)buf->vb_buf + buf->length));
+		remain = (char *)buf->vb_buf + buf->length -
 			 (char *)startwrite;
 		lencopy = remain;
 	}
@@ -228,13 +206,13 @@ static void em28xx_copy_video(struct em28xx *dev,
 			lencopy = bytesperline;
 
 		if ((char *)startwrite + lencopy > (char *)buf->vb_buf +
-		    buf->vb.size) {
+		    buf->length) {
 			em28xx_isocdbg("Overflow of %zi bytes past buffer end"
 				       "(2)\n",
 				       ((char *)startwrite + lencopy) -
-				       ((char *)buf->vb_buf + buf->vb.size));
-			lencopy = remain = (char *)buf->vb_buf + buf->vb.size -
-					   (char *)startwrite;
+				       ((char *)buf->vb_buf + buf->length));
+			lencopy = remain = (char *)buf->vb_buf + buf->length -
+				(char *)startwrite;
 		}
 		if (lencopy <= 0)
 			break;
@@ -257,8 +235,8 @@ static void em28xx_copy_vbi(struct em28xx *dev,
 {
 	unsigned int offset;
 
-	if (buf->pos + len > buf->vb.size)
-		len = buf->vb.size - buf->pos;
+	if (buf->pos + len > buf->length)
+		len = buf->length - buf->pos;
 
 	offset = buf->pos;
 	/* Make sure the bottom field populates the second half of the frame */
@@ -315,7 +293,6 @@ static inline struct em28xx_buffer *get_next_buf(struct em28xx *dev,
 						 struct em28xx_dmaqueue *dma_q)
 {
 	struct em28xx_buffer *buf;
-	char *outp;
 
 	if (list_empty(&dma_q->active)) {
 		em28xx_isocdbg("No active queue to serve\n");
@@ -323,12 +300,11 @@ static inline struct em28xx_buffer *get_next_buf(struct em28xx *dev,
 	}
 
 	/* Get the next buffer */
-	buf = list_entry(dma_q->active.next, struct em28xx_buffer, vb.queue);
+	buf = list_entry(dma_q->active.next, struct em28xx_buffer, list);
 	/* Cleans up buffer - Useful for testing for frame/URB loss */
-	outp = videobuf_to_vmalloc(&buf->vb);
-	memset(outp, 0, buf->vb.size);
+	list_del(&buf->list);
 	buf->pos = 0;
-	buf->vb_buf = outp;
+	buf->vb_buf = buf->mem;
 
 	return buf;
 }
@@ -442,7 +418,7 @@ static inline int em28xx_urb_data_copy(struct em28xx *dev, struct urb *urb)
 	if (!dev)
 		return 0;
 
-	if ((dev->state & DEV_DISCONNECTED) || (dev->state & DEV_MISCONFIGURED))
+	if (dev->disconnected)
 		return 0;
 
 	if (urb->status < 0)
@@ -490,92 +466,118 @@ static inline int em28xx_urb_data_copy(struct em28xx *dev, struct urb *urb)
 }
 
 
+static int get_ressource(enum v4l2_buf_type f_type)
+{
+	switch (f_type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+		return EM28XX_RESOURCE_VIDEO;
+	case V4L2_BUF_TYPE_VBI_CAPTURE:
+		return EM28XX_RESOURCE_VBI;
+	default:
+		BUG();
+		return 0;
+	}
+}
+
+/* Usage lock check functions */
+static int res_get(struct em28xx *dev, enum v4l2_buf_type f_type)
+{
+	int res_type = get_ressource(f_type);
+
+	/* is it free? */
+	if (dev->resources & res_type) {
+		/* no, someone else uses it */
+		return -EBUSY;
+	}
+
+	/* it's free, grab it */
+	dev->resources |= res_type;
+	em28xx_videodbg("res: get %d\n", res_type);
+	return 0;
+}
+
+static void res_free(struct em28xx *dev, enum v4l2_buf_type f_type)
+{
+	int res_type = get_ressource(f_type);
+
+	dev->resources &= ~res_type;
+	em28xx_videodbg("res: put %d\n", res_type);
+}
+
 /* ------------------------------------------------------------------
-	Videobuf operations
+	Videobuf2 operations
    ------------------------------------------------------------------*/
 
-static int
-buffer_setup(struct videobuf_queue *vq, unsigned int *count, unsigned int *size)
+static int queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
+		       unsigned int *nbuffers, unsigned int *nplanes,
+		       unsigned int sizes[], void *alloc_ctxs[])
 {
-	struct em28xx_fh *fh = vq->priv_data;
-	struct em28xx        *dev = fh->dev;
-	struct v4l2_frequency f;
+	struct em28xx *dev = vb2_get_drv_priv(vq);
+	unsigned long size;
 
-	*size = (fh->dev->width * fh->dev->height * dev->format->depth + 7)
-		>> 3;
+	if (fmt)
+		size = fmt->fmt.pix.sizeimage;
+	else
+		size = (dev->width * dev->height * dev->format->depth + 7) >> 3;
 
-	if (0 == *count)
-		*count = EM28XX_DEF_BUF;
+	if (size == 0)
+		return -EINVAL;
 
-	if (*count < EM28XX_MIN_BUF)
-		*count = EM28XX_MIN_BUF;
+	if (0 == *nbuffers)
+		*nbuffers = 32;
 
-	/* Ask tuner to go to analog or radio mode */
-	memset(&f, 0, sizeof(f));
-	f.frequency = dev->ctl_freq;
-	f.type = fh->radio ? V4L2_TUNER_RADIO : V4L2_TUNER_ANALOG_TV;
-
-	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, s_frequency, &f);
+	*nplanes = 1;
+	sizes[0] = size;
 
 	return 0;
 }
 
-/* This is called *without* dev->slock held; please keep it that way */
-static void free_buffer(struct videobuf_queue *vq, struct em28xx_buffer *buf)
+static int
+buffer_prepare(struct vb2_buffer *vb)
 {
-	struct em28xx_fh     *fh  = vq->priv_data;
-	struct em28xx        *dev = fh->dev;
-	unsigned long flags = 0;
-	if (in_interrupt())
-		BUG();
+	struct em28xx        *dev = vb2_get_drv_priv(vb->vb2_queue);
+	struct em28xx_buffer *buf = container_of(vb, struct em28xx_buffer, vb);
+	unsigned long size;
 
-	/* We used to wait for the buffer to finish here, but this didn't work
-	   because, as we were keeping the state as VIDEOBUF_QUEUED,
-	   videobuf_queue_cancel marked it as finished for us.
-	   (Also, it could wedge forever if the hardware was misconfigured.)
+	em28xx_videodbg("%s, field=%d\n", __func__, vb->v4l2_buf.field);
 
-	   This should be safe; by the time we get here, the buffer isn't
-	   queued anymore. If we ever start marking the buffers as
-	   VIDEOBUF_ACTIVE, it won't be, though.
-	*/
-	spin_lock_irqsave(&dev->slock, flags);
-	if (dev->usb_ctl.vid_buf == buf)
-		dev->usb_ctl.vid_buf = NULL;
-	spin_unlock_irqrestore(&dev->slock, flags);
+	size = (dev->width * dev->height * dev->format->depth + 7) >> 3;
 
-	videobuf_vmalloc_free(&buf->vb);
-	buf->vb.state = VIDEOBUF_NEEDS_INIT;
+	if (vb2_plane_size(vb, 0) < size) {
+		em28xx_videodbg("%s data will not fit into plane (%lu < %lu)\n",
+				__func__, vb2_plane_size(vb, 0), size);
+		return -EINVAL;
+	}
+	vb2_set_plane_payload(&buf->vb, 0, size);
+
+	return 0;
 }
 
-static int
-buffer_prepare(struct videobuf_queue *vq, struct videobuf_buffer *vb,
-						enum v4l2_field field)
+int em28xx_start_analog_streaming(struct vb2_queue *vq, unsigned int count)
 {
-	struct em28xx_fh     *fh  = vq->priv_data;
-	struct em28xx_buffer *buf = container_of(vb, struct em28xx_buffer, vb);
-	struct em28xx        *dev = fh->dev;
-	int                  rc = 0, urb_init = 0;
+	struct em28xx *dev = vb2_get_drv_priv(vq);
+	struct v4l2_frequency f;
+	int rc = 0;
 
-	buf->vb.size = (fh->dev->width * fh->dev->height * dev->format->depth
-			+ 7) >> 3;
+	em28xx_videodbg("%s\n", __func__);
 
-	if (0 != buf->vb.baddr  &&  buf->vb.bsize < buf->vb.size)
-		return -EINVAL;
+	/* Make sure streaming is not already in progress for this type
+	   of filehandle (e.g. video, vbi) */
+	rc = res_get(dev, vq->type);
+	if (rc)
+		return rc;
 
-	buf->vb.width  = dev->width;
-	buf->vb.height = dev->height;
-	buf->vb.field  = field;
+	if (dev->streaming_users++ == 0) {
+		/* First active streaming user, so allocate all the URBs */
 
-	if (VIDEOBUF_NEEDS_INIT == buf->vb.state) {
-		rc = videobuf_iolock(vq, &buf->vb, NULL);
-		if (rc < 0)
-			goto fail;
-	}
+		/* Allocate the USB bandwidth */
+		em28xx_set_alternate(dev);
 
-	if (!dev->usb_ctl.analog_bufs.num_bufs)
-		urb_init = 1;
+		/* Needed, since GPIO might have disabled power of
+		   some i2c device
+		*/
+		em28xx_wake_i2c(dev);
 
-	if (urb_init) {
 		dev->capture_type = -1;
 		rc = em28xx_init_usb_xfer(dev, EM28XX_ANALOG_MODE,
 					  dev->analog_xfer_bulk,
@@ -585,51 +587,143 @@ buffer_prepare(struct videobuf_queue *vq, struct videobuf_buffer *vb,
 					  em28xx_urb_data_copy);
 		if (rc < 0)
 			goto fail;
+
+		/*
+		 * djh: it's not clear whether this code is still needed.  I'm
+		 * leaving it in here for now entirely out of concern for
+		 * backward compatibility (the old code did it)
+		 */
+
+		/* Ask tuner to go to analog or radio mode */
+		memset(&f, 0, sizeof(f));
+		f.frequency = dev->ctl_freq;
+		if (vq->owner && vq->owner->vdev->vfl_type == VFL_TYPE_RADIO)
+			f.type = V4L2_TUNER_RADIO;
+		else
+			f.type = V4L2_TUNER_ANALOG_TV;
+		v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, s_frequency, &f);
 	}
 
-	buf->vb.state = VIDEOBUF_PREPARED;
-	return 0;
-
 fail:
-	free_buffer(vq, buf);
 	return rc;
 }
 
+static int em28xx_stop_streaming(struct vb2_queue *vq)
+{
+	struct em28xx *dev = vb2_get_drv_priv(vq);
+	struct em28xx_dmaqueue *vidq = &dev->vidq;
+	unsigned long flags = 0;
+
+	em28xx_videodbg("%s\n", __func__);
+
+	res_free(dev, vq->type);
+
+	if (dev->streaming_users-- == 1) {
+		/* Last active user, so shutdown all the URBS */
+		em28xx_uninit_usb_xfer(dev, EM28XX_ANALOG_MODE);
+	}
+
+	spin_lock_irqsave(&dev->slock, flags);
+	while (!list_empty(&vidq->active)) {
+		struct em28xx_buffer *buf;
+		buf = list_entry(vidq->active.next, struct em28xx_buffer, list);
+		list_del(&buf->list);
+		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+	}
+	dev->usb_ctl.vid_buf = NULL;
+	spin_unlock_irqrestore(&dev->slock, flags);
+
+	return 0;
+}
+
+int em28xx_stop_vbi_streaming(struct vb2_queue *vq)
+{
+	struct em28xx *dev = vb2_get_drv_priv(vq);
+	struct em28xx_dmaqueue *vbiq = &dev->vbiq;
+	unsigned long flags = 0;
+
+	em28xx_videodbg("%s\n", __func__);
+
+	res_free(dev, vq->type);
+
+	if (dev->streaming_users-- == 1) {
+		/* Last active user, so shutdown all the URBS */
+		em28xx_uninit_usb_xfer(dev, EM28XX_ANALOG_MODE);
+	}
+
+	spin_lock_irqsave(&dev->slock, flags);
+	while (!list_empty(&vbiq->active)) {
+		struct em28xx_buffer *buf;
+		buf = list_entry(vbiq->active.next, struct em28xx_buffer, list);
+		list_del(&buf->list);
+		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+	}
+	dev->usb_ctl.vbi_buf = NULL;
+	spin_unlock_irqrestore(&dev->slock, flags);
+
+	return 0;
+}
+
 static void
-buffer_queue(struct videobuf_queue *vq, struct videobuf_buffer *vb)
+buffer_queue(struct vb2_buffer *vb)
 {
-	struct em28xx_buffer    *buf     = container_of(vb,
-							struct em28xx_buffer,
-							vb);
-	struct em28xx_fh        *fh      = vq->priv_data;
-	struct em28xx           *dev     = fh->dev;
-	struct em28xx_dmaqueue  *vidq    = &dev->vidq;
+	struct em28xx *dev = vb2_get_drv_priv(vb->vb2_queue);
+	struct em28xx_buffer *buf = container_of(vb, struct em28xx_buffer, vb);
+	struct em28xx_dmaqueue *vidq = &dev->vidq;
+	unsigned long flags = 0;
 
-	buf->vb.state = VIDEOBUF_QUEUED;
-	list_add_tail(&buf->vb.queue, &vidq->active);
+	em28xx_videodbg("%s\n", __func__);
+	buf->mem = vb2_plane_vaddr(vb, 0);
+	buf->length = vb2_plane_size(vb, 0);
 
+	spin_lock_irqsave(&dev->slock, flags);
+	list_add_tail(&buf->list, &vidq->active);
+	spin_unlock_irqrestore(&dev->slock, flags);
 }
 
-static void buffer_release(struct videobuf_queue *vq,
-				struct videobuf_buffer *vb)
-{
-	struct em28xx_buffer   *buf  = container_of(vb,
-						    struct em28xx_buffer,
-						    vb);
-	struct em28xx_fh       *fh   = vq->priv_data;
-	struct em28xx          *dev  = (struct em28xx *)fh->dev;
-
-	em28xx_isocdbg("em28xx: called buffer_release\n");
-
-	free_buffer(vq, buf);
-}
-
-static struct videobuf_queue_ops em28xx_video_qops = {
-	.buf_setup      = buffer_setup,
+static struct vb2_ops em28xx_video_qops = {
+	.queue_setup    = queue_setup,
 	.buf_prepare    = buffer_prepare,
 	.buf_queue      = buffer_queue,
-	.buf_release    = buffer_release,
+	.start_streaming = em28xx_start_analog_streaming,
+	.stop_streaming = em28xx_stop_streaming,
+	.wait_prepare   = vb2_ops_wait_prepare,
+	.wait_finish    = vb2_ops_wait_finish,
 };
+
+int em28xx_vb2_setup(struct em28xx *dev)
+{
+	int rc;
+	struct vb2_queue *q;
+
+	/* Setup Videobuf2 for Video capture */
+	q = &dev->vb_vidq;
+	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	q->io_modes = VB2_READ | VB2_MMAP | VB2_USERPTR;
+	q->drv_priv = dev;
+	q->buf_struct_size = sizeof(struct em28xx_buffer);
+	q->ops = &em28xx_video_qops;
+	q->mem_ops = &vb2_vmalloc_memops;
+
+	rc = vb2_queue_init(q);
+	if (rc < 0)
+		return rc;
+
+	/* Setup Videobuf2 for VBI capture */
+	q = &dev->vb_vbiq;
+	q->type = V4L2_BUF_TYPE_VBI_CAPTURE;
+	q->io_modes = VB2_READ | VB2_MMAP | VB2_USERPTR;
+	q->drv_priv = dev;
+	q->buf_struct_size = sizeof(struct em28xx_buffer);
+	q->ops = &em28xx_vbi_qops;
+	q->mem_ops = &vb2_vmalloc_memops;
+
+	rc = vb2_queue_init(q);
+	if (rc < 0)
+		return rc;
+
+	return 0;
+}
 
 /*********************  v4l2 interface  **************************************/
 
@@ -663,142 +757,53 @@ static void video_mux(struct em28xx *dev, int index)
 	em28xx_audio_analog_set(dev);
 }
 
-/* Usage lock check functions */
-static int res_get(struct em28xx_fh *fh, unsigned int bit)
+void em28xx_ctrl_notify(struct v4l2_ctrl *ctrl, void *priv)
 {
-	struct em28xx    *dev = fh->dev;
+	struct em28xx *dev = priv;
 
-	if (fh->resources & bit)
-		/* have it already allocated */
-		return 1;
-
-	/* is it free? */
-	if (dev->resources & bit) {
-		/* no, someone else uses it */
-		return 0;
-	}
-	/* it's free, grab it */
-	fh->resources  |= bit;
-	dev->resources |= bit;
-	em28xx_videodbg("res: get %d\n", bit);
-	return 1;
-}
-
-static int res_check(struct em28xx_fh *fh, unsigned int bit)
-{
-	return fh->resources & bit;
-}
-
-static int res_locked(struct em28xx *dev, unsigned int bit)
-{
-	return dev->resources & bit;
-}
-
-static void res_free(struct em28xx_fh *fh, unsigned int bits)
-{
-	struct em28xx    *dev = fh->dev;
-
-	BUG_ON((fh->resources & bits) != bits);
-
-	fh->resources  &= ~bits;
-	dev->resources &= ~bits;
-	em28xx_videodbg("res: put %d\n", bits);
-}
-
-static int get_ressource(struct em28xx_fh *fh)
-{
-	switch (fh->type) {
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		return EM28XX_RESOURCE_VIDEO;
-	case V4L2_BUF_TYPE_VBI_CAPTURE:
-		return EM28XX_RESOURCE_VBI;
-	default:
-		BUG();
-		return 0;
-	}
-}
-
-/*
- * ac97_queryctrl()
- * return the ac97 supported controls
- */
-static int ac97_queryctrl(struct v4l2_queryctrl *qc)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(ac97_qctrl); i++) {
-		if (qc->id && qc->id == ac97_qctrl[i].id) {
-			memcpy(qc, &(ac97_qctrl[i]), sizeof(*qc));
-			return 0;
-		}
-	}
-
-	/* Control is not ac97 related */
-	return 1;
-}
-
-/*
- * ac97_get_ctrl()
- * return the current values for ac97 mute and volume
- */
-static int ac97_get_ctrl(struct em28xx *dev, struct v4l2_control *ctrl)
-{
+	/*
+	 * In the case of non-AC97 volume controls, we still need
+	 * to do some setups at em28xx, in order to mute/unmute
+	 * and to adjust audio volume. However, the value ranges
+	 * should be checked by the corresponding V4L subdriver.
+	 */
 	switch (ctrl->id) {
 	case V4L2_CID_AUDIO_MUTE:
-		ctrl->value = dev->mute;
-		return 0;
-	case V4L2_CID_AUDIO_VOLUME:
-		ctrl->value = dev->volume;
-		return 0;
-	default:
-		/* Control is not ac97 related */
-		return 1;
-	}
-}
-
-/*
- * ac97_set_ctrl()
- * set values for ac97 mute and volume
- */
-static int ac97_set_ctrl(struct em28xx *dev, const struct v4l2_control *ctrl)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(ac97_qctrl); i++)
-		if (ctrl->id == ac97_qctrl[i].id)
-			goto handle;
-
-	/* Announce that hasn't handle it */
-	return 1;
-
-handle:
-	if (ctrl->value < ac97_qctrl[i].minimum ||
-	    ctrl->value > ac97_qctrl[i].maximum)
-		return -ERANGE;
-
-	switch (ctrl->id) {
-	case V4L2_CID_AUDIO_MUTE:
-		dev->mute = ctrl->value;
+		dev->mute = ctrl->val;
+		em28xx_audio_analog_set(dev);
 		break;
 	case V4L2_CID_AUDIO_VOLUME:
-		dev->volume = ctrl->value;
+		dev->volume = ctrl->val;
+		em28xx_audio_analog_set(dev);
+		break;
+	}
+}
+
+static int em28xx_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct em28xx *dev = container_of(ctrl->handler, struct em28xx, ctrl_handler);
+
+	switch (ctrl->id) {
+	case V4L2_CID_AUDIO_MUTE:
+		dev->mute = ctrl->val;
+		break;
+	case V4L2_CID_AUDIO_VOLUME:
+		dev->volume = ctrl->val;
 		break;
 	}
 
 	return em28xx_audio_analog_set(dev);
 }
 
+const struct v4l2_ctrl_ops em28xx_ctrl_ops = {
+	.s_ctrl = em28xx_s_ctrl,
+};
+
 static int check_dev(struct em28xx *dev)
 {
-	if (dev->state & DEV_DISCONNECTED) {
+	if (dev->disconnected) {
 		em28xx_errdev("v4l2 ioctl: device not present\n");
 		return -ENODEV;
-	}
-
-	if (dev->state & DEV_MISCONFIGURED) {
-		em28xx_errdev("v4l2 ioctl: device is misconfigured; "
-			      "close and open it again\n");
-		return -EIO;
 	}
 	return 0;
 }
@@ -879,8 +884,11 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 		/* the em2800 can only scale down to 50% */
 		height = height > (3 * maxh / 4) ? maxh : maxh / 2;
 		width = width > (3 * maxw / 4) ? maxw : maxw / 2;
-                /* MaxPacketSize for em2800 is too small to capture at full resolution
-                 * use half of maxw as the scaler can only scale to 50% */
+		/*
+		 * MaxPacketSize for em2800 is too small to capture at full
+		 * resolution use half of maxw as the scaler can only scale
+		 * to 50%
+		 */
 		if (width == maxw && height == maxh)
 			width /= 2;
 	} else {
@@ -926,7 +934,6 @@ static int em28xx_set_video_format(struct em28xx *dev, unsigned int fourcc,
 	/* set new image size */
 	get_scale(dev, dev->width, dev->height, &dev->hscale, &dev->vscale);
 
-	em28xx_set_alternate(dev);
 	em28xx_resolution_set(dev);
 
 	return 0;
@@ -935,20 +942,12 @@ static int em28xx_set_video_format(struct em28xx *dev, unsigned int fourcc,
 static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 			struct v4l2_format *f)
 {
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
+	struct em28xx *dev = video_drvdata(file);
 
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
+	if (dev->streaming_users > 0)
+		return -EBUSY;
 
 	vidioc_try_fmt_vid_cap(file, priv, f);
-
-	if (videobuf_queue_is_busy(&fh->vb_vidq)) {
-		em28xx_errdev("%s queue busy\n", __func__);
-		return -EBUSY;
-	}
 
 	return em28xx_set_video_format(dev, f->fmt.pix.pixelformat,
 				f->fmt.pix.width, f->fmt.pix.height);
@@ -960,6 +959,8 @@ static int vidioc_g_std(struct file *file, void *priv, v4l2_std_id *norm)
 	struct em28xx      *dev = fh->dev;
 	int                rc;
 
+	if (dev->board.is_webcam)
+		return -ENOTTY;
 	rc = check_dev(dev);
 	if (rc < 0)
 		return rc;
@@ -975,6 +976,8 @@ static int vidioc_querystd(struct file *file, void *priv, v4l2_std_id *norm)
 	struct em28xx      *dev = fh->dev;
 	int                rc;
 
+	if (dev->board.is_webcam)
+		return -ENOTTY;
 	rc = check_dev(dev);
 	if (rc < 0)
 		return rc;
@@ -991,15 +994,22 @@ static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id *norm)
 	struct v4l2_format f;
 	int                rc;
 
+	if (dev->board.is_webcam)
+		return -ENOTTY;
+	if (*norm == dev->norm)
+		return 0;
 	rc = check_dev(dev);
 	if (rc < 0)
 		return rc;
 
+	if (dev->streaming_users > 0)
+		return -EBUSY;
+
 	dev->norm = *norm;
 
 	/* Adjusts width/height, if needed */
-	f.fmt.pix.width = dev->width;
-	f.fmt.pix.height = dev->height;
+	f.fmt.pix.width = 720;
+	f.fmt.pix.height = (*norm & V4L2_STD_525_60) ? 480 : 576;
 	vidioc_try_fmt_vid_cap(file, priv, &f);
 
 	/* set new image size */
@@ -1023,6 +1033,7 @@ static int vidioc_g_parm(struct file *file, void *priv,
 	if (p->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
+	p->parm.capture.readbuffers = EM28XX_MIN_BUF;
 	if (dev->board.is_webcam)
 		rc = v4l2_device_call_until_err(&dev->v4l2_dev, 0,
 						video, g_parm, p);
@@ -1040,11 +1051,12 @@ static int vidioc_s_parm(struct file *file, void *priv,
 	struct em28xx      *dev = fh->dev;
 
 	if (!dev->board.is_webcam)
-		return -EINVAL;
+		return -ENOTTY;
 
 	if (p->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
+	p->parm.capture.readbuffers = EM28XX_MIN_BUF;
 	return v4l2_device_call_until_err(&dev->v4l2_dev, 0, video, s_parm, p);
 }
 
@@ -1083,6 +1095,9 @@ static int vidioc_enum_input(struct file *file, void *priv,
 		i->type = V4L2_INPUT_TYPE_TUNER;
 
 	i->std = dev->vdev->tvnorms;
+	/* webcams do not have the STD API */
+	if (dev->board.is_webcam)
+		i->capabilities = 0;
 
 	return 0;
 }
@@ -1182,131 +1197,6 @@ static int vidioc_s_audio(struct file *file, void *priv, const struct v4l2_audio
 	return 0;
 }
 
-static int vidioc_queryctrl(struct file *file, void *priv,
-				struct v4l2_queryctrl *qc)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   id  = qc->id;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	memset(qc, 0, sizeof(*qc));
-
-	qc->id = id;
-
-	/* enumerate AC97 controls */
-	if (dev->audio_mode.ac97 != EM28XX_NO_AC97) {
-		rc = ac97_queryctrl(qc);
-		if (!rc)
-			return 0;
-	}
-
-	/* enumerate V4L2 device controls */
-	v4l2_device_call_all(&dev->v4l2_dev, 0, core, queryctrl, qc);
-
-	if (qc->type)
-		return 0;
-	else
-		return -EINVAL;
-}
-
-/*
- * FIXME: This is an indirect way to check if a control exists at a
- * subdev. Instead of that hack, maybe the better would be to change all
- * subdevs to return -ENOIOCTLCMD, if an ioctl is not supported.
- */
-static int check_subdev_ctrl(struct em28xx *dev, int id)
-{
-	struct v4l2_queryctrl qc;
-
-	memset(&qc, 0, sizeof(qc));
-	qc.id = id;
-
-	/* enumerate V4L2 device controls */
-	v4l2_device_call_all(&dev->v4l2_dev, 0, core, queryctrl, &qc);
-
-	if (qc.type)
-		return 0;
-	else
-		return -EINVAL;
-}
-
-static int vidioc_g_ctrl(struct file *file, void *priv,
-				struct v4l2_control *ctrl)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-	rc = 0;
-
-	/* Set an AC97 control */
-	if (dev->audio_mode.ac97 != EM28XX_NO_AC97)
-		rc = ac97_get_ctrl(dev, ctrl);
-	else
-		rc = 1;
-
-	/* It were not an AC97 control. Sends it to the v4l2 dev interface */
-	if (rc == 1) {
-		if (check_subdev_ctrl(dev, ctrl->id))
-			return -EINVAL;
-
-		v4l2_device_call_all(&dev->v4l2_dev, 0, core, g_ctrl, ctrl);
-		rc = 0;
-	}
-
-	return rc;
-}
-
-static int vidioc_s_ctrl(struct file *file, void *priv,
-				struct v4l2_control *ctrl)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	/* Set an AC97 control */
-	if (dev->audio_mode.ac97 != EM28XX_NO_AC97)
-		rc = ac97_set_ctrl(dev, ctrl);
-	else
-		rc = 1;
-
-	/* It isn't an AC97 control. Sends it to the v4l2 dev interface */
-	if (rc == 1) {
-		rc = check_subdev_ctrl(dev, ctrl->id);
-		if (!rc)
-			v4l2_device_call_all(&dev->v4l2_dev, 0,
-					     core, s_ctrl, ctrl);
-		/*
-		 * In the case of non-AC97 volume controls, we still need
-		 * to do some setups at em28xx, in order to mute/unmute
-		 * and to adjust audio volume. However, the value ranges
-		 * should be checked by the corresponding V4L subdriver.
-		 */
-		switch (ctrl->id) {
-		case V4L2_CID_AUDIO_MUTE:
-			dev->mute = ctrl->value;
-			rc = em28xx_audio_analog_set(dev);
-			break;
-		case V4L2_CID_AUDIO_VOLUME:
-			dev->volume = ctrl->value;
-			rc = em28xx_audio_analog_set(dev);
-		}
-	}
-	return (rc < 0) ? rc : 0;
-}
-
 static int vidioc_g_tuner(struct file *file, void *priv,
 				struct v4l2_tuner *t)
 {
@@ -1322,7 +1212,6 @@ static int vidioc_g_tuner(struct file *file, void *priv,
 		return -EINVAL;
 
 	strcpy(t->name, "Tuner");
-	t->type = V4L2_TUNER_ANALOG_TV;
 
 	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, g_tuner, t);
 	return 0;
@@ -1352,7 +1241,9 @@ static int vidioc_g_frequency(struct file *file, void *priv,
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
 
-	f->type = fh->radio ? V4L2_TUNER_RADIO : V4L2_TUNER_ANALOG_TV;
+	if (0 != f->tuner)
+		return -EINVAL;
+
 	f->frequency = dev->ctl_freq;
 	return 0;
 }
@@ -1371,13 +1262,9 @@ static int vidioc_s_frequency(struct file *file, void *priv,
 	if (0 != f->tuner)
 		return -EINVAL;
 
-	if (unlikely(0 == fh->radio && f->type != V4L2_TUNER_ANALOG_TV))
-		return -EINVAL;
-	if (unlikely(1 == fh->radio && f->type != V4L2_TUNER_RADIO))
-		return -EINVAL;
-
-	dev->ctl_freq = f->frequency;
 	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, s_frequency, f);
+	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, g_frequency, f);
+	dev->ctl_freq = f->frequency;
 
 	return 0;
 }
@@ -1403,6 +1290,14 @@ static int vidioc_g_chip_ident(struct file *file, void *priv,
 
 	chip->ident = V4L2_IDENT_NONE;
 	chip->revision = 0;
+	if (chip->match.type == V4L2_CHIP_MATCH_HOST) {
+		if (v4l2_chip_match_host(&chip->match))
+			chip->ident = V4L2_IDENT_NONE;
+		return 0;
+	}
+	if (chip->match.type != V4L2_CHIP_MATCH_I2C_DRIVER &&
+	    chip->match.type != V4L2_CHIP_MATCH_I2C_ADDR)
+		return -EINVAL;
 
 	v4l2_device_call_all(&dev->v4l2_dev, 0, core, g_chip_ident, chip);
 
@@ -1511,72 +1406,10 @@ static int vidioc_cropcap(struct file *file, void *priv,
 	return 0;
 }
 
-static int vidioc_streamon(struct file *file, void *priv,
-					enum v4l2_buf_type type)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc = -EINVAL;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (unlikely(type != fh->type))
-		return -EINVAL;
-
-	em28xx_videodbg("vidioc_streamon fh=%p t=%d fh->res=%d dev->res=%d\n",
-			fh, type, fh->resources, dev->resources);
-
-	if (unlikely(!res_get(fh, get_ressource(fh))))
-		return -EBUSY;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		rc = videobuf_streamon(&fh->vb_vidq);
-	else if (fh->type == V4L2_BUF_TYPE_VBI_CAPTURE)
-		rc = videobuf_streamon(&fh->vb_vbiq);
-
-	return rc;
-}
-
-static int vidioc_streamoff(struct file *file, void *priv,
-					enum v4l2_buf_type type)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
-	    fh->type != V4L2_BUF_TYPE_VBI_CAPTURE)
-		return -EINVAL;
-	if (type != fh->type)
-		return -EINVAL;
-
-	em28xx_videodbg("vidioc_streamoff fh=%p t=%d fh->res=%d dev->res=%d\n",
-			fh, type, fh->resources, dev->resources);
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		if (res_check(fh, EM28XX_RESOURCE_VIDEO)) {
-			videobuf_streamoff(&fh->vb_vidq);
-			res_free(fh, EM28XX_RESOURCE_VIDEO);
-		}
-	} else if (fh->type == V4L2_BUF_TYPE_VBI_CAPTURE) {
-		if (res_check(fh, EM28XX_RESOURCE_VBI)) {
-			videobuf_streamoff(&fh->vb_vbiq);
-			res_free(fh, EM28XX_RESOURCE_VBI);
-		}
-	}
-
-	return 0;
-}
-
 static int vidioc_querycap(struct file *file, void  *priv,
 					struct v4l2_capability *cap)
 {
+	struct video_device *vdev = video_devdata(file);
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
 
@@ -1584,20 +1417,26 @@ static int vidioc_querycap(struct file *file, void  *priv,
 	strlcpy(cap->card, em28xx_boards[dev->model].name, sizeof(cap->card));
 	usb_make_path(dev->udev, cap->bus_info, sizeof(cap->bus_info));
 
-	cap->capabilities =
-			V4L2_CAP_SLICED_VBI_CAPTURE |
-			V4L2_CAP_VIDEO_CAPTURE |
-			V4L2_CAP_READWRITE | V4L2_CAP_STREAMING;
-
-	if (dev->vbi_dev)
-		cap->capabilities |= V4L2_CAP_VBI_CAPTURE;
+	if (vdev->vfl_type == VFL_TYPE_GRABBER)
+		cap->device_caps = V4L2_CAP_READWRITE |
+			V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	else if (vdev->vfl_type == VFL_TYPE_RADIO)
+		cap->device_caps = V4L2_CAP_RADIO;
+	else
+		cap->device_caps = V4L2_CAP_READWRITE | V4L2_CAP_VBI_CAPTURE;
 
 	if (dev->audio_mode.has_audio)
-		cap->capabilities |= V4L2_CAP_AUDIO;
+		cap->device_caps |= V4L2_CAP_AUDIO;
 
 	if (dev->tuner_type != TUNER_ABSENT)
-		cap->capabilities |= V4L2_CAP_TUNER;
+		cap->device_caps |= V4L2_CAP_TUNER;
 
+	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS |
+		V4L2_CAP_READWRITE | V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	if (dev->vbi_dev)
+		cap->capabilities |= V4L2_CAP_VBI_CAPTURE;
+	if (dev->radio_dev)
+		cap->capabilities |= V4L2_CAP_RADIO;
 	return 0;
 }
 
@@ -1652,46 +1491,6 @@ static int vidioc_enum_framesizes(struct file *file, void *priv,
 	return 0;
 }
 
-/* Sliced VBI ioctls */
-static int vidioc_g_fmt_sliced_vbi_cap(struct file *file, void *priv,
-					struct v4l2_format *f)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	f->fmt.sliced.service_set = 0;
-	v4l2_device_call_all(&dev->v4l2_dev, 0, vbi, g_sliced_fmt, &f->fmt.sliced);
-
-	if (f->fmt.sliced.service_set == 0)
-		rc = -EINVAL;
-
-	return rc;
-}
-
-static int vidioc_try_set_sliced_vbi_cap(struct file *file, void *priv,
-			struct v4l2_format *f)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	v4l2_device_call_all(&dev->v4l2_dev, 0, vbi, g_sliced_fmt, &f->fmt.sliced);
-
-	if (f->fmt.sliced.service_set == 0)
-		return -EINVAL;
-
-	return 0;
-}
-
 /* RAW VBI ioctls */
 
 static int vidioc_g_fmt_vbi_cap(struct file *file, void *priv,
@@ -1707,6 +1506,7 @@ static int vidioc_g_fmt_vbi_cap(struct file *file, void *priv,
 	format->fmt.vbi.sampling_rate = 6750000 * 4 / 2;
 	format->fmt.vbi.count[0] = dev->vbi_height;
 	format->fmt.vbi.count[1] = dev->vbi_height;
+	memset(format->fmt.vbi.reserved, 0, sizeof(format->fmt.vbi.reserved));
 
 	/* Varies by video standard (NTSC, PAL, etc.) */
 	if (dev->norm & V4L2_STD_525_60) {
@@ -1735,6 +1535,7 @@ static int vidioc_s_fmt_vbi_cap(struct file *file, void *priv,
 	format->fmt.vbi.sampling_rate = 6750000 * 4 / 2;
 	format->fmt.vbi.count[0] = dev->vbi_height;
 	format->fmt.vbi.count[1] = dev->vbi_height;
+	memset(format->fmt.vbi.reserved, 0, sizeof(format->fmt.vbi.reserved));
 
 	/* Varies by video standard (NTSC, PAL, etc.) */
 	if (dev->norm & V4L2_STD_525_60) {
@@ -1750,99 +1551,9 @@ static int vidioc_s_fmt_vbi_cap(struct file *file, void *priv,
 	return 0;
 }
 
-static int vidioc_reqbufs(struct file *file, void *priv,
-			  struct v4l2_requestbuffers *rb)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		return videobuf_reqbufs(&fh->vb_vidq, rb);
-	else
-		return videobuf_reqbufs(&fh->vb_vbiq, rb);
-}
-
-static int vidioc_querybuf(struct file *file, void *priv,
-			   struct v4l2_buffer *b)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		return videobuf_querybuf(&fh->vb_vidq, b);
-	else {
-		/* FIXME: I'm not sure yet whether this is a bug in zvbi or
-		   the videobuf framework, but we probably shouldn't be
-		   returning a buffer larger than that which was asked for.
-		   At a minimum, it causes a crash in zvbi since it does
-		   a memcpy based on the source buffer length */
-		int result = videobuf_querybuf(&fh->vb_vbiq, b);
-		b->length = dev->vbi_width * dev->vbi_height * 2;
-
-		return result;
-	}
-}
-
-static int vidioc_qbuf(struct file *file, void *priv, struct v4l2_buffer *b)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		return videobuf_qbuf(&fh->vb_vidq, b);
-	else
-		return videobuf_qbuf(&fh->vb_vbiq, b);
-}
-
-static int vidioc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *b)
-{
-	struct em28xx_fh      *fh  = priv;
-	struct em28xx         *dev = fh->dev;
-	int                   rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		return videobuf_dqbuf(&fh->vb_vidq, b, file->f_flags &
-				      O_NONBLOCK);
-	else
-		return videobuf_dqbuf(&fh->vb_vbiq, b, file->f_flags &
-				      O_NONBLOCK);
-}
-
 /* ----------------------------------------------------------- */
 /* RADIO ESPECIFIC IOCTLS                                      */
 /* ----------------------------------------------------------- */
-
-static int radio_querycap(struct file *file, void  *priv,
-			  struct v4l2_capability *cap)
-{
-	struct em28xx *dev = ((struct em28xx_fh *)priv)->dev;
-
-	strlcpy(cap->driver, "em28xx", sizeof(cap->driver));
-	strlcpy(cap->card, em28xx_boards[dev->model].name, sizeof(cap->card));
-	usb_make_path(dev->udev, cap->bus_info, sizeof(cap->bus_info));
-
-	cap->capabilities = V4L2_CAP_TUNER;
-	return 0;
-}
 
 static int radio_g_tuner(struct file *file, void *priv,
 			 struct v4l2_tuner *t)
@@ -1860,26 +1571,6 @@ static int radio_g_tuner(struct file *file, void *priv,
 	return 0;
 }
 
-static int radio_enum_input(struct file *file, void *priv,
-			    struct v4l2_input *i)
-{
-	if (i->index != 0)
-		return -EINVAL;
-	strcpy(i->name, "Radio");
-	i->type = V4L2_INPUT_TYPE_TUNER;
-
-	return 0;
-}
-
-static int radio_g_audio(struct file *file, void *priv, struct v4l2_audio *a)
-{
-	if (unlikely(a->index))
-		return -EINVAL;
-
-	strcpy(a->name, "Radio");
-	return 0;
-}
-
 static int radio_s_tuner(struct file *file, void *priv,
 			 struct v4l2_tuner *t)
 {
@@ -1893,48 +1584,16 @@ static int radio_s_tuner(struct file *file, void *priv,
 	return 0;
 }
 
-static int radio_s_audio(struct file *file, void *fh,
-			 const struct v4l2_audio *a)
-{
-	return 0;
-}
-
-static int radio_s_input(struct file *file, void *fh, unsigned int i)
-{
-	return 0;
-}
-
-static int radio_queryctrl(struct file *file, void *priv,
-			   struct v4l2_queryctrl *qc)
-{
-	int i;
-
-	if (qc->id <  V4L2_CID_BASE ||
-		qc->id >= V4L2_CID_LASTP1)
-		return -EINVAL;
-
-	for (i = 0; i < ARRAY_SIZE(ac97_qctrl); i++) {
-		if (qc->id && qc->id == ac97_qctrl[i].id) {
-			memcpy(qc, &(ac97_qctrl[i]), sizeof(*qc));
-			return 0;
-		}
-	}
-
-	return -EINVAL;
-}
-
 /*
  * em28xx_v4l2_open()
  * inits the device and starts isoc transfer
  */
 static int em28xx_v4l2_open(struct file *filp)
 {
-	int errCode = 0, radio = 0;
 	struct video_device *vdev = video_devdata(filp);
 	struct em28xx *dev = video_drvdata(filp);
 	enum v4l2_buf_type fh_type = 0;
 	struct em28xx_fh *fh;
-	enum v4l2_field field;
 
 	switch (vdev->vfl_type) {
 	case VFL_TYPE_GRABBER:
@@ -1942,9 +1601,6 @@ static int em28xx_v4l2_open(struct file *filp)
 		break;
 	case VFL_TYPE_VBI:
 		fh_type = V4L2_BUF_TYPE_VBI_CAPTURE;
-		break;
-	case VFL_TYPE_RADIO:
-		radio = 1;
 		break;
 	}
 
@@ -1961,14 +1617,13 @@ static int em28xx_v4l2_open(struct file *filp)
 		mutex_unlock(&dev->lock);
 		return -ENOMEM;
 	}
+	v4l2_fh_init(&fh->fh, vdev);
 	fh->dev = dev;
-	fh->radio = radio;
 	fh->type = fh_type;
 	filp->private_data = fh;
 
 	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE && dev->users == 0) {
 		em28xx_set_mode(dev, EM28XX_ANALOG_MODE);
-		em28xx_set_alternate(dev);
 		em28xx_resolution_set(dev);
 
 		/* Needed, since GPIO might have disabled power of
@@ -1977,31 +1632,18 @@ static int em28xx_v4l2_open(struct file *filp)
 		em28xx_wake_i2c(dev);
 
 	}
-	if (fh->radio) {
+
+	if (vdev->vfl_type == VFL_TYPE_RADIO) {
 		em28xx_videodbg("video_open: setting radio device\n");
 		v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, s_radio);
 	}
 
 	dev->users++;
 
-	if (dev->progressive)
-		field = V4L2_FIELD_NONE;
-	else
-		field = V4L2_FIELD_INTERLACED;
-
-	videobuf_queue_vmalloc_init(&fh->vb_vidq, &em28xx_video_qops,
-				    NULL, &dev->slock,
-				    V4L2_BUF_TYPE_VIDEO_CAPTURE, field,
-				    sizeof(struct em28xx_buffer), fh, &dev->lock);
-
-	videobuf_queue_vmalloc_init(&fh->vb_vbiq, &em28xx_vbi_qops,
-				    NULL, &dev->slock,
-				    V4L2_BUF_TYPE_VBI_CAPTURE,
-				    V4L2_FIELD_SEQ_TB,
-				    sizeof(struct em28xx_buffer), fh, &dev->lock);
 	mutex_unlock(&dev->lock);
+	v4l2_fh_add(&fh->fh);
 
-	return errCode;
+	return 0;
 }
 
 /*
@@ -2055,25 +1697,16 @@ static int em28xx_v4l2_close(struct file *filp)
 	em28xx_videodbg("users=%d\n", dev->users);
 
 	mutex_lock(&dev->lock);
-	if (res_check(fh, EM28XX_RESOURCE_VIDEO)) {
-		videobuf_stop(&fh->vb_vidq);
-		res_free(fh, EM28XX_RESOURCE_VIDEO);
-	}
-
-	if (res_check(fh, EM28XX_RESOURCE_VBI)) {
-		videobuf_stop(&fh->vb_vbiq);
-		res_free(fh, EM28XX_RESOURCE_VBI);
-	}
+	vb2_fop_release(filp);
 
 	if (dev->users == 1) {
 		/* the device is already disconnect,
 		   free the remaining resources */
-		if (dev->state & DEV_DISCONNECTED) {
+		if (dev->disconnected) {
 			em28xx_release_resources(dev);
 			kfree(dev->alt_max_pkt_size_isoc);
 			mutex_unlock(&dev->lock);
 			kfree(dev);
-			kfree(fh);
 			return 0;
 		}
 
@@ -2081,7 +1714,6 @@ static int em28xx_v4l2_close(struct file *filp)
 		v4l2_device_call_all(&dev->v4l2_dev, 0, core, s_power, 0);
 
 		/* do this before setting alternate! */
-		em28xx_uninit_usb_xfer(dev, EM28XX_ANALOG_MODE);
 		em28xx_set_mode(dev, EM28XX_SUSPEND);
 
 		/* set alternate 0 */
@@ -2094,129 +1726,18 @@ static int em28xx_v4l2_close(struct file *filp)
 		}
 	}
 
-	videobuf_mmap_free(&fh->vb_vidq);
-	videobuf_mmap_free(&fh->vb_vbiq);
-	kfree(fh);
 	dev->users--;
 	mutex_unlock(&dev->lock);
 	return 0;
-}
-
-/*
- * em28xx_v4l2_read()
- * will allocate buffers when called for the first time
- */
-static ssize_t
-em28xx_v4l2_read(struct file *filp, char __user *buf, size_t count,
-		 loff_t *pos)
-{
-	struct em28xx_fh *fh = filp->private_data;
-	struct em28xx *dev = fh->dev;
-	int rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (mutex_lock_interruptible(&dev->lock))
-		return -ERESTARTSYS;
-	/* FIXME: read() is not prepared to allow changing the video
-	   resolution while streaming. Seems a bug at em28xx_set_fmt
-	 */
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		if (res_locked(dev, EM28XX_RESOURCE_VIDEO))
-			rc = -EBUSY;
-		else
-			rc = videobuf_read_stream(&fh->vb_vidq, buf, count, pos, 0,
-					filp->f_flags & O_NONBLOCK);
-	} else if (fh->type == V4L2_BUF_TYPE_VBI_CAPTURE) {
-		if (!res_get(fh, EM28XX_RESOURCE_VBI))
-			rc = -EBUSY;
-		else
-			rc = videobuf_read_stream(&fh->vb_vbiq, buf, count, pos, 0,
-					filp->f_flags & O_NONBLOCK);
-	}
-	mutex_unlock(&dev->lock);
-
-	return rc;
-}
-
-/*
- * em28xx_poll()
- * will allocate buffers when called for the first time
- */
-static unsigned int em28xx_poll(struct file *filp, poll_table *wait)
-{
-	struct em28xx_fh *fh = filp->private_data;
-	struct em28xx *dev = fh->dev;
-	int rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		if (!res_get(fh, EM28XX_RESOURCE_VIDEO))
-			return POLLERR;
-		return videobuf_poll_stream(filp, &fh->vb_vidq, wait);
-	} else if (fh->type == V4L2_BUF_TYPE_VBI_CAPTURE) {
-		if (!res_get(fh, EM28XX_RESOURCE_VBI))
-			return POLLERR;
-		return videobuf_poll_stream(filp, &fh->vb_vbiq, wait);
-	} else {
-		return POLLERR;
-	}
-}
-
-static unsigned int em28xx_v4l2_poll(struct file *filp, poll_table *wait)
-{
-	struct em28xx_fh *fh = filp->private_data;
-	struct em28xx *dev = fh->dev;
-	unsigned int res;
-
-	mutex_lock(&dev->lock);
-	res = em28xx_poll(filp, wait);
-	mutex_unlock(&dev->lock);
-	return res;
-}
-
-/*
- * em28xx_v4l2_mmap()
- */
-static int em28xx_v4l2_mmap(struct file *filp, struct vm_area_struct *vma)
-{
-	struct em28xx_fh *fh    = filp->private_data;
-	struct em28xx	 *dev   = fh->dev;
-	int		 rc;
-
-	rc = check_dev(dev);
-	if (rc < 0)
-		return rc;
-
-	if (mutex_lock_interruptible(&dev->lock))
-		return -ERESTARTSYS;
-	if (fh->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
-		rc = videobuf_mmap_mapper(&fh->vb_vidq, vma);
-	else if (fh->type == V4L2_BUF_TYPE_VBI_CAPTURE)
-		rc = videobuf_mmap_mapper(&fh->vb_vbiq, vma);
-	mutex_unlock(&dev->lock);
-
-	em28xx_videodbg("vma start=0x%08lx, size=%ld, ret=%d\n",
-		(unsigned long)vma->vm_start,
-		(unsigned long)vma->vm_end-(unsigned long)vma->vm_start,
-		rc);
-
-	return rc;
 }
 
 static const struct v4l2_file_operations em28xx_v4l_fops = {
 	.owner         = THIS_MODULE,
 	.open          = em28xx_v4l2_open,
 	.release       = em28xx_v4l2_close,
-	.read          = em28xx_v4l2_read,
-	.poll          = em28xx_v4l2_poll,
-	.mmap          = em28xx_v4l2_mmap,
+	.read          = vb2_fop_read,
+	.poll          = vb2_fop_poll,
+	.mmap          = vb2_fop_mmap,
 	.unlocked_ioctl = video_ioctl2,
 };
 
@@ -2227,19 +1748,20 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 	.vidioc_try_fmt_vid_cap     = vidioc_try_fmt_vid_cap,
 	.vidioc_s_fmt_vid_cap       = vidioc_s_fmt_vid_cap,
 	.vidioc_g_fmt_vbi_cap       = vidioc_g_fmt_vbi_cap,
+	.vidioc_try_fmt_vbi_cap     = vidioc_g_fmt_vbi_cap,
 	.vidioc_s_fmt_vbi_cap       = vidioc_s_fmt_vbi_cap,
 	.vidioc_enum_framesizes     = vidioc_enum_framesizes,
 	.vidioc_g_audio             = vidioc_g_audio,
 	.vidioc_s_audio             = vidioc_s_audio,
 	.vidioc_cropcap             = vidioc_cropcap,
-	.vidioc_g_fmt_sliced_vbi_cap   = vidioc_g_fmt_sliced_vbi_cap,
-	.vidioc_try_fmt_sliced_vbi_cap = vidioc_try_set_sliced_vbi_cap,
-	.vidioc_s_fmt_sliced_vbi_cap   = vidioc_try_set_sliced_vbi_cap,
 
-	.vidioc_reqbufs             = vidioc_reqbufs,
-	.vidioc_querybuf            = vidioc_querybuf,
-	.vidioc_qbuf                = vidioc_qbuf,
-	.vidioc_dqbuf               = vidioc_dqbuf,
+	.vidioc_reqbufs             = vb2_ioctl_reqbufs,
+	.vidioc_create_bufs         = vb2_ioctl_create_bufs,
+	.vidioc_prepare_buf         = vb2_ioctl_prepare_buf,
+	.vidioc_querybuf            = vb2_ioctl_querybuf,
+	.vidioc_qbuf                = vb2_ioctl_qbuf,
+	.vidioc_dqbuf               = vb2_ioctl_dqbuf,
+
 	.vidioc_g_std               = vidioc_g_std,
 	.vidioc_querystd            = vidioc_querystd,
 	.vidioc_s_std               = vidioc_s_std,
@@ -2248,15 +1770,14 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 	.vidioc_enum_input          = vidioc_enum_input,
 	.vidioc_g_input             = vidioc_g_input,
 	.vidioc_s_input             = vidioc_s_input,
-	.vidioc_queryctrl           = vidioc_queryctrl,
-	.vidioc_g_ctrl              = vidioc_g_ctrl,
-	.vidioc_s_ctrl              = vidioc_s_ctrl,
-	.vidioc_streamon            = vidioc_streamon,
-	.vidioc_streamoff           = vidioc_streamoff,
+	.vidioc_streamon            = vb2_ioctl_streamon,
+	.vidioc_streamoff           = vb2_ioctl_streamoff,
 	.vidioc_g_tuner             = vidioc_g_tuner,
 	.vidioc_s_tuner             = vidioc_s_tuner,
 	.vidioc_g_frequency         = vidioc_g_frequency,
 	.vidioc_s_frequency         = vidioc_s_frequency,
+	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
+	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	.vidioc_g_register          = vidioc_g_register,
 	.vidioc_s_register          = vidioc_s_register,
@@ -2266,11 +1787,10 @@ static const struct v4l2_ioctl_ops video_ioctl_ops = {
 
 static const struct video_device em28xx_video_template = {
 	.fops                       = &em28xx_v4l_fops,
-	.release                    = video_device_release,
+	.release                    = video_device_release_empty,
 	.ioctl_ops 		    = &video_ioctl_ops,
 
 	.tvnorms                    = V4L2_STD_ALL,
-	.current_norm               = V4L2_STD_PAL,
 };
 
 static const struct v4l2_file_operations radio_fops = {
@@ -2281,18 +1801,13 @@ static const struct v4l2_file_operations radio_fops = {
 };
 
 static const struct v4l2_ioctl_ops radio_ioctl_ops = {
-	.vidioc_querycap      = radio_querycap,
+	.vidioc_querycap      = vidioc_querycap,
 	.vidioc_g_tuner       = radio_g_tuner,
-	.vidioc_enum_input    = radio_enum_input,
-	.vidioc_g_audio       = radio_g_audio,
 	.vidioc_s_tuner       = radio_s_tuner,
-	.vidioc_s_audio       = radio_s_audio,
-	.vidioc_s_input       = radio_s_input,
-	.vidioc_queryctrl     = radio_queryctrl,
-	.vidioc_g_ctrl        = vidioc_g_ctrl,
-	.vidioc_s_ctrl        = vidioc_s_ctrl,
 	.vidioc_g_frequency   = vidioc_g_frequency,
 	.vidioc_s_frequency   = vidioc_s_frequency,
+	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
+	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
 	.vidioc_g_register    = vidioc_g_register,
 	.vidioc_s_register    = vidioc_s_register,
@@ -2321,9 +1836,11 @@ static struct video_device *em28xx_vdev_init(struct em28xx *dev,
 
 	*vfd		= *template;
 	vfd->v4l2_dev	= &dev->v4l2_dev;
-	vfd->release	= video_device_release;
 	vfd->debug	= video_debug;
 	vfd->lock	= &dev->lock;
+	set_bit(V4L2_FL_USE_FH_PRIO, &vfd->flags);
+	if (dev->board.is_webcam)
+		vfd->tvnorms = 0;
 
 	snprintf(vfd->name, sizeof(vfd->name), "%s %s",
 		 dev->name, type_name);
@@ -2334,7 +1851,7 @@ static struct video_device *em28xx_vdev_init(struct em28xx *dev,
 
 int em28xx_register_analog_devices(struct em28xx *dev)
 {
-      u8 val;
+	u8 val;
 	int ret;
 	unsigned int maxw;
 
@@ -2342,7 +1859,7 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 		dev->name, EM28XX_VERSION);
 
 	/* set default norm */
-	dev->norm = em28xx_video_template.current_norm;
+	dev->norm = V4L2_STD_PAL;
 	v4l2_device_call_all(&dev->v4l2_dev, 0, core, s_std, dev->norm);
 	dev->interlaced = EM28XX_INTERLACED_DEFAULT;
 
@@ -2350,10 +1867,10 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 	dev->format = &format[0];
 
 	maxw = norm_maxw(dev);
-        /* MaxPacketSize for em2800 is too small to capture at full resolution
-         * use half of maxw as the scaler can only scale to 50% */
-        if (dev->board.is_em2800)
-            maxw /= 2;
+	/* MaxPacketSize for em2800 is too small to capture at full resolution
+	 * use half of maxw as the scaler can only scale to 50% */
+	if (dev->board.is_em2800)
+		maxw /= 2;
 
 	em28xx_set_video_format(dev, format[0].fourcc,
 				maxw, norm_maxh(dev));
@@ -2379,6 +1896,8 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 		em28xx_errdev("cannot allocate video_device.\n");
 		return -ENODEV;
 	}
+	dev->vdev->queue = &dev->vb_vidq;
+	dev->vdev->queue->lock = &dev->vb_queue_lock;
 
 	/* register v4l2 video video_device */
 	ret = video_register_device(dev->vdev, VFL_TYPE_GRABBER,
@@ -2393,6 +1912,9 @@ int em28xx_register_analog_devices(struct em28xx *dev)
 	if (em28xx_vbi_supported(dev) == 1) {
 		dev->vbi_dev = em28xx_vdev_init(dev, &em28xx_video_template,
 						"vbi");
+
+		dev->vbi_dev->queue = &dev->vb_vbiq;
+		dev->vbi_dev->queue->lock = &dev->vb_vbi_queue_lock;
 
 		/* register v4l2 vbi video_device */
 		ret = video_register_device(dev->vbi_dev, VFL_TYPE_VBI,

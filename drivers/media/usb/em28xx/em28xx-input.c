@@ -384,7 +384,6 @@ static int em2860_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
 		*rc_type = ir->rc_type;
 		return -EINVAL;
 	}
-	ir->get_key = default_polling_getkey;
 	em28xx_write_reg_bits(dev, EM28XX_R0F_XCLK, dev->board.xclk,
 			      EM28XX_XCLK_IR_RC5_MODE);
 
@@ -420,10 +419,7 @@ static int em2874_ir_change_protocol(struct rc_dev *rc_dev, u64 *rc_type)
 		*rc_type = ir->rc_type;
 		return -EINVAL;
 	}
-
-	ir->get_key = em2874_polling_getkey;
 	em28xx_write_regs(dev, EM2874_R50_IR_CONFIG, &ir_config, 1);
-
 	em28xx_write_reg_bits(dev, EM28XX_R0F_XCLK, dev->board.xclk,
 			      EM28XX_XCLK_IR_RC5_MODE);
 
@@ -472,22 +468,23 @@ static void em28xx_register_i2c_ir(struct em28xx *dev)
 	case EM2820_BOARD_TERRATEC_CINERGY_250:
 		dev->init_data.ir_codes = RC_MAP_EM_TERRATEC;
 		dev->init_data.get_key = em28xx_get_key_terratec;
-		dev->init_data.name = "i2c IR (EM28XX Terratec)";
+		dev->init_data.name = "Terratec Cinergy 200/250";
 		break;
 	case EM2820_BOARD_PINNACLE_USB_2:
 		dev->init_data.ir_codes = RC_MAP_PINNACLE_GREY;
 		dev->init_data.get_key = em28xx_get_key_pinnacle_usb_grey;
-		dev->init_data.name = "i2c IR (EM28XX Pinnacle PCTV)";
+		dev->init_data.name = "Pinnacle USB2";
 		break;
 	case EM2820_BOARD_HAUPPAUGE_WINTV_USB_2:
 		dev->init_data.ir_codes = RC_MAP_HAUPPAUGE;
 		dev->init_data.get_key = em28xx_get_key_em_haup;
-		dev->init_data.name = "i2c IR (EM2840 Hauppauge)";
+		dev->init_data.name = "WinTV USB2";
+		dev->init_data.type = RC_BIT_RC5;
 		break;
 	case EM2820_BOARD_LEADTEK_WINFAST_USBII_DELUXE:
 		dev->init_data.ir_codes = RC_MAP_WINFAST_USBII_DELUXE;
 		dev->init_data.get_key = em28xx_get_key_winfast_usbii_deluxe;
-		dev->init_data.name = "i2c IR (EM2820 Winfast TV USBII Deluxe)";
+		dev->init_data.name = "Winfast TV USBII Deluxe";
 		break;
 	}
 
@@ -590,6 +587,17 @@ static int em28xx_ir_init(struct em28xx *dev)
 	int err = -ENOMEM;
 	u64 rc_type;
 
+	if (dev->board.has_snapshot_button)
+		em28xx_register_snapshot_button(dev);
+
+	if (dev->board.has_ir_i2c) {
+		em28xx_register_i2c_ir(dev);
+#if defined(CONFIG_MODULES) && defined(MODULE)
+		request_module("ir-kbd-i2c");
+#endif
+		return 0;
+	}
+
 	if (dev->board.ir_codes == NULL) {
 		/* No remote control support */
 		em28xx_warn("Remote control support is not available for "
@@ -621,10 +629,12 @@ static int em28xx_ir_init(struct em28xx *dev)
 	case CHIP_ID_EM2860:
 	case CHIP_ID_EM2883:
 		rc->allowed_protos = RC_BIT_RC5 | RC_BIT_NEC;
+		ir->get_key = default_polling_getkey;
 		break;
 	case CHIP_ID_EM2884:
 	case CHIP_ID_EM2874:
 	case CHIP_ID_EM28174:
+		ir->get_key = em2874_polling_getkey;
 		rc->allowed_protos = RC_BIT_RC5 | RC_BIT_NEC | RC_BIT_RC6_0;
 		break;
 	default:
@@ -662,15 +672,6 @@ static int em28xx_ir_init(struct em28xx *dev)
 	err = rc_register_device(rc);
 	if (err)
 		goto error;
-
-	em28xx_register_i2c_ir(dev);
-
-#if defined(CONFIG_MODULES) && defined(MODULE)
-	if (dev->board.has_ir_i2c)
-		request_module("ir-kbd-i2c");
-#endif
-	if (dev->board.has_snapshot_button)
-		em28xx_register_snapshot_button(dev);
 
 	return 0;
 
