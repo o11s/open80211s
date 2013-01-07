@@ -604,8 +604,6 @@ struct ath_hw_radar_conf {
  *
  * @rf_set_freq: change frequency
  * @spur_mitigate_freq: spur mitigation
- * @rf_alloc_ext_banks:
- * @rf_free_ext_banks:
  * @set_rf_regs:
  * @compute_pll_control: compute the PLL control value to use for
  *	AR_RTC_PLL_CONTROL for a given channel
@@ -630,8 +628,6 @@ struct ath_hw_private_ops {
 			   struct ath9k_channel *chan);
 	void (*spur_mitigate_freq)(struct ath_hw *ah,
 				   struct ath9k_channel *chan);
-	int (*rf_alloc_ext_banks)(struct ath_hw *ah);
-	void (*rf_free_ext_banks)(struct ath_hw *ah);
 	bool (*set_rf_regs)(struct ath_hw *ah,
 			    struct ath9k_channel *chan,
 			    u16 modesIndex);
@@ -710,6 +706,7 @@ enum ath_cal_list {
 struct ath_hw {
 	struct ath_ops reg_ops;
 
+	struct device *dev;
 	struct ieee80211_hw *hw;
 	struct ath_common common;
 	struct ath9k_hw_version hw_version;
@@ -771,7 +768,6 @@ struct ath_hw {
 	struct ath9k_cal_list iq_caldata;
 	struct ath9k_cal_list adcgain_caldata;
 	struct ath9k_cal_list adcdc_caldata;
-	struct ath9k_cal_list tempCompCalData;
 	struct ath9k_cal_list *cal_list;
 	struct ath9k_cal_list *cal_list_last;
 	struct ath9k_cal_list *cal_list_curr;
@@ -1068,14 +1064,14 @@ bool ar9003_paprd_is_done(struct ath_hw *ah);
 bool ar9003_is_paprd_enabled(struct ath_hw *ah);
 
 /* Hardware family op attach helpers */
-void ar5008_hw_attach_phy_ops(struct ath_hw *ah);
+int ar5008_hw_attach_phy_ops(struct ath_hw *ah);
 void ar9002_hw_attach_phy_ops(struct ath_hw *ah);
 void ar9003_hw_attach_phy_ops(struct ath_hw *ah);
 
 void ar9002_hw_attach_calib_ops(struct ath_hw *ah);
 void ar9003_hw_attach_calib_ops(struct ath_hw *ah);
 
-void ar9002_hw_attach_ops(struct ath_hw *ah);
+int ar9002_hw_attach_ops(struct ath_hw *ah);
 void ar9003_hw_attach_ops(struct ath_hw *ah);
 
 void ar9002_hw_load_ani_reg(struct ath_hw *ah, struct ath9k_channel *chan);

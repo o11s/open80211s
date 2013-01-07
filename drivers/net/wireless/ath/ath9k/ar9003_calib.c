@@ -32,7 +32,6 @@ struct coeff {
 
 enum ar9003_cal_types {
 	IQ_MISMATCH_CAL = BIT(0),
-	TEMP_COMP_CAL = BIT(1),
 };
 
 static void ar9003_hw_setup_calibration(struct ath_hw *ah,
@@ -49,7 +48,7 @@ static void ar9003_hw_setup_calibration(struct ath_hw *ah,
 		 */
 		REG_RMW_FIELD(ah, AR_PHY_TIMING4,
 			      AR_PHY_TIMING4_IQCAL_LOG_COUNT_MAX,
-		currCal->calData->calCountMax);
+			      currCal->calData->calCountMax);
 		REG_WRITE(ah, AR_PHY_CALMODE, AR_PHY_CALMODE_IQ);
 
 		ath_dbg(common, CALIBRATE,
@@ -58,14 +57,8 @@ static void ar9003_hw_setup_calibration(struct ath_hw *ah,
 		/* Kick-off cal */
 		REG_SET_BIT(ah, AR_PHY_TIMING4, AR_PHY_TIMING4_DO_CAL);
 		break;
-	case TEMP_COMP_CAL:
-		REG_RMW_FIELD(ah, AR_PHY_65NM_CH0_THERM,
-			      AR_PHY_65NM_CH0_THERM_LOCAL, 1);
-		REG_RMW_FIELD(ah, AR_PHY_65NM_CH0_THERM,
-			      AR_PHY_65NM_CH0_THERM_START, 1);
-
-		ath_dbg(common, CALIBRATE,
-			"starting Temperature Compensation Calibration\n");
+	default:
+		ath_err(common, "Invalid calibration type\n");
 		break;
 	}
 }
@@ -323,6 +316,14 @@ static const struct ath9k_percal_data iq_cal_single_sample = {
 static void ar9003_hw_init_cal_settings(struct ath_hw *ah)
 {
 	ah->iq_caldata.calData = &iq_cal_single_sample;
+
+	if (AR_SREV_9300_20_OR_LATER(ah)) {
+		ah->enabled_cals |= TX_IQ_CAL;
+		if (AR_SREV_9485_OR_LATER(ah) && !AR_SREV_9340(ah))
+			ah->enabled_cals |= TX_IQ_ON_AGC_CAL;
+	}
+
+	ah->supp_cals = IQ_MISMATCH_CAL;
 }
 
 /*
@@ -1131,20 +1132,10 @@ skip_tx_iqcal:
 
 	/* Initialize list pointers */
 	ah->cal_list = ah->cal_list_last = ah->cal_list_curr = NULL;
-	ah->supp_cals = IQ_MISMATCH_CAL;
 
-	if (ah->supp_cals & IQ_MISMATCH_CAL) {
-		INIT_CAL(&ah->iq_caldata);
-		INSERT_CAL(ah, &ah->iq_caldata);
-		ath_dbg(common, CALIBRATE, "enabling IQ Calibration\n");
-	}
-
-	if (ah->supp_cals & TEMP_COMP_CAL) {
-		INIT_CAL(&ah->tempCompCalData);
-		INSERT_CAL(ah, &ah->tempCompCalData);
-		ath_dbg(common, CALIBRATE,
-			"enabling Temperature Compensation Calibration\n");
-	}
+	INIT_CAL(&ah->iq_caldata);
+	INSERT_CAL(ah, &ah->iq_caldata);
+	ath_dbg(common, CALIBRATE, "enabling IQ Calibration\n");
 
 	/* Initialize current pointer to first element in list */
 	ah->cal_list_curr = ah->cal_list;

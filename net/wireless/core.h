@@ -18,6 +18,9 @@
 #include <net/cfg80211.h>
 #include "reg.h"
 
+
+#define WIPHY_IDX_INVALID	-1
+
 struct cfg80211_registered_device {
 	const struct cfg80211_ops *ops;
 	struct list_head list;
@@ -86,7 +89,7 @@ struct cfg80211_registered_device {
 
 	/* must be last because of the way we do wiphy_priv(),
 	 * and it should at least be aligned to NETDEV_ALIGN */
-	struct wiphy wiphy __attribute__((__aligned__(NETDEV_ALIGN)));
+	struct wiphy wiphy __aligned(NETDEV_ALIGN);
 };
 
 static inline
@@ -94,13 +97,6 @@ struct cfg80211_registered_device *wiphy_to_dev(struct wiphy *wiphy)
 {
 	BUG_ON(!wiphy);
 	return container_of(wiphy, struct cfg80211_registered_device, wiphy);
-}
-
-/* Note 0 is valid, hence phy0 */
-static inline
-bool wiphy_idx_valid(int wiphy_idx)
-{
-	return wiphy_idx >= 0;
 }
 
 static inline void
@@ -125,12 +121,6 @@ static inline void assert_cfg80211_lock(void)
 {
 	lockdep_assert_held(&cfg80211_mutex);
 }
-
-/*
- * You can use this to mark a wiphy_idx as not having an associated wiphy.
- * It guarantees cfg80211_rdev_by_wiphy_idx(wiphy_idx) will return NULL
- */
-#define WIPHY_IDX_STALE -1
 
 struct cfg80211_internal_bss {
 	struct list_head list;

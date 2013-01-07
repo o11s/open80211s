@@ -48,6 +48,10 @@ static int channels = 1;
 module_param(channels, int, 0444);
 MODULE_PARM_DESC(channels, "Number of concurrent channels");
 
+static bool paged_rx = false;
+module_param(paged_rx, bool, 0644);
+MODULE_PARM_DESC(paged_rx, "Use paged SKBs for RX instead of linear ones");
+
 /**
  * enum hwsim_regtest - the type of regulatory tests we offer
  *
@@ -755,9 +759,25 @@ static bool mac80211_hwsim_tx_frame_no_nl(struct ieee80211_hw *hw,
 		 * reserve some space for our vendor and the normal
 		 * radiotap header, since we're copying anyway
 		 */
-		nskb = skb_copy_expand(skb, 64, 0, GFP_ATOMIC);
-		if (nskb == NULL)
-			continue;
+		if (skb->len < PAGE_SIZE && paged_rx) {
+			struct page *page = alloc_page(GFP_ATOMIC);
+
+			if (!page)
+				continue;
+
+			nskb = dev_alloc_skb(128);
+			if (!nskb) {
+				__free_page(page);
+				continue;
+			}
+
+			memcpy(page_address(page), skb->data, skb->len);
+			skb_add_rx_frag(nskb, 0, page, 0, skb->len, skb->len);
+		} else {
+			nskb = skb_copy(skb, GFP_ATOMIC);
+			if (!nskb)
+				continue;
+		}
 
 		if (mac80211_hwsim_addr_match(data2, hdr->addr1))
 			ack = true;
@@ -1292,7 +1312,9 @@ static int mac80211_hwsim_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_TX_START:
 		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		break;
-	case IEEE80211_AMPDU_TX_STOP:
+	case IEEE80211_AMPDU_TX_STOP_CONT:
+	case IEEE80211_AMPDU_TX_STOP_FLUSH:
+	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		break;
 	case IEEE80211_AMPDU_TX_OPERATIONAL:

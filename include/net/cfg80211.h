@@ -1256,7 +1256,7 @@ struct cfg80211_bss {
 
 	u8 bssid[ETH_ALEN];
 
-	u8 priv[0] __attribute__((__aligned__(sizeof(void *))));
+	u8 priv[0] __aligned(sizeof(void *));
 };
 
 /**
@@ -2369,7 +2369,7 @@ struct wiphy {
 
 	/* fields below are read-only, assigned by cfg80211 */
 
-	const struct ieee80211_regdomain *regd;
+	const struct ieee80211_regdomain __rcu *regd;
 
 	/* the item in /sys/class/ieee80211/ points to this,
 	 * you need use set_wiphy_dev() (see below) */
@@ -2392,7 +2392,7 @@ struct wiphy {
 	const struct iw_handler_def *wext;
 #endif
 
-	char priv[0] __attribute__((__aligned__(NETDEV_ALIGN)));
+	char priv[0] __aligned(NETDEV_ALIGN);
 };
 
 static inline struct net *wiphy_net(struct wiphy *wiphy)
@@ -2938,28 +2938,22 @@ extern void wiphy_apply_custom_regulatory(
  * freq_reg_info - get regulatory information for the given frequency
  * @wiphy: the wiphy for which we want to process this rule for
  * @center_freq: Frequency in KHz for which we want regulatory information for
- * @desired_bw_khz: the desired max bandwidth you want to use per
- *	channel. Note that this is still 20 MHz if you want to use HT40
- *	as HT40 makes use of two channels for its 40 MHz width bandwidth.
- *	If set to 0 we'll assume you want the standard 20 MHz.
- * @reg_rule: the regulatory rule which we have for this frequency
  *
  * Use this function to get the regulatory rule for a specific frequency on
  * a given wireless device. If the device has a specific regulatory domain
  * it wants to follow we respect that unless a country IE has been received
  * and processed already.
  *
- * Returns 0 if it was able to find a valid regulatory rule which does
- * apply to the given center_freq otherwise it returns non-zero. It will
- * also return -ERANGE if we determine the given center_freq does not even have
- * a regulatory rule for a frequency range in the center_freq's band. See
- * freq_in_rule_band() for our current definition of a band -- this is purely
- * subjective and right now its 802.11 specific.
+ * When an error occurs, for example if no rule can be found, the return value
+ * is encoded using ERR_PTR(). Use IS_ERR() to check and PTR_ERR() to obtain
+ * the numeric return value. The numeric return value will be -ERANGE if we
+ * determine the given center_freq does not even have a regulatory rule for a
+ * frequency range in the center_freq's band. See freq_in_rule_band() for our
+ * current definition of a band -- this is purely subjective and right now it's
+ * 802.11 specific.
  */
-extern int freq_reg_info(struct wiphy *wiphy,
-			 u32 center_freq,
-			 u32 desired_bw_khz,
-			 const struct ieee80211_reg_rule **reg_rule);
+const struct ieee80211_reg_rule *freq_reg_info(struct wiphy *wiphy,
+					       u32 center_freq);
 
 /*
  * callbacks for asynchronous cfg80211 methods, notification

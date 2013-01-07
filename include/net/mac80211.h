@@ -173,7 +173,7 @@ struct ieee80211_chanctx_conf {
 
 	u8 rx_chains_static, rx_chains_dynamic;
 
-	u8 drv_priv[0] __attribute__((__aligned__(sizeof(void *))));
+	u8 drv_priv[0] __aligned(sizeof(void *));
 };
 
 /**
@@ -1059,7 +1059,7 @@ struct ieee80211_vif {
 	u32 driver_flags;
 
 	/* must be last */
-	u8 drv_priv[0] __attribute__((__aligned__(sizeof(void *))));
+	u8 drv_priv[0] __aligned(sizeof(void *));
 };
 
 static inline bool ieee80211_vif_is_mesh(struct ieee80211_vif *vif)
@@ -1209,7 +1209,7 @@ struct ieee80211_sta {
 	u8 max_sp;
 
 	/* must be last */
-	u8 drv_priv[0] __attribute__((__aligned__(sizeof(void *))));
+	u8 drv_priv[0] __aligned(sizeof(void *));
 };
 
 /**
@@ -2033,17 +2033,29 @@ enum ieee80211_filter_flags {
  * calling ieee80211_start_tx_ba_cb_irqsafe, because the peer
  * might receive the addBA frame and send a delBA right away!
  *
- * @IEEE80211_AMPDU_RX_START: start Rx aggregation
- * @IEEE80211_AMPDU_RX_STOP: stop Rx aggregation
- * @IEEE80211_AMPDU_TX_START: start Tx aggregation
- * @IEEE80211_AMPDU_TX_STOP: stop Tx aggregation
+ * @IEEE80211_AMPDU_RX_START: start RX aggregation
+ * @IEEE80211_AMPDU_RX_STOP: stop RX aggregation
+ * @IEEE80211_AMPDU_TX_START: start TX aggregation
  * @IEEE80211_AMPDU_TX_OPERATIONAL: TX aggregation has become operational
+ * @IEEE80211_AMPDU_TX_STOP_CONT: stop TX aggregation but continue transmitting
+ *	queued packets, now unaggregated. After all packets are transmitted the
+ *	driver has to call ieee80211_stop_tx_ba_cb_irqsafe().
+ * @IEEE80211_AMPDU_TX_STOP_FLUSH: stop TX aggregation and flush all packets,
+ *	called when the station is removed. There's no need or reason to call
+ *	ieee80211_stop_tx_ba_cb_irqsafe() in this case as mac80211 assumes the
+ *	session is gone and removes the station.
+ * @IEEE80211_AMPDU_TX_STOP_FLUSH_CONT: called when TX aggregation is stopped
+ *	but the driver hasn't called ieee80211_stop_tx_ba_cb_irqsafe() yet and
+ *	now the connection is dropped and the station will be removed. Drivers
+ *	should clean up and drop remaining packets when this is called.
  */
 enum ieee80211_ampdu_mlme_action {
 	IEEE80211_AMPDU_RX_START,
 	IEEE80211_AMPDU_RX_STOP,
 	IEEE80211_AMPDU_TX_START,
-	IEEE80211_AMPDU_TX_STOP,
+	IEEE80211_AMPDU_TX_STOP_CONT,
+	IEEE80211_AMPDU_TX_STOP_FLUSH,
+	IEEE80211_AMPDU_TX_STOP_FLUSH_CONT,
 	IEEE80211_AMPDU_TX_OPERATIONAL,
 };
 
@@ -3754,6 +3766,11 @@ void ieee80211_iter_keys(struct ieee80211_hw *hw,
  * The iterator will not find a context that's being added (during
  * the driver callback to add it) but will find it while it's being
  * removed.
+ *
+ * Note that during hardware restart, all contexts that existed
+ * before the restart are considered already present so will be
+ * found while iterating, whether they've been re-added already
+ * or not.
  */
 void ieee80211_iter_chan_contexts_atomic(
 	struct ieee80211_hw *hw,
