@@ -96,12 +96,22 @@ static inline bool ieee80211aa_enabled(void)
 	return false;
 }
 
-static inline void ieee80211aa_init()
+static inline void ieee80211aa_init(void)
+{
+	return;
+}
+
+static inline void ieee80211aa_stop(void)
 {
 	return;
 }
 
 static inline int ieee80211aa_mcc_init(struct ieee80211_sub_if_data *sdata)
+{
+	return 0;
+}
+
+static inline int ieee80211aa_mcc_free(struct ieee80211_sub_if_data *sdata)
 {
 	return 0;
 }
@@ -121,12 +131,12 @@ static void ieee80211aa_rx_gcm_frame(struct ieee80211_sub_if_data *sdata,
 static inline void ieee80211aa_handle_bar(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_bar_gcr *bar)
 {
-	return false;
+	return;
 }
 static inline void ieee80211aa_handle_ba(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_ba_gcr *ba)
 {
-	return false;
+	return;
 }
 static inline void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211s_hdr *mesh_hdr, u8 *da)
@@ -135,6 +145,17 @@ static inline void ieee80211aa_set_seqnum(struct ieee80211_sub_if_data *sdata,
 }
 static inline void ieee80211_send_bar_gcr(struct ieee80211_sub_if_data *sdata, u8 *ra,
 			    u8 *sa, u16 ssn)
+{
+	return;
+}
+static inline void ieee80211aa_check_rx(struct ieee80211_sub_if_data *sdata,
+					u8 *sa, u32 seqnum)
+{
+	return;
+}
+static inline void
+ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
+			  struct sk_buff *skb)
 {
 	return;
 }
