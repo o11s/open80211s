@@ -76,7 +76,6 @@ void ieee80211_configure_filter(struct ieee80211_local *local)
 	changed_flags = local->filter_flags ^ new_flags;
 
 	mc = drv_prepare_multicast(local, &local->mc_list);
-
 	spin_unlock_bh(&local->filter_lock);
 
 	/* If 11aa extension is enabled and multicast hash has changed */

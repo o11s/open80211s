@@ -893,8 +893,6 @@ struct ieee80211_local {
 
 	/* aggregated multicast list */
 	struct netdev_hw_addr_list mc_list;
-	/* multicast list_hash */
-	u64 mc_list_hash;
 
 	bool tim_in_locked_section; /* see ieee80211_beacon_get() */
 
@@ -961,6 +959,8 @@ struct ieee80211_local {
 
 	struct sk_buff_head pending[IEEE80211_MAX_QUEUES];
 	struct tasklet_struct tx_pending_tasklet;
+	/* multicast list_hash */
+	u64 mc_list_hash;
 
 	atomic_t agg_queue_stop[IEEE80211_MAX_QUEUES];
 
