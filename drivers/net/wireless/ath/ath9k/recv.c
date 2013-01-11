@@ -281,7 +281,6 @@ int ath_rx_init(struct ath_softc *sc, int nbufs)
 
 	spin_lock_init(&sc->sc_pcu_lock);
 	spin_lock_init(&sc->rx.rxbuflock);
-	clear_bit(SC_OP_RXFLUSH, &sc->sc_flags);
 
 	common->rx_bufsize = IEEE80211_MAX_MPDU_LEN / 2 +
 			     sc->sc_ah->caps.rx_status_len;
@@ -465,6 +464,13 @@ start_recv:
 	return 0;
 }
 
+static void ath_flushrecv(struct ath_softc *sc)
+{
+	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_EDMA)
+		ath_rx_tasklet(sc, 1, true);
+	ath_rx_tasklet(sc, 1, false);
+}
+
 bool ath_stoprecv(struct ath_softc *sc)
 {
 	struct ath_hw *ah = sc->sc_ah;
@@ -474,6 +480,8 @@ bool ath_stoprecv(struct ath_softc *sc)
 	ath9k_hw_abortpcurecv(ah);
 	ath9k_hw_setrxfilter(ah, 0);
 	stopped = ath9k_hw_stopdmarecv(ah, &reset);
+
+	ath_flushrecv(sc);
 
 	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_EDMA)
 		ath_edma_stop_recv(sc);
@@ -489,15 +497,6 @@ bool ath_stoprecv(struct ath_softc *sc)
 		ATH_DBG_WARN_ON_ONCE(!stopped);
 	}
 	return stopped && !reset;
-}
-
-void ath_flushrecv(struct ath_softc *sc)
-{
-	set_bit(SC_OP_RXFLUSH, &sc->sc_flags);
-	if (sc->sc_ah->caps.hw_caps & ATH9K_HW_CAP_EDMA)
-		ath_rx_tasklet(sc, 1, true);
-	ath_rx_tasklet(sc, 1, false);
-	clear_bit(SC_OP_RXFLUSH, &sc->sc_flags);
 }
 
 static bool ath_beacon_dtim_pending_cab(struct sk_buff *skb)
@@ -736,6 +735,7 @@ static struct ath_buf *ath_get_next_rx_buf(struct ath_softc *sc,
 			return NULL;
 	}
 
+	list_del(&bf->list);
 	if (!bf->bf_mpdu)
 		return bf;
 
@@ -1160,9 +1160,6 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 
 	do {
 		bool decrypt_error = false;
-		/* If handling rx interrupt and flush is in progress => exit */
-		if (test_bit(SC_OP_RXFLUSH, &sc->sc_flags) && (flush == 0))
-			break;
 
 		memset(&rs, 0, sizeof(rs));
 		if (edma)
@@ -1204,15 +1201,6 @@ int ath_rx_tasklet(struct ath_softc *sc, int flush, bool hp)
 			sc->rx.num_pkts++;
 
 		ath_debug_stat_rx(sc, &rs);
-
-		/*
-		 * If we're asked to flush receive queue, directly
-		 * chain it back at the queue without processing it.
-		 */
-		if (test_bit(SC_OP_RXFLUSH, &sc->sc_flags)) {
-			RX_STAT_INC(rx_drop_rxflush);
-			goto requeue_drop_frag;
-		}
 
 		memset(rxs, 0, sizeof(struct ieee80211_rx_status));
 
@@ -1351,14 +1339,15 @@ requeue_drop_frag:
 			sc->rx.frag = NULL;
 		}
 requeue:
+		list_add_tail(&bf->list, &sc->rx.rxbuf);
+		if (flush)
+			continue;
+
 		if (edma) {
-			list_add_tail(&bf->list, &sc->rx.rxbuf);
 			ath_rx_edma_buf_link(sc, qtype);
 		} else {
-			list_move_tail(&bf->list, &sc->rx.rxbuf);
 			ath_rx_buf_link(sc, bf);
-			if (!flush)
-				ath9k_hw_rxena(ah);
+			ath9k_hw_rxena(ah);
 		}
 	} while (1);
 
