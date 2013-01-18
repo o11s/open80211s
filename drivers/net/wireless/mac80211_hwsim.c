@@ -49,9 +49,10 @@ static bool fake_hw_scan;
 module_param(fake_hw_scan, bool, 0444);
 MODULE_PARM_DESC(fake_hw_scan, "Install fake (no-op) hw-scan handler");
 
-static u8 loss_prob;
-module_param(loss_prob, byte, 0644);
-MODULE_PARM_DESC(loss_prob, "Loss probability for each transmission (0 to 255)");
+#define HWSIM_LOSS_PROB_GRANULARITY 10000
+static int loss_prob;
+module_param(loss_prob, int, 0644);
+MODULE_PARM_DESC(loss_prob, "Loss probability for each transmission in 100ths of a percent (0 to 10000)");
 
 /**
  * enum hwsim_regtest - the type of regulatory tests we offer
@@ -208,6 +209,17 @@ static inline void hwsim_clear_sta_magic(struct ieee80211_sta *sta)
 {
 	struct hwsim_sta_priv *sp = (void *)sta->drv_priv;
 	sp->magic = 0;
+}
+
+static bool hwsim_loss_prob_drop(void)
+{
+	u32 dice;
+
+	get_random_bytes(&dice, sizeof(dice));
+	dice = dice % HWSIM_LOSS_PROB_GRANULARITY;
+	if (dice >= loss_prob)
+		return false;
+	return true;
 }
 
 static struct class *hwsim_class;
@@ -720,11 +732,9 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 	bool ack;
 	struct ieee80211_tx_info *txi;
 	u32 _pid;
-	u8 dice;
+	bool drop = hwsim_loss_prob_drop();
 
-	get_random_bytes(&dice, 1);
-
-	if (dice >= loss_prob)
+	if (!drop)
 		mac80211_hwsim_monitor_rx(hw, skb);
 
 	if (skb->len < 10) {
@@ -740,7 +750,7 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw, struct sk_buff *skb)
 		return mac80211_hwsim_tx_frame_nl(hw, skb, _pid);
 
 	/* NO wmediumd detected, perfect medium simulation */
-	if (dice >= loss_prob)
+	if (!drop)
 		ack = mac80211_hwsim_tx_frame_no_nl(hw, skb);
 	else
 		ack = false;
@@ -831,9 +841,7 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 	struct sk_buff *skb;
 	struct ieee80211_tx_info *info;
 	u32 _pid;
-	u8 dice;
-
-	get_random_bytes(&dice, 1);
+	bool drop = hwsim_loss_prob_drop();
 
 	hwsim_check_magic(vif);
 
@@ -854,7 +862,7 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 
 	if (_pid)
 		return mac80211_hwsim_tx_frame_nl(hw, skb, _pid);
-	if (dice >= loss_prob)
+	if (!drop)
 		mac80211_hwsim_tx_frame_no_nl(hw, skb);
 	dev_kfree_skb(skb);
 }
