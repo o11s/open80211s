@@ -59,6 +59,7 @@ const struct mesh_config default_mesh_config = {
 	.dot11MeshGateAnnouncementProtocol = false,
 	.dot11MeshForwarding = true,
 	.rssi_threshold = MESH_RSSI_THRESHOLD,
+	.mcast_retries = 0,
 };
 
 const struct mesh_setup default_mesh_setup = {

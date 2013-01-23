@@ -2142,6 +2142,9 @@ enum nl80211_mntr_flags {
  *
  * @NL80211_MESHCONF_ATTR_MAX: highest possible mesh configuration attribute
  *
+ * @NL80211_MESHCONF_MCAST_RETRIES: number of unsolicited retries for locally
+ * originated mcast data frames.
+ *
  * @__NL80211_MESHCONF_ATTR_AFTER_LAST: internal use
  */
 enum nl80211_meshconf_params {
@@ -2166,6 +2169,7 @@ enum nl80211_meshconf_params {
 	NL80211_MESHCONF_HWMP_PERR_MIN_INTERVAL,
 	NL80211_MESHCONF_FORWARDING,
 	NL80211_MESHCONF_RSSI_THRESHOLD,
+	NL80211_MESHCONF_MCAST_RETRIES,
 
 	/* keep last */
 	__NL80211_MESHCONF_ATTR_AFTER_LAST,

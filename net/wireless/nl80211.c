@@ -3334,6 +3334,7 @@ static const struct nla_policy nl80211_meshconf_params_policy[NL80211_MESHCONF_A
 	[NL80211_MESHCONF_TTL] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_ELEMENT_TTL] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_AUTO_OPEN_PLINKS] = { .type = NLA_U8 },
+	[NL80211_MESHCONF_MCAST_RETRIES] = { .type = NLA_U32 },
 
 	[NL80211_MESHCONF_HWMP_MAX_PREQ_RETRIES] = { .type = NLA_U8 },
 	[NL80211_MESHCONF_PATH_REFRESH_TIME] = { .type = NLA_U32 },
@@ -3440,6 +3441,8 @@ do {\
 			mask, NL80211_MESHCONF_FORWARDING, nla_get_u8);
 	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, rssi_threshold,
 			mask, NL80211_MESHCONF_RSSI_THRESHOLD, nla_get_u32);
+	FILL_IN_MESH_PARAM_IF_SET(tb, cfg, mcast_retries,
+			mask, NL80211_MESHCONF_MCAST_RETRIES, nla_get_u32);
 	if (mask_out)
 		*mask_out = mask;
 

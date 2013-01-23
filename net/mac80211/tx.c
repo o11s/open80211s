@@ -1247,6 +1247,33 @@ static bool ieee80211_tx_frags(struct ieee80211_local *local,
 		info->control.sta = sta;
 
 		__skb_unlink(skb, skbs);
+		/*
+		 * mcast retries before the original is consumed. We stick this
+		 * here to avoid redundant processing on a structurally
+		 * identical frame.
+		 */
+		if (ieee80211_vif_is_mesh(vif)) {
+			struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+			struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
+			struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+			int retries = ifmsh->mshcfg.mcast_retries;
+
+			if (ieee80211_is_data(hdr->frame_control) &&
+			    is_multicast_ether_addr(hdr->addr1) &&
+			    !memcmp(vif->addr, hdr->addr3, ETH_ALEN)) {
+				while (retries--) {
+					/*
+					 * use skb_copy() as some drivers may
+					 * still wish to shift the payload.
+					 * XXX: is it a bug if they do?
+					 */
+					struct sk_buff *rskb = skb_copy(skb, GFP_ATOMIC);
+					if (!rskb)
+						break;
+					drv_tx(local, rskb);
+				}
+			}
+		}
 		drv_tx(local, skb);
 	}
 
