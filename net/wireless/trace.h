@@ -61,6 +61,7 @@
 		       __field(u16, dot11MeshHWMPRannInterval)		   \
 		       __field(bool, dot11MeshGateAnnouncementProtocol)	   \
 		       __field(bool, dot11MeshForwarding)		   \
+		       __field(bool, mcast_fwding)			   \
 		       __field(s32, rssi_threshold)			   \
 		       __field(u16, ht_opmode)				   \
 		       __field(u32, dot11MeshHWMPactivePathToRootTimeout)  \
@@ -98,6 +99,7 @@
 		__entry->dot11MeshGateAnnouncementProtocol =		      \
 				conf->dot11MeshGateAnnouncementProtocol;      \
 		__entry->dot11MeshForwarding = conf->dot11MeshForwarding;     \
+		__entry->mcast_fwding = conf->mcast_fwding;		      \
 		__entry->rssi_threshold = conf->rssi_threshold;		      \
 		__entry->ht_opmode = conf->ht_opmode;			      \
 		__entry->dot11MeshHWMPactivePathToRootTimeout =		      \

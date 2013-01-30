@@ -1024,6 +1024,8 @@ struct bss_parameters {
  *	same nomenclature to be in sync with the spec)
  * @dot11MeshForwarding: whether the Mesh STA is forwarding or non-forwarding
  *	entity (default is TRUE - forwarding entity)
+ * @mcast_fwding: whether the mesh STA forwards multicast traffic or not.
+ *	Defaults to true.
  * @rssi_threshold: the threshold for average signal strength of candidate
  *	station to establish a peer link
  * @ht_opmode: mesh HT protection mode
@@ -1063,6 +1065,7 @@ struct mesh_config {
 	u16 dot11MeshHWMPRannInterval;
 	bool dot11MeshGateAnnouncementProtocol;
 	bool dot11MeshForwarding;
+	bool mcast_fwding;
 	s32 rssi_threshold;
 	u16 ht_opmode;
 	u32 dot11MeshHWMPactivePathToRootTimeout;

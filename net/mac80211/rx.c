@@ -2058,6 +2058,11 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	if (!is_multicast_ether_addr(hdr->addr1) &&
 	    ether_addr_equal(sdata->vif.addr, hdr->addr3))
 		return RX_CONTINUE;
+	else if ((is_multicast_ether_addr(hdr->addr1) &&
+		  !ifmsh->mshcfg.mcast_fwding) ||
+		 (!is_multicast_ether_addr(hdr->addr1) &&
+		  !ifmsh->mshcfg.dot11MeshForwarding))
+		goto out;
 
 	q = ieee80211_select_queue_80211(sdata, skb, hdr);
 	if (ieee80211_queue_stopped(&local->hw, q)) {
@@ -2070,9 +2075,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_ttl);
 		goto out;
 	}
-
-	if (!ifmsh->mshcfg.dot11MeshForwarding)
-		goto out;
 
 	fwd_skb = skb_copy(skb, GFP_ATOMIC);
 	if (!fwd_skb) {

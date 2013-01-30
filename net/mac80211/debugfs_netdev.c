@@ -507,6 +507,7 @@ IEEE80211_IF_FILE(dot11MeshGateAnnouncementProtocol,
 IEEE80211_IF_FILE(dot11MeshHWMPRannInterval,
 		  u.mesh.mshcfg.dot11MeshHWMPRannInterval, DEC);
 IEEE80211_IF_FILE(dot11MeshForwarding, u.mesh.mshcfg.dot11MeshForwarding, DEC);
+IEEE80211_IF_FILE(mcast_fwding, u.mesh.mshcfg.mcast_fwding, DEC);
 IEEE80211_IF_FILE(rssi_threshold, u.mesh.mshcfg.rssi_threshold, DEC);
 IEEE80211_IF_FILE(ht_opmode, u.mesh.mshcfg.ht_opmode, DEC);
 IEEE80211_IF_FILE(dot11MeshHWMPactivePathToRootTimeout,
@@ -614,6 +615,7 @@ static void add_mesh_config(struct ieee80211_sub_if_data *sdata)
 	MESHPARAMS_ADD(dot11MeshHWMPRootMode);
 	MESHPARAMS_ADD(dot11MeshHWMPRannInterval);
 	MESHPARAMS_ADD(dot11MeshForwarding);
+	MESHPARAMS_ADD(mcast_fwding);
 	MESHPARAMS_ADD(dot11MeshGateAnnouncementProtocol);
 	MESHPARAMS_ADD(rssi_threshold);
 	MESHPARAMS_ADD(ht_opmode);
