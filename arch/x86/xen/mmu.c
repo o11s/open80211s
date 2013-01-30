@@ -333,20 +333,6 @@ static void xen_set_pte(pte_t *ptep, pte_t pteval)
 	__xen_set_pte(ptep, pteval);
 }
 
-void xen_set_clr_mmio_pvh_pte(unsigned long pfn, unsigned long mfn,
-			      int nr_mfns, int add_mapping)
-{
-	struct physdev_map_iomem iomem;
-
-	iomem.first_gfn = pfn;
-	iomem.first_mfn = mfn;
-	iomem.nr_mfns = nr_mfns;
-	iomem.add_mapping = add_mapping;
-
-	if (HYPERVISOR_physdev_op(PHYSDEVOP_map_iomem, &iomem))
-		BUG();
-}
-
 static void xen_set_pte_at(struct mm_struct *mm, unsigned long addr,
 		    pte_t *ptep, pte_t pteval)
 {

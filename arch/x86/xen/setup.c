@@ -235,20 +235,15 @@ static void __init xen_set_identity_and_release_chunk(
 	*identity += set_phys_range_identity(start_pfn, end_pfn);
 }
 
-/* For PVH, the pfns [0..MAX] are mapped to mfn's in the EPT/NPT. The mfns
- * are released as part of this 1:1 mapping hypercall back to the dom heap.
- * Also, we map the entire IO space, ie, beyond max_pfn_mapped.
+
+/*
+ * PVH: xen has already mapped the IO space in the EPT/NPT for us, so we
+ * just need to adjust the released and identity count.
  */
-static void __init xen_pvh_identity_map_chunk(unsigned long start_pfn,
+static void __init xen_pvh_adjust_stats(unsigned long start_pfn,
 		unsigned long end_pfn, unsigned long *released,
 		unsigned long *identity, unsigned long max_pfn)
 {
-	unsigned long pfn;
-	int numpfns = 1, add_mapping = 1;
-
-	for (pfn = start_pfn; pfn < end_pfn; pfn++)
-		xen_set_clr_mmio_pvh_pte(pfn, pfn, numpfns, add_mapping);
-
 	if (start_pfn <= max_pfn) {
 		unsigned long end = min(max_pfn_mapped, end_pfn);
 		*released += end - start_pfn;
@@ -288,7 +283,7 @@ static unsigned long __init xen_set_identity_and_release(
 
 			if (start_pfn < end_pfn) {
 				if (xlated_phys) {
-					xen_pvh_identity_map_chunk(start_pfn,
+					xen_pvh_adjust_stats(start_pfn,
 						end_pfn, &released, &identity,
 						nr_pages);
 				} else {
