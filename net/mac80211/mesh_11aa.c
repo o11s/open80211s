@@ -475,7 +475,9 @@ bool ieee80211aa_retx_frame(struct ieee80211_sub_if_data *sdata,
 		    !ether_addr_equal(sa, hdr->addr3))
 			continue;
 
-		__skb_unlink(skb, &sdata->mcast_rexmit_skb_queue);
+		/* need new copy since we want to keep on retx queue */
+		if (WARN_ON((skb = skb_clone(skb, GFP_ATOMIC)) == NULL))
+			break;
 		ieee80211_add_pending_skb(local, skb);
 		spin_unlock_irqrestore(&sdata->mcast_rexmit_skb_queue.lock, flags);
 		return true;
@@ -824,21 +826,23 @@ void ieee80211aa_handle_tx_skb(struct ieee80211_sub_if_data *sdata,
 	    !is_broadcast_ether_addr(hdr->addr1)))
 		return;
 
+	/* XXX: some drivers (ath9k_htc) will shift the payload! */
 	skb = skb_clone(skb, GFP_ATOMIC);
 	if (WARN_ON(!skb))
 		return;
 	info = IEEE80211_SKB_CB(skb);
 
-	if (!(info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)) {
-		ieee80211aa_check_tx(sdata, hdr->addr3,
-			     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
-		info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION;
-		info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
-		/* XXX Workaround to avoid BAR being received before data */
-		info->hw_queue = 0;
-	}
+	/* these will expire by being bumped off the retx queue */
+	if (info->flags & IEEE80211_TX_INTFL_RETRANSMISSION)
+		return;
 
-	/* re-queue it in either case since even a retransmission might fail */
+	ieee80211aa_check_tx(sdata, hdr->addr3,
+			     le32_to_cpu(get_unaligned(&mesh_hdr->seqnum)));
+	info->flags |= IEEE80211_TX_INTFL_RETRANSMISSION |
+		       IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+	/* XXX Workaround to avoid BAR being received before data */
+	info->hw_queue = 0;
+
 	skb_queue_tail(&sdata->mcast_rexmit_skb_queue, skb);
 	if (sdata->mcast_rexmit_skb_queue.qlen > sdata->mcast_rexmit_skb_max_size) {
 		skb = skb_dequeue(&sdata->mcast_rexmit_skb_queue);
