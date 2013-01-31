@@ -60,6 +60,7 @@ struct omap_mbox2_priv {
 	u32 ctx[OMAP4_MBOX_NR_REGS];
 	unsigned long irqdisable;
 	u32 intr_type;
+	u32 data;
 };
 
 static void omap2_mbox_enable_irq(struct mailbox *mbox,
@@ -96,18 +97,22 @@ static void omap2_mbox_shutdown(struct mailbox *mbox)
 }
 
 /* Mailbox FIFO handle functions */
-static mbox_msg_t omap2_mbox_fifo_read(struct mailbox *mbox)
+static void omap2_mbox_fifo_read(struct mailbox *mbox, struct mailbox_msg *msg)
 {
-	struct omap_mbox2_fifo *fifo =
-		&((struct omap_mbox2_priv *)mbox->priv)->rx_fifo;
-	return (mbox_msg_t) mbox_read_reg(fifo->msg);
+	struct omap_mbox2_priv *priv = mbox->priv;
+	struct omap_mbox2_fifo *fifo = &priv->rx_fifo;
+	priv->data = mbox_read_reg(fifo->msg);
+	MAILBOX_FILL_MSG((*msg), 0, priv->data, 0);
 }
 
-static void omap2_mbox_fifo_write(struct mailbox *mbox, mbox_msg_t msg)
+static int omap2_mbox_fifo_write(struct mailbox *mbox, struct mailbox_msg *msg)
 {
 	struct omap_mbox2_fifo *fifo =
 		&((struct omap_mbox2_priv *)mbox->priv)->tx_fifo;
-	mbox_write_reg(msg, fifo->msg);
+
+	mbox_write_reg((u32)msg->pdata, fifo->msg);
+
+	return 0;
 }
 
 static int omap2_mbox_fifo_empty(struct mailbox *mbox)

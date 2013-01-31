@@ -64,14 +64,15 @@ struct omap_rproc {
 static int omap_rproc_mbox_callback(struct notifier_block *this,
 					unsigned long index, void *data)
 {
-	mbox_msg_t msg = (mbox_msg_t) data;
 	struct omap_rproc *oproc = container_of(this, struct omap_rproc, nb);
 	struct device *dev = oproc->rproc->dev.parent;
+	struct mailbox_msg *msg = data;
 	const char *name = oproc->rproc->name;
+	u32 msg_data = (u32)msg->pdata;
 
-	dev_dbg(dev, "mbox msg: 0x%x\n", msg);
+	dev_dbg(dev, "mbox msg: 0x%x\n", msg_data);
 
-	switch (msg) {
+	switch (msg_data) {
 	case RP_MBOX_CRASH:
 		/* just log this for now. later, we'll also do recovery */
 		dev_err(dev, "omap rproc %s crashed\n", name);
@@ -81,8 +82,9 @@ static int omap_rproc_mbox_callback(struct notifier_block *this,
 		break;
 	default:
 		/* msg contains the index of the triggered vring */
-		if (rproc_vq_interrupt(oproc->rproc, msg) == IRQ_NONE)
-			dev_dbg(dev, "no message was found in vqid %d\n", msg);
+		if (rproc_vq_interrupt(oproc->rproc, msg_data) == IRQ_NONE)
+			dev_dbg(dev, "no message was found in vqid %d\n",
+								msg_data);
 	}
 
 	return NOTIFY_DONE;
@@ -93,10 +95,12 @@ static void omap_rproc_kick(struct rproc *rproc, int vqid)
 {
 	struct omap_rproc *oproc = rproc->priv;
 	struct device *dev = rproc->dev.parent;
+	struct mailbox_msg msg;
 	int ret;
 
 	/* send the index of the triggered virtqueue in the mailbox payload */
-	ret = mailbox_msg_send(oproc->mbox, vqid);
+	MAILBOX_FILL_MSG(msg, 0, vqid, 0);
+	ret = mailbox_msg_send(oproc->mbox, &msg);
 	if (ret)
 		dev_err(dev, "mailbox_msg_send failed: %d\n", ret);
 }
@@ -114,6 +118,7 @@ static int omap_rproc_start(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_rproc_pdata *pdata = pdev->dev.platform_data;
+	struct mailbox_msg msg;
 	int ret;
 
 	if (pdata->set_bootaddr)
@@ -136,7 +141,8 @@ static int omap_rproc_start(struct rproc *rproc)
 	 * Note that the reply will _not_ arrive immediately: this message
 	 * will wait in the mailbox fifo until the remote processor is booted.
 	 */
-	ret = mailbox_msg_send(oproc->mbox, RP_MBOX_ECHO_REQUEST);
+	MAILBOX_FILL_MSG(msg, 0, RP_MBOX_ECHO_REQUEST, 0);
+	ret = mailbox_msg_send(oproc->mbox, &msg);
 	if (ret) {
 		dev_err(dev, "mailbox_get failed: %d\n", ret);
 		goto put_mbox;

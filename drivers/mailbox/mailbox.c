@@ -44,13 +44,13 @@ module_param(mbox_kfifo_size, uint, S_IRUGO);
 MODULE_PARM_DESC(mbox_kfifo_size, "Size of mailbox kfifo (bytes)");
 
 /* Mailbox FIFO handle functions */
-static inline mbox_msg_t mbox_fifo_read(struct mailbox *mbox)
+static inline void mbox_fifo_read(struct mailbox *mbox, struct mailbox_msg *msg)
 {
-	return mbox->ops->fifo_read(mbox);
+	mbox->ops->fifo_read(mbox, msg);
 }
-static inline void mbox_fifo_write(struct mailbox *mbox, mbox_msg_t msg)
+static inline int mbox_fifo_write(struct mailbox *mbox, struct mailbox_msg *msg)
 {
-	mbox->ops->fifo_write(mbox, msg);
+	return mbox->ops->fifo_write(mbox, msg);
 }
 static inline int mbox_fifo_empty(struct mailbox *mbox)
 {
@@ -89,25 +89,31 @@ static int __mbox_poll_for_space(struct mailbox *mbox)
 	return ret;
 }
 
-int mailbox_msg_send(struct mailbox *mbox, mbox_msg_t msg)
+int mailbox_msg_send(struct mailbox *mbox, struct mailbox_msg *msg)
 {
 	struct mailbox_queue *mq = mbox->txq;
 	int ret = 0, len;
 
 	spin_lock_bh(&mq->lock);
 
-	if (kfifo_avail(&mq->fifo) < sizeof(msg)) {
+	if (kfifo_avail(&mq->fifo) < (sizeof(msg) + msg->size)) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
 	if (kfifo_is_empty(&mq->fifo) && !__mbox_poll_for_space(mbox)) {
-		mbox_fifo_write(mbox, msg);
+		ret = mbox_fifo_write(mbox, msg);
 		goto out;
 	}
 
-	len = kfifo_in(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
+	len = kfifo_in(&mq->fifo, (unsigned char *)msg, sizeof(msg));
 	WARN_ON(len != sizeof(msg));
+
+	if (msg->size && msg->pdata) {
+		len = kfifo_in(&mq->fifo, (unsigned char *)msg->pdata,
+								msg->size);
+		WARN_ON(len != msg->size);
+	}
 
 	tasklet_schedule(&mbox->txq->tasklet);
 
@@ -155,8 +161,9 @@ static void mbox_tx_tasklet(unsigned long tx_data)
 {
 	struct mailbox *mbox = (struct mailbox *)tx_data;
 	struct mailbox_queue *mq = mbox->txq;
-	mbox_msg_t msg;
+	struct mailbox_msg msg;
 	int ret;
+	unsigned char tx_data_buf[CONFIG_MBOX_DATA_SIZE];
 
 	while (kfifo_len(&mq->fifo)) {
 		if (__mbox_poll_for_space(mbox)) {
@@ -164,34 +171,50 @@ static void mbox_tx_tasklet(unsigned long tx_data)
 			break;
 		}
 
-		ret = kfifo_out(&mq->fifo, (unsigned char *)&msg,
-				sizeof(msg));
+		ret = kfifo_out(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
 		WARN_ON(ret != sizeof(msg));
 
-		mbox_fifo_write(mbox, msg);
+		if (msg.size) {
+			ret = kfifo_out(&mq->fifo, tx_data_buf,
+							sizeof(msg.size));
+			WARN_ON(ret != msg.size);
+			msg.pdata = tx_data_buf;
+		}
+
+		ret = mbox_fifo_write(mbox, &msg);
+		WARN_ON(ret);
 	}
 }
 
 /*
  * Message receiver(workqueue)
  */
+static unsigned char rx_work_data[CONFIG_MBOX_DATA_SIZE];
+
 static void mbox_rx_work(struct work_struct *work)
 {
 	struct mailbox_queue *mq =
 		container_of(work, struct mailbox_queue, work);
-	mbox_msg_t msg;
 	int len;
+	struct mailbox *mbox = mq->mbox;
+	struct mailbox_msg msg;
 
 	while (kfifo_len(&mq->fifo) >= sizeof(msg)) {
 		len = kfifo_out(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
 		WARN_ON(len != sizeof(msg));
 
-		blocking_notifier_call_chain(&mq->mbox->notifier, len,
-				(void *)msg);
+		if (msg.size) {
+			len = kfifo_out(&mq->fifo, rx_work_data, msg.size);
+			WARN_ON(len != msg.size);
+			msg.pdata = rx_work_data;
+		}
+
+		blocking_notifier_call_chain(&mbox->notifier, len,
+								(void *)&msg);
 		spin_lock_irq(&mq->lock);
 		if (mq->full) {
 			mq->full = false;
-			mailbox_enable_irq(mq->mbox, IRQ_RX);
+			mailbox_enable_irq(mbox, IRQ_RX);
 		}
 		spin_unlock_irq(&mq->lock);
 	}
@@ -210,20 +233,27 @@ static void __mbox_tx_interrupt(struct mailbox *mbox)
 static void __mbox_rx_interrupt(struct mailbox *mbox)
 {
 	struct mailbox_queue *mq = mbox->rxq;
-	mbox_msg_t msg;
+	struct mailbox_msg msg;
 	int len;
 
 	while (!mbox_fifo_empty(mbox)) {
-		if (unlikely(kfifo_avail(&mq->fifo) < sizeof(msg))) {
+		if (unlikely(kfifo_avail(&mq->fifo) <
+				(sizeof(msg) + CONFIG_MBOX_DATA_SIZE))) {
 			mailbox_disable_irq(mbox, IRQ_RX);
 			mq->full = true;
 			goto nomem;
 		}
 
-		msg = mbox_fifo_read(mbox);
+		mbox_fifo_read(mbox, &msg);
 
 		len = kfifo_in(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
 		WARN_ON(len != sizeof(msg));
+
+		if (msg.pdata && msg.size) {
+			len = kfifo_in(&mq->fifo, (unsigned char *)msg.pdata,
+					msg.size);
+			WARN_ON(len != msg.size);
+		}
 
 		if (mbox->ops->type == MBOX_HW_FIFO1_TYPE)
 			break;
@@ -450,10 +480,9 @@ static int __init mailbox_init(void)
 		return err;
 
 	/* kfifo size sanity check: alignment and minimal size */
-	mbox_kfifo_size = ALIGN(mbox_kfifo_size, sizeof(mbox_msg_t));
+	mbox_kfifo_size = ALIGN(mbox_kfifo_size, sizeof(struct mailbox_msg));
 	mbox_kfifo_size = max_t(unsigned int, mbox_kfifo_size,
-			sizeof(mbox_msg_t));
-
+			sizeof(struct mailbox_msg) + CONFIG_MBOX_DATA_SIZE);
 	return 0;
 }
 subsys_initcall(mailbox_init);

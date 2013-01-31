@@ -9,14 +9,25 @@
 #ifndef MAILBOX_H
 #define MAILBOX_H
 
-typedef u32 mbox_msg_t;
 struct mailbox;
 
 typedef int __bitwise mailbox_irq_t;
 #define IRQ_TX ((__force mailbox_irq_t) 1)
 #define IRQ_RX ((__force mailbox_irq_t) 2)
 
-int mailbox_msg_send(struct mailbox *, mbox_msg_t msg);
+struct mailbox_msg {
+	int		size;
+	u32		header;
+	void		*pdata;
+};
+
+#define MAILBOX_FILL_MSG(_msg, _header, _pdata, _size) { \
+	_msg.header = _header; \
+	_msg.pdata = (void *)_pdata; \
+	_msg.size = _size; \
+}
+
+int mailbox_msg_send(struct mailbox *, struct mailbox_msg *msg);
 
 struct mailbox *mailbox_get(const char *, struct notifier_block *nb);
 void mailbox_put(struct mailbox *mbox, struct notifier_block *nb);

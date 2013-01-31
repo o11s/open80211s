@@ -37,6 +37,7 @@ struct omap_mbox1_fifo {
 struct omap_mbox1_priv {
 	struct omap_mbox1_fifo tx_fifo;
 	struct omap_mbox1_fifo rx_fifo;
+	u32 data;
 };
 
 static inline int mbox_read_reg(size_t ofs)
@@ -50,26 +51,27 @@ static inline void mbox_write_reg(u32 val, size_t ofs)
 }
 
 /* msg */
-static mbox_msg_t omap1_mbox_fifo_read(struct mailbox *mbox)
+static void omap1_mbox_fifo_read(struct mailbox *mbox, struct mailbox_msg *msg)
 {
-	struct omap_mbox1_fifo *fifo =
-		&((struct omap_mbox1_priv *)mbox->priv)->rx_fifo;
-	mbox_msg_t msg;
+	struct omap_mbox1_priv *priv = mbox->priv;
+	struct omap_mbox1_fifo *fifo = &priv->rx_fifo;
 
-	msg = mbox_read_reg(fifo->data);
-	msg |= ((mbox_msg_t) mbox_read_reg(fifo->cmd)) << 16;
-
-	return msg;
+	priv->data = mbox_read_reg(fifo->data);
+	priv->data |= ((u32) mbox_read_reg(fifo->cmd)) << 16;
+	MAILBOX_FILL_MSG((*msg), 0, priv->data, 0);
 }
 
-static void
-omap1_mbox_fifo_write(struct mailbox *mbox, mbox_msg_t msg)
+static int
+omap1_mbox_fifo_write(struct mailbox *mbox, struct mailbox_msg *msg)
 {
 	struct omap_mbox1_fifo *fifo =
 		&((struct omap_mbox1_priv *)mbox->priv)->tx_fifo;
+	u32 data = (u32)msg->pdata;
 
-	mbox_write_reg(msg & 0xffff, fifo->data);
-	mbox_write_reg(msg >> 16, fifo->cmd);
+	mbox_write_reg(data & 0xffff, fifo->data);
+	mbox_write_reg(data >> 16, fifo->cmd);
+
+	return 0;
 }
 
 static int omap1_mbox_fifo_empty(struct mailbox *mbox)
