@@ -1,9 +1,10 @@
 /*
- * OMAP mailbox driver
+ * Mailbox framework
  *
  * Copyright (C) 2006-2009 Nokia Corporation. All rights reserved.
  *
  * Contact: Hiroshi DOYU <Hiroshi.DOYU@nokia.com>
+ * Author: Loic Pallardy <loic.pallardy@st.com> for ST-Ericsson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -33,40 +34,40 @@
 
 #include "mailbox_internal.h"
 
-static struct omap_mbox **mboxes;
+static struct mailbox **mboxes;
 
 static int mbox_configured;
 static DEFINE_MUTEX(mbox_configured_lock);
 
-static unsigned int mbox_kfifo_size = CONFIG_OMAP_MBOX_KFIFO_SIZE;
+static unsigned int mbox_kfifo_size = CONFIG_MBOX_KFIFO_SIZE;
 module_param(mbox_kfifo_size, uint, S_IRUGO);
-MODULE_PARM_DESC(mbox_kfifo_size, "Size of omap's mailbox kfifo (bytes)");
+MODULE_PARM_DESC(mbox_kfifo_size, "Size of mailbox kfifo (bytes)");
 
 /* Mailbox FIFO handle functions */
-static inline mbox_msg_t mbox_fifo_read(struct omap_mbox *mbox)
+static inline mbox_msg_t mbox_fifo_read(struct mailbox *mbox)
 {
 	return mbox->ops->fifo_read(mbox);
 }
-static inline void mbox_fifo_write(struct omap_mbox *mbox, mbox_msg_t msg)
+static inline void mbox_fifo_write(struct mailbox *mbox, mbox_msg_t msg)
 {
 	mbox->ops->fifo_write(mbox, msg);
 }
-static inline int mbox_fifo_empty(struct omap_mbox *mbox)
+static inline int mbox_fifo_empty(struct mailbox *mbox)
 {
 	return mbox->ops->fifo_empty(mbox);
 }
-static inline int mbox_fifo_full(struct omap_mbox *mbox)
+static inline int mbox_fifo_full(struct mailbox *mbox)
 {
 	return mbox->ops->fifo_full(mbox);
 }
 
 /* Mailbox IRQ handle functions */
-static inline void ack_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+static inline void ack_mbox_irq(struct mailbox *mbox, mailbox_irq_t irq)
 {
 	if (mbox->ops->ack_irq)
 		mbox->ops->ack_irq(mbox, irq);
 }
-static inline int is_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+static inline int is_mbox_irq(struct mailbox *mbox, mailbox_irq_t irq)
 {
 	return mbox->ops->is_irq(mbox, irq);
 }
@@ -74,12 +75,12 @@ static inline int is_mbox_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
 /*
  * message sender
  */
-static int __mbox_poll_for_space(struct omap_mbox *mbox)
+static int __mbox_poll_for_space(struct mailbox *mbox)
 {
 	int ret = 0, i = 1000;
 
 	while (mbox_fifo_full(mbox)) {
-		if (mbox->ops->type == OMAP_MBOX_TYPE2)
+		if (mbox->ops->type == MBOX_HW_FIFO2_TYPE)
 			return -1;
 		if (--i == 0)
 			return -1;
@@ -88,9 +89,9 @@ static int __mbox_poll_for_space(struct omap_mbox *mbox)
 	return ret;
 }
 
-int omap_mbox_msg_send(struct omap_mbox *mbox, mbox_msg_t msg)
+int mailbox_msg_send(struct mailbox *mbox, mbox_msg_t msg)
 {
-	struct omap_mbox_queue *mq = mbox->txq;
+	struct mailbox_queue *mq = mbox->txq;
 	int ret = 0, len;
 
 	spin_lock_bh(&mq->lock);
@@ -114,9 +115,9 @@ out:
 	spin_unlock_bh(&mq->lock);
 	return ret;
 }
-EXPORT_SYMBOL(omap_mbox_msg_send);
+EXPORT_SYMBOL(mailbox_msg_send);
 
-void omap_mbox_save_ctx(struct omap_mbox *mbox)
+void mailbox_save_ctx(struct mailbox *mbox)
 {
 	if (!mbox->ops->save_ctx) {
 		dev_err(mbox->dev, "%s:\tno save\n", __func__);
@@ -125,9 +126,9 @@ void omap_mbox_save_ctx(struct omap_mbox *mbox)
 
 	mbox->ops->save_ctx(mbox);
 }
-EXPORT_SYMBOL(omap_mbox_save_ctx);
+EXPORT_SYMBOL(mailbox_save_ctx);
 
-void omap_mbox_restore_ctx(struct omap_mbox *mbox)
+void mailbox_restore_ctx(struct mailbox *mbox)
 {
 	if (!mbox->ops->restore_ctx) {
 		dev_err(mbox->dev, "%s:\tno restore\n", __func__);
@@ -136,30 +137,30 @@ void omap_mbox_restore_ctx(struct omap_mbox *mbox)
 
 	mbox->ops->restore_ctx(mbox);
 }
-EXPORT_SYMBOL(omap_mbox_restore_ctx);
+EXPORT_SYMBOL(mailbox_restore_ctx);
 
-void omap_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+void mailbox_enable_irq(struct mailbox *mbox, mailbox_irq_t irq)
 {
 	mbox->ops->enable_irq(mbox, irq);
 }
-EXPORT_SYMBOL(omap_mbox_enable_irq);
+EXPORT_SYMBOL(mailbox_enable_irq);
 
-void omap_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq)
+void mailbox_disable_irq(struct mailbox *mbox, mailbox_irq_t irq)
 {
 	mbox->ops->disable_irq(mbox, irq);
 }
-EXPORT_SYMBOL(omap_mbox_disable_irq);
+EXPORT_SYMBOL(mailbox_disable_irq);
 
 static void mbox_tx_tasklet(unsigned long tx_data)
 {
-	struct omap_mbox *mbox = (struct omap_mbox *)tx_data;
-	struct omap_mbox_queue *mq = mbox->txq;
+	struct mailbox *mbox = (struct mailbox *)tx_data;
+	struct mailbox_queue *mq = mbox->txq;
 	mbox_msg_t msg;
 	int ret;
 
 	while (kfifo_len(&mq->fifo)) {
 		if (__mbox_poll_for_space(mbox)) {
-			omap_mbox_enable_irq(mbox, IRQ_TX);
+			mailbox_enable_irq(mbox, IRQ_TX);
 			break;
 		}
 
@@ -176,8 +177,8 @@ static void mbox_tx_tasklet(unsigned long tx_data)
  */
 static void mbox_rx_work(struct work_struct *work)
 {
-	struct omap_mbox_queue *mq =
-		container_of(work, struct omap_mbox_queue, work);
+	struct mailbox_queue *mq =
+		container_of(work, struct mailbox_queue, work);
 	mbox_msg_t msg;
 	int len;
 
@@ -190,7 +191,7 @@ static void mbox_rx_work(struct work_struct *work)
 		spin_lock_irq(&mq->lock);
 		if (mq->full) {
 			mq->full = false;
-			omap_mbox_enable_irq(mq->mbox, IRQ_RX);
+			mailbox_enable_irq(mq->mbox, IRQ_RX);
 		}
 		spin_unlock_irq(&mq->lock);
 	}
@@ -199,22 +200,22 @@ static void mbox_rx_work(struct work_struct *work)
 /*
  * Mailbox interrupt handler
  */
-static void __mbox_tx_interrupt(struct omap_mbox *mbox)
+static void __mbox_tx_interrupt(struct mailbox *mbox)
 {
-	omap_mbox_disable_irq(mbox, IRQ_TX);
+	mailbox_disable_irq(mbox, IRQ_TX);
 	ack_mbox_irq(mbox, IRQ_TX);
 	tasklet_schedule(&mbox->txq->tasklet);
 }
 
-static void __mbox_rx_interrupt(struct omap_mbox *mbox)
+static void __mbox_rx_interrupt(struct mailbox *mbox)
 {
-	struct omap_mbox_queue *mq = mbox->rxq;
+	struct mailbox_queue *mq = mbox->rxq;
 	mbox_msg_t msg;
 	int len;
 
 	while (!mbox_fifo_empty(mbox)) {
 		if (unlikely(kfifo_avail(&mq->fifo) < sizeof(msg))) {
-			omap_mbox_disable_irq(mbox, IRQ_RX);
+			mailbox_disable_irq(mbox, IRQ_RX);
 			mq->full = true;
 			goto nomem;
 		}
@@ -224,7 +225,7 @@ static void __mbox_rx_interrupt(struct omap_mbox *mbox)
 		len = kfifo_in(&mq->fifo, (unsigned char *)&msg, sizeof(msg));
 		WARN_ON(len != sizeof(msg));
 
-		if (mbox->ops->type == OMAP_MBOX_TYPE1)
+		if (mbox->ops->type == MBOX_HW_FIFO1_TYPE)
 			break;
 	}
 
@@ -236,7 +237,7 @@ nomem:
 
 static irqreturn_t mbox_interrupt(int irq, void *p)
 {
-	struct omap_mbox *mbox = p;
+	struct mailbox *mbox = p;
 
 	if (is_mbox_irq(mbox, IRQ_TX))
 		__mbox_tx_interrupt(mbox);
@@ -247,13 +248,13 @@ static irqreturn_t mbox_interrupt(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
-static struct omap_mbox_queue *mbox_queue_alloc(struct omap_mbox *mbox,
+static struct mailbox_queue *mbox_queue_alloc(struct mailbox *mbox,
 		void (*work) (struct work_struct *),
 		void (*tasklet)(unsigned long))
 {
-	struct omap_mbox_queue *mq;
+	struct mailbox_queue *mq;
 
-	mq = kzalloc(sizeof(struct omap_mbox_queue), GFP_KERNEL);
+	mq = kzalloc(sizeof(struct mailbox_queue), GFP_KERNEL);
 	if (!mq)
 		return NULL;
 
@@ -273,16 +274,16 @@ error:
 	return NULL;
 }
 
-static void mbox_queue_free(struct omap_mbox_queue *q)
+static void mbox_queue_free(struct mailbox_queue *q)
 {
 	kfifo_free(&q->fifo);
 	kfree(q);
 }
 
-static int omap_mbox_startup(struct omap_mbox *mbox)
+static int mailbox_startup(struct mailbox *mbox)
 {
 	int ret = 0;
-	struct omap_mbox_queue *mq;
+	struct mailbox_queue *mq;
 
 	mutex_lock(&mbox_configured_lock);
 	if (!mbox_configured++) {
@@ -317,7 +318,7 @@ static int omap_mbox_startup(struct omap_mbox *mbox)
 		mbox->rxq = mq;
 		mq->mbox = mbox;
 
-		omap_mbox_enable_irq(mbox, IRQ_RX);
+		mailbox_enable_irq(mbox, IRQ_RX);
 	}
 	mutex_unlock(&mbox_configured_lock);
 	return 0;
@@ -336,12 +337,12 @@ fail_startup:
 	return ret;
 }
 
-static void omap_mbox_fini(struct omap_mbox *mbox)
+static void mailbox_fini(struct mailbox *mbox)
 {
 	mutex_lock(&mbox_configured_lock);
 
 	if (!--mbox->use_count) {
-		omap_mbox_disable_irq(mbox, IRQ_RX);
+		mailbox_disable_irq(mbox, IRQ_RX);
 		free_irq(mbox->irq, mbox);
 		tasklet_kill(&mbox->txq->tasklet);
 		flush_work(&mbox->rxq->work);
@@ -357,9 +358,9 @@ static void omap_mbox_fini(struct omap_mbox *mbox)
 	mutex_unlock(&mbox_configured_lock);
 }
 
-struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
+struct mailbox *mailbox_get(const char *name, struct notifier_block *nb)
 {
-	struct omap_mbox *_mbox, *mbox = NULL;
+	struct mailbox *_mbox, *mbox = NULL;
 	int i, ret;
 
 	if (!mboxes)
@@ -378,7 +379,7 @@ struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
 	if (nb)
 		blocking_notifier_chain_register(&mbox->notifier, nb);
 
-	ret = omap_mbox_startup(mbox);
+	ret = mailbox_startup(mbox);
 	if (ret) {
 		blocking_notifier_chain_unregister(&mbox->notifier, nb);
 		return ERR_PTR(-ENODEV);
@@ -386,18 +387,18 @@ struct omap_mbox *omap_mbox_get(const char *name, struct notifier_block *nb)
 
 	return mbox;
 }
-EXPORT_SYMBOL(omap_mbox_get);
+EXPORT_SYMBOL(mailbox_get);
 
-void omap_mbox_put(struct omap_mbox *mbox, struct notifier_block *nb)
+void mailbox_put(struct mailbox *mbox, struct notifier_block *nb)
 {
 	blocking_notifier_chain_unregister(&mbox->notifier, nb);
-	omap_mbox_fini(mbox);
+	mailbox_fini(mbox);
 }
-EXPORT_SYMBOL(omap_mbox_put);
+EXPORT_SYMBOL(mailbox_put);
 
-static struct class omap_mbox_class = { .name = "mbox", };
+static struct class mailbox_class = { .name = "mbox", };
 
-int omap_mbox_register(struct device *parent, struct omap_mbox **list)
+int mailbox_register(struct device *parent, struct mailbox **list)
 {
 	int ret;
 	int i;
@@ -407,8 +408,8 @@ int omap_mbox_register(struct device *parent, struct omap_mbox **list)
 		return -EINVAL;
 
 	for (i = 0; mboxes[i]; i++) {
-		struct omap_mbox *mbox = mboxes[i];
-		mbox->dev = device_create(&omap_mbox_class,
+		struct mailbox *mbox = mboxes[i];
+		mbox->dev = device_create(&mailbox_class,
 				parent, 0, mbox, "%s", mbox->name);
 		if (IS_ERR(mbox->dev)) {
 			ret = PTR_ERR(mbox->dev);
@@ -424,9 +425,9 @@ err_out:
 		device_unregister(mboxes[i]->dev);
 	return ret;
 }
-EXPORT_SYMBOL(omap_mbox_register);
+EXPORT_SYMBOL(mailbox_register);
 
-int omap_mbox_unregister(void)
+int mailbox_unregister(void)
 {
 	int i;
 
@@ -438,13 +439,13 @@ int omap_mbox_unregister(void)
 	mboxes = NULL;
 	return 0;
 }
-EXPORT_SYMBOL(omap_mbox_unregister);
+EXPORT_SYMBOL(mailbox_unregister);
 
-static int __init omap_mbox_init(void)
+static int __init mailbox_init(void)
 {
 	int err;
 
-	err = class_register(&omap_mbox_class);
+	err = class_register(&mailbox_class);
 	if (err)
 		return err;
 
@@ -455,15 +456,15 @@ static int __init omap_mbox_init(void)
 
 	return 0;
 }
-subsys_initcall(omap_mbox_init);
+subsys_initcall(mailbox_init);
 
-static void __exit omap_mbox_exit(void)
+static void __exit mailbox_exit(void)
 {
-	class_unregister(&omap_mbox_class);
+	class_unregister(&mailbox_class);
 }
-module_exit(omap_mbox_exit);
+module_exit(mailbox_exit);
 
 MODULE_LICENSE("GPL v2");
-MODULE_DESCRIPTION("omap mailbox: interrupt driven messaging");
+MODULE_DESCRIPTION("mailbox framework: interrupt driven messaging");
 MODULE_AUTHOR("Toshihiro Kobayashi");
 MODULE_AUTHOR("Hiroshi DOYU");

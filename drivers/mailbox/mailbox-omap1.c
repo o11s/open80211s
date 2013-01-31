@@ -50,7 +50,7 @@ static inline void mbox_write_reg(u32 val, size_t ofs)
 }
 
 /* msg */
-static mbox_msg_t omap1_mbox_fifo_read(struct omap_mbox *mbox)
+static mbox_msg_t omap1_mbox_fifo_read(struct mailbox *mbox)
 {
 	struct omap_mbox1_fifo *fifo =
 		&((struct omap_mbox1_priv *)mbox->priv)->rx_fifo;
@@ -63,7 +63,7 @@ static mbox_msg_t omap1_mbox_fifo_read(struct omap_mbox *mbox)
 }
 
 static void
-omap1_mbox_fifo_write(struct omap_mbox *mbox, mbox_msg_t msg)
+omap1_mbox_fifo_write(struct mailbox *mbox, mbox_msg_t msg)
 {
 	struct omap_mbox1_fifo *fifo =
 		&((struct omap_mbox1_priv *)mbox->priv)->tx_fifo;
@@ -72,12 +72,12 @@ omap1_mbox_fifo_write(struct omap_mbox *mbox, mbox_msg_t msg)
 	mbox_write_reg(msg >> 16, fifo->cmd);
 }
 
-static int omap1_mbox_fifo_empty(struct omap_mbox *mbox)
+static int omap1_mbox_fifo_empty(struct mailbox *mbox)
 {
 	return 0;
 }
 
-static int omap1_mbox_fifo_full(struct omap_mbox *mbox)
+static int omap1_mbox_fifo_full(struct mailbox *mbox)
 {
 	struct omap_mbox1_fifo *fifo =
 		&((struct omap_mbox1_priv *)mbox->priv)->rx_fifo;
@@ -87,29 +87,29 @@ static int omap1_mbox_fifo_full(struct omap_mbox *mbox)
 
 /* irq */
 static void
-omap1_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_type_t irq)
+omap1_mbox_enable_irq(struct mailbox *mbox, mailbox_type_t irq)
 {
 	if (irq == IRQ_RX)
 		enable_irq(mbox->irq);
 }
 
 static void
-omap1_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_type_t irq)
+omap1_mbox_disable_irq(struct mailbox *mbox, mailbox_type_t irq)
 {
 	if (irq == IRQ_RX)
 		disable_irq(mbox->irq);
 }
 
 static int
-omap1_mbox_is_irq(struct omap_mbox *mbox, omap_mbox_type_t irq)
+omap1_mbox_is_irq(struct mailbox *mbox, mailbox_type_t irq)
 {
 	if (irq == IRQ_TX)
 		return 0;
 	return 1;
 }
 
-static struct omap_mbox_ops omap1_mbox_ops = {
-	.type		= OMAP_MBOX_TYPE1,
+static struct mailbox_ops omap1_mbox_ops = {
+	.type		= MBOX_HW_FIFO1_TYPE,
 	.fifo_read	= omap1_mbox_fifo_read,
 	.fifo_write	= omap1_mbox_fifo_write,
 	.fifo_empty	= omap1_mbox_fifo_empty,
@@ -135,19 +135,19 @@ static struct omap_mbox1_priv omap1_mbox_dsp_priv = {
 	},
 };
 
-static struct omap_mbox mbox_dsp_info = {
+static struct mailbox mbox_dsp_info = {
 	.name	= "dsp",
 	.ops	= &omap1_mbox_ops,
 	.priv	= &omap1_mbox_dsp_priv,
 };
 
-static struct omap_mbox *omap1_mboxes[] = { &mbox_dsp_info, NULL };
+static struct mailbox *omap1_mboxes[] = { &mbox_dsp_info, NULL };
 
 static int omap1_mbox_probe(struct platform_device *pdev)
 {
 	struct resource *mem;
 	int ret;
-	struct omap_mbox **list;
+	struct mailbox **list;
 
 	list = omap1_mboxes;
 	list[0]->irq = platform_get_irq_byname(pdev, "dsp");
@@ -157,7 +157,7 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 	if (!mbox_base)
 		return -ENOMEM;
 
-	ret = omap_mbox_register(&pdev->dev, list);
+	ret = mailbox_register(&pdev->dev, list);
 	if (ret) {
 		iounmap(mbox_base);
 		return ret;
@@ -168,7 +168,7 @@ static int omap1_mbox_probe(struct platform_device *pdev)
 
 static int omap1_mbox_remove(struct platform_device *pdev)
 {
-	omap_mbox_unregister();
+	mailbox_unregister();
 	iounmap(mbox_base);
 	return 0;
 }

@@ -338,7 +338,7 @@ struct bridge_dev_context {
 	u32 dsp_start_add;	/* API Boot vector */
 	u32 internal_size;	/* Internal memory size */
 
-	struct omap_mbox *mbox;		/* Mail box handle */
+	struct mailbox *mbox;		/* Mail box handle */
 
 	struct cfg_hostres *resources;	/* Host Resources */
 

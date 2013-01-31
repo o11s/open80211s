@@ -16,54 +16,52 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
-typedef int __bitwise omap_mbox_type_t;
-#define OMAP_MBOX_TYPE1 ((__force omap_mbox_type_t) 1)
-#define OMAP_MBOX_TYPE2 ((__force omap_mbox_type_t) 2)
+typedef int __bitwise mailbox_type_t;
+#define MBOX_HW_FIFO1_TYPE ((__force mailbox_type_t) 1)
+#define MBOX_HW_FIFO2_TYPE ((__force mailbox_type_t) 2)
 
-struct omap_mbox_ops {
-	omap_mbox_type_t	type;
-	int		(*startup)(struct omap_mbox *mbox);
-	void		(*shutdown)(struct omap_mbox *mbox);
+struct mailbox_ops {
+	mailbox_type_t	type;
+	int		(*startup)(struct mailbox *mbox);
+	void		(*shutdown)(struct mailbox *mbox);
 	/* fifo */
-	mbox_msg_t	(*fifo_read)(struct omap_mbox *mbox);
-	void		(*fifo_write)(struct omap_mbox *mbox, mbox_msg_t msg);
-	int		(*fifo_empty)(struct omap_mbox *mbox);
-	int		(*fifo_full)(struct omap_mbox *mbox);
+	mbox_msg_t	(*fifo_read)(struct mailbox *mbox);
+	void		(*fifo_write)(struct mailbox *mbox, mbox_msg_t msg);
+	int		(*fifo_empty)(struct mailbox *mbox);
+	int		(*fifo_full)(struct mailbox *mbox);
 	/* irq */
-	void		(*enable_irq)(struct omap_mbox *mbox,
-						omap_mbox_irq_t irq);
-	void		(*disable_irq)(struct omap_mbox *mbox,
-						omap_mbox_irq_t irq);
-	void		(*ack_irq)(struct omap_mbox *mbox, omap_mbox_irq_t irq);
-	int		(*is_irq)(struct omap_mbox *mbox, omap_mbox_irq_t irq);
+	void		(*enable_irq)(struct mailbox *mbox, mailbox_irq_t irq);
+	void		(*disable_irq)(struct mailbox *mbox, mailbox_irq_t irq);
+	void		(*ack_irq)(struct mailbox *mbox, mailbox_irq_t irq);
+	int		(*is_irq)(struct mailbox *mbox, mailbox_irq_t irq);
 	/* ctx */
-	void		(*save_ctx)(struct omap_mbox *mbox);
-	void		(*restore_ctx)(struct omap_mbox *mbox);
+	void		(*save_ctx)(struct mailbox *mbox);
+	void		(*restore_ctx)(struct mailbox *mbox);
 };
 
-struct omap_mbox_queue {
+struct mailbox_queue {
 	spinlock_t		lock;
 	struct kfifo		fifo;
 	struct work_struct	work;
 	struct tasklet_struct	tasklet;
-	struct omap_mbox	*mbox;
+	struct mailbox		*mbox;
 	bool full;
 };
 
-struct omap_mbox {
+struct mailbox {
 	const char		*name;
 	unsigned int		irq;
-	struct omap_mbox_queue	*txq, *rxq;
-	struct omap_mbox_ops	*ops;
+	struct mailbox_queue	*txq, *rxq;
+	struct mailbox_ops	*ops;
 	struct device		*dev;
 	void			*priv;
 	int			use_count;
 	struct blocking_notifier_head	notifier;
 };
 
-void omap_mbox_init_seq(struct omap_mbox *);
+void mailbox_init_seq(struct mailbox *);
 
-int omap_mbox_register(struct device *parent, struct omap_mbox **);
-int omap_mbox_unregister(void);
+int mailbox_register(struct device *parent, struct mailbox **);
+int mailbox_unregister(void);
 
 #endif /* MAILBOX_INTERNAL_H */

@@ -41,7 +41,7 @@
  * @rproc: rproc handle
  */
 struct omap_rproc {
-	struct omap_mbox *mbox;
+	struct mailbox *mbox;
 	struct notifier_block nb;
 	struct rproc *rproc;
 };
@@ -96,9 +96,9 @@ static void omap_rproc_kick(struct rproc *rproc, int vqid)
 	int ret;
 
 	/* send the index of the triggered virtqueue in the mailbox payload */
-	ret = omap_mbox_msg_send(oproc->mbox, vqid);
+	ret = mailbox_msg_send(oproc->mbox, vqid);
 	if (ret)
-		dev_err(dev, "omap_mbox_msg_send failed: %d\n", ret);
+		dev_err(dev, "mailbox_msg_send failed: %d\n", ret);
 }
 
 /*
@@ -122,10 +122,10 @@ static int omap_rproc_start(struct rproc *rproc)
 	oproc->nb.notifier_call = omap_rproc_mbox_callback;
 
 	/* every omap rproc is assigned a mailbox instance for messaging */
-	oproc->mbox = omap_mbox_get(pdata->mbox_name, &oproc->nb);
+	oproc->mbox = mailbox_get(pdata->mbox_name, &oproc->nb);
 	if (IS_ERR(oproc->mbox)) {
 		ret = PTR_ERR(oproc->mbox);
-		dev_err(dev, "omap_mbox_get failed: %d\n", ret);
+		dev_err(dev, "mailbox_get failed: %d\n", ret);
 		return ret;
 	}
 
@@ -136,9 +136,9 @@ static int omap_rproc_start(struct rproc *rproc)
 	 * Note that the reply will _not_ arrive immediately: this message
 	 * will wait in the mailbox fifo until the remote processor is booted.
 	 */
-	ret = omap_mbox_msg_send(oproc->mbox, RP_MBOX_ECHO_REQUEST);
+	ret = mailbox_msg_send(oproc->mbox, RP_MBOX_ECHO_REQUEST);
 	if (ret) {
-		dev_err(dev, "omap_mbox_get failed: %d\n", ret);
+		dev_err(dev, "mailbox_get failed: %d\n", ret);
 		goto put_mbox;
 	}
 
@@ -151,7 +151,7 @@ static int omap_rproc_start(struct rproc *rproc)
 	return 0;
 
 put_mbox:
-	omap_mbox_put(oproc->mbox, &oproc->nb);
+	mailbox_put(oproc->mbox, &oproc->nb);
 	return ret;
 }
 
@@ -168,7 +168,7 @@ static int omap_rproc_stop(struct rproc *rproc)
 	if (ret)
 		return ret;
 
-	omap_mbox_put(oproc->mbox, &oproc->nb);
+	mailbox_put(oproc->mbox, &oproc->nb);
 
 	return 0;
 }

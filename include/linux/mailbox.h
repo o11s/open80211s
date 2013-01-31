@@ -10,20 +10,20 @@
 #define MAILBOX_H
 
 typedef u32 mbox_msg_t;
-struct omap_mbox;
+struct mailbox;
 
-typedef int __bitwise omap_mbox_irq_t;
-#define IRQ_TX ((__force omap_mbox_irq_t) 1)
-#define IRQ_RX ((__force omap_mbox_irq_t) 2)
+typedef int __bitwise mailbox_irq_t;
+#define IRQ_TX ((__force mailbox_irq_t) 1)
+#define IRQ_RX ((__force mailbox_irq_t) 2)
 
-int omap_mbox_msg_send(struct omap_mbox *, mbox_msg_t msg);
+int mailbox_msg_send(struct mailbox *, mbox_msg_t msg);
 
-struct omap_mbox *omap_mbox_get(const char *, struct notifier_block *nb);
-void omap_mbox_put(struct omap_mbox *mbox, struct notifier_block *nb);
+struct mailbox *mailbox_get(const char *, struct notifier_block *nb);
+void mailbox_put(struct mailbox *mbox, struct notifier_block *nb);
 
-void omap_mbox_save_ctx(struct omap_mbox *mbox);
-void omap_mbox_restore_ctx(struct omap_mbox *mbox);
-void omap_mbox_enable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq);
-void omap_mbox_disable_irq(struct omap_mbox *mbox, omap_mbox_irq_t irq);
+void mailbox_save_ctx(struct mailbox *mbox);
+void mailbox_restore_ctx(struct mailbox *mbox);
+void mailbox_enable_irq(struct mailbox *mbox, mailbox_irq_t irq);
+void mailbox_disable_irq(struct mailbox *mbox, mailbox_irq_t irq);
 
 #endif /* MAILBOX_H */
