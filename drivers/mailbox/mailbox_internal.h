@@ -17,20 +17,19 @@
 #include <linux/workqueue.h>
 
 typedef int __bitwise mailbox_type_t;
-#define MBOX_HW_FIFO1_TYPE ((__force mailbox_type_t) 1)
-#define MBOX_HW_FIFO2_TYPE ((__force mailbox_type_t) 2)
+#define MBOX_HW_FIFO1_TYPE	((__force mailbox_type_t) 1)
+#define MBOX_HW_FIFO2_TYPE	((__force mailbox_type_t) 2)
+#define MBOX_SHARED_MEM_TYPE	((__force mailbox_type_t) 3)
 
 struct mailbox_ops {
 	mailbox_type_t	type;
 	int		(*startup)(struct mailbox *mbox);
 	void		(*shutdown)(struct mailbox *mbox);
-	/* fifo */
-	void		(*fifo_read)(struct mailbox *mbox,
-						struct mailbox_msg *msg);
-	int		(*fifo_write)(struct mailbox *mbox,
-						struct mailbox_msg *msg);
-	int		(*fifo_empty)(struct mailbox *mbox);
-	int		(*fifo_full)(struct mailbox *mbox);
+	/* mailbox access */
+	void		(*read)(struct mailbox *mbox, struct mailbox_msg *msg);
+	int		(*write)(struct mailbox *mbox, struct mailbox_msg *msg);
+	int		(*empty)(struct mailbox *mbox);
+	int		(*poll_for_space)(struct mailbox *mbox);
 	/* irq */
 	void		(*enable_irq)(struct mailbox *mbox, mailbox_irq_t irq);
 	void		(*disable_irq)(struct mailbox *mbox, mailbox_irq_t irq);
@@ -53,6 +52,7 @@ struct mailbox_queue {
 
 struct mailbox {
 	const char		*name;
+	unsigned int		id;
 	unsigned int		irq;
 	struct mailbox_queue	*txq, *rxq;
 	struct mailbox_ops	*ops;
