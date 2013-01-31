@@ -43,6 +43,7 @@ struct mailbox_ops {
 
 struct mailbox_queue {
 	spinlock_t		lock;
+	struct mutex		mlock;
 	struct kfifo		fifo;
 	struct work_struct	work;
 	struct tasklet_struct	tasklet;
