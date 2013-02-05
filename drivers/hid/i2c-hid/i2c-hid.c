@@ -543,13 +543,24 @@ static int i2c_hid_output_raw_report(struct hid_device *hid, __u8 *buf,
 {
 	struct i2c_client *client = hid->driver_data;
 	int report_id = buf[0];
+	int ret;
 
 	if (report_type == HID_INPUT_REPORT)
 		return -EINVAL;
 
-	return i2c_hid_set_report(client,
+	if (report_id) {
+		buf++;
+		count--;
+	}
+
+	ret = i2c_hid_set_report(client,
 				report_type == HID_FEATURE_REPORT ? 0x03 : 0x02,
 				report_id, buf, count);
+
+	if (report_id && ret >= 0)
+		ret++; /* add report_id to the number of transfered bytes */
+
+	return ret;
 }
 
 static int i2c_hid_parse(struct hid_device *hid)
@@ -734,7 +745,7 @@ static struct hid_ll_driver i2c_hid_ll_driver = {
 	.hidinput_input_event = i2c_hid_hidinput_input_event,
 };
 
-static int __devinit i2c_hid_init_irq(struct i2c_client *client)
+static int i2c_hid_init_irq(struct i2c_client *client)
 {
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	int ret;
@@ -756,7 +767,7 @@ static int __devinit i2c_hid_init_irq(struct i2c_client *client)
 	return 0;
 }
 
-static int __devinit i2c_hid_fetch_hid_descriptor(struct i2c_hid *ihid)
+static int i2c_hid_fetch_hid_descriptor(struct i2c_hid *ihid)
 {
 	struct i2c_client *client = ihid->client;
 	struct i2c_hid_desc *hdesc = &ihid->hdesc;
@@ -877,8 +888,8 @@ static inline int i2c_hid_acpi_pdata(struct i2c_client *client,
 }
 #endif
 
-static int __devinit i2c_hid_probe(struct i2c_client *client,
-		const struct i2c_device_id *dev_id)
+static int i2c_hid_probe(struct i2c_client *client,
+			 const struct i2c_device_id *dev_id)
 {
 	int ret;
 	struct i2c_hid *ihid;
@@ -976,7 +987,7 @@ err:
 	return ret;
 }
 
-static int __devexit i2c_hid_remove(struct i2c_client *client)
+static int i2c_hid_remove(struct i2c_client *client)
 {
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	struct hid_device *hid;
@@ -1042,7 +1053,7 @@ static struct i2c_driver i2c_hid_driver = {
 	},
 
 	.probe		= i2c_hid_probe,
-	.remove		= __devexit_p(i2c_hid_remove),
+	.remove		= i2c_hid_remove,
 
 	.id_table	= i2c_hid_id_table,
 };
