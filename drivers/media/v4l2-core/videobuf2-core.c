@@ -923,8 +923,10 @@ static void __fill_vb2_buffer(struct vb2_buffer *vb, const struct v4l2_buffer *b
 		 * In videobuf we use our internal V4l2_planes struct for
 		 * single-planar buffers as well, for simplicity.
 		 */
-		if (V4L2_TYPE_IS_OUTPUT(b->type))
+		if (V4L2_TYPE_IS_OUTPUT(b->type)) {
 			v4l2_planes[0].bytesused = b->bytesused;
+			v4l2_planes[0].data_offset = 0;
+		}
 
 		if (b->memory == V4L2_MEMORY_USERPTR) {
 			v4l2_planes[0].m.userptr = b->m.userptr;
@@ -1962,6 +1964,11 @@ unsigned int vb2_poll(struct vb2_queue *q, struct file *file, poll_table *wait)
 		else if (req_events & POLLPRI)
 			poll_wait(file, &fh->wait, wait);
 	}
+
+	if (!V4L2_TYPE_IS_OUTPUT(q->type) && !(req_events & (POLLIN | POLLRDNORM)))
+		return res;
+	if (V4L2_TYPE_IS_OUTPUT(q->type) && !(req_events & (POLLOUT | POLLWRNORM)))
+		return res;
 
 	/*
 	 * Start file I/O emulator only if streaming API has not been used yet.

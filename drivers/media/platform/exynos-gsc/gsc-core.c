@@ -1099,11 +1099,9 @@ static int gsc_probe(struct platform_device *pdev)
 	gsc->clock = ERR_PTR(-EINVAL);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	gsc->regs = devm_request_and_ioremap(dev, res);
-	if (!gsc->regs) {
-		dev_err(dev, "failed to map registers\n");
-		return -ENOENT;
-	}
+	gsc->regs = devm_ioremap_resource(dev, res);
+	if (IS_ERR(gsc->regs))
+		return PTR_ERR(gsc->regs);
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!res) {
@@ -1152,7 +1150,7 @@ err_clk:
 	return ret;
 }
 
-static int __devexit gsc_remove(struct platform_device *pdev)
+static int gsc_remove(struct platform_device *pdev)
 {
 	struct gsc_dev *gsc = platform_get_drvdata(pdev);
 
@@ -1239,7 +1237,7 @@ static const struct dev_pm_ops gsc_pm_ops = {
 
 static struct platform_driver gsc_driver = {
 	.probe		= gsc_probe,
-	.remove	= __devexit_p(gsc_remove),
+	.remove		= gsc_remove,
 	.id_table	= gsc_driver_ids,
 	.driver = {
 		.name	= GSC_MODULE_NAME,

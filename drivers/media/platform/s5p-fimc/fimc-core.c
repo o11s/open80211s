@@ -257,14 +257,14 @@ int fimc_set_scaler_info(struct fimc_ctx *ctx)
 		ty = d_frame->height;
 	}
 	if (tx <= 0 || ty <= 0) {
-		dev_err(dev, "Invalid target size: %dx%d", tx, ty);
+		dev_err(dev, "Invalid target size: %dx%d\n", tx, ty);
 		return -EINVAL;
 	}
 
 	sx = s_frame->width;
 	sy = s_frame->height;
 	if (sx <= 0 || sy <= 0) {
-		dev_err(dev, "Invalid source size: %dx%d", sx, sy);
+		dev_err(dev, "Invalid source size: %dx%d\n", sx, sy);
 		return -EINVAL;
 	}
 	sc->real_width = sx;
@@ -525,7 +525,6 @@ static int __fimc_s_ctrl(struct fimc_ctx *ctx, struct v4l2_ctrl *ctrl)
 {
 	struct fimc_dev *fimc = ctx->fimc_dev;
 	const struct fimc_variant *variant = fimc->variant;
-	unsigned int flags = FIMC_DST_FMT | FIMC_SRC_FMT;
 	int ret = 0;
 
 	if (ctrl->flags & V4L2_CTRL_FLAG_INACTIVE)
@@ -541,8 +540,7 @@ static int __fimc_s_ctrl(struct fimc_ctx *ctx, struct v4l2_ctrl *ctrl)
 		break;
 
 	case V4L2_CID_ROTATE:
-		if (fimc_capture_pending(fimc) ||
-		    (ctx->state & flags) == flags) {
+		if (fimc_capture_pending(fimc)) {
 			ret = fimc_check_scaler_ratio(ctx, ctx->s_frame.width,
 					ctx->s_frame.height, ctx->d_frame.width,
 					ctx->d_frame.height, ctrl->val);
@@ -691,7 +689,7 @@ void fimc_alpha_ctrl_update(struct fimc_ctx *ctx)
 	v4l2_ctrl_unlock(ctrl);
 }
 
-int fimc_fill_format(struct fimc_frame *frame, struct v4l2_format *f)
+void __fimc_get_format(struct fimc_frame *frame, struct v4l2_format *f)
 {
 	struct v4l2_pix_format_mplane *pixm = &f->fmt.pix_mp;
 	int i;
@@ -704,35 +702,9 @@ int fimc_fill_format(struct fimc_frame *frame, struct v4l2_format *f)
 	pixm->num_planes = frame->fmt->memplanes;
 
 	for (i = 0; i < pixm->num_planes; ++i) {
-		int bpl = frame->f_width;
-		if (frame->fmt->colplanes == 1) /* packed formats */
-			bpl = (bpl * frame->fmt->depth[0]) / 8;
-		pixm->plane_fmt[i].bytesperline = bpl;
-
-		if (frame->fmt->flags & FMT_FLAGS_COMPRESSED) {
-			pixm->plane_fmt[i].sizeimage = frame->payload[i];
-			continue;
-		}
-		pixm->plane_fmt[i].sizeimage = (frame->o_width *
-			frame->o_height * frame->fmt->depth[i]) / 8;
+		pixm->plane_fmt[i].bytesperline = frame->bytesperline[i];
+		pixm->plane_fmt[i].sizeimage = frame->payload[i];
 	}
-	return 0;
-}
-
-void fimc_fill_frame(struct fimc_frame *frame, struct v4l2_format *f)
-{
-	struct v4l2_pix_format_mplane *pixm = &f->fmt.pix_mp;
-
-	frame->f_width  = pixm->plane_fmt[0].bytesperline;
-	if (frame->fmt->colplanes == 1)
-		frame->f_width = (frame->f_width * 8) / frame->fmt->depth[0];
-	frame->f_height	= pixm->height;
-	frame->width    = pixm->width;
-	frame->height   = pixm->height;
-	frame->o_width  = pixm->width;
-	frame->o_height = pixm->height;
-	frame->offs_h   = 0;
-	frame->offs_v   = 0;
 }
 
 /**
@@ -765,9 +737,16 @@ void fimc_adjust_mplane_format(struct fimc_fmt *fmt, u32 width, u32 height,
 		if (fmt->colplanes == 1 && /* Packed */
 		    (bpl == 0 || ((bpl * 8) / fmt->depth[i]) < pix->width))
 			bpl = (pix->width * fmt->depth[0]) / 8;
-
-		if (i == 0) /* Same bytesperline for each plane. */
+		/*
+		 * Currently bytesperline for each plane is same, except
+		 * V4L2_PIX_FMT_YUV420M format. This calculation may need
+		 * to be changed when other multi-planar formats are added
+		 * to the fimc_formats[] array.
+		 */
+		if (i == 0)
 			bytesperline = bpl;
+		else if (i == 1 && fmt->memplanes == 3)
+			bytesperline /= 2;
 
 		plane_fmt->bytesperline = bytesperline;
 		plane_fmt->sizeimage = max((pix->width * pix->height *
@@ -811,11 +790,11 @@ static void fimc_clk_put(struct fimc_dev *fimc)
 {
 	int i;
 	for (i = 0; i < MAX_FIMC_CLOCKS; i++) {
-		if (IS_ERR_OR_NULL(fimc->clock[i]))
+		if (IS_ERR(fimc->clock[i]))
 			continue;
 		clk_unprepare(fimc->clock[i]);
 		clk_put(fimc->clock[i]);
-		fimc->clock[i] = NULL;
+		fimc->clock[i] = ERR_PTR(-EINVAL);
 	}
 }
 
@@ -823,14 +802,19 @@ static int fimc_clk_get(struct fimc_dev *fimc)
 {
 	int i, ret;
 
+	for (i = 0; i < MAX_FIMC_CLOCKS; i++)
+		fimc->clock[i] = ERR_PTR(-EINVAL);
+
 	for (i = 0; i < MAX_FIMC_CLOCKS; i++) {
 		fimc->clock[i] = clk_get(&fimc->pdev->dev, fimc_clocks[i]);
-		if (IS_ERR(fimc->clock[i]))
+		if (IS_ERR(fimc->clock[i])) {
+			ret = PTR_ERR(fimc->clock[i]);
 			goto err;
+		}
 		ret = clk_prepare(fimc->clock[i]);
 		if (ret < 0) {
 			clk_put(fimc->clock[i]);
-			fimc->clock[i] = NULL;
+			fimc->clock[i] = ERR_PTR(-EINVAL);
 			goto err;
 		}
 	}
@@ -909,11 +893,9 @@ static int fimc_probe(struct platform_device *pdev)
 	mutex_init(&fimc->lock);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	fimc->regs = devm_request_and_ioremap(&pdev->dev, res);
-	if (fimc->regs == NULL) {
-		dev_err(&pdev->dev, "Failed to obtain io memory\n");
-		return -ENOENT;
-	}
+	fimc->regs = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(fimc->regs))
+		return PTR_ERR(fimc->regs);
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (res == NULL) {
@@ -924,8 +906,14 @@ static int fimc_probe(struct platform_device *pdev)
 	ret = fimc_clk_get(fimc);
 	if (ret)
 		return ret;
-	clk_set_rate(fimc->clock[CLK_BUS], drv_data->lclk_frequency);
-	clk_enable(fimc->clock[CLK_BUS]);
+
+	ret = clk_set_rate(fimc->clock[CLK_BUS], drv_data->lclk_frequency);
+	if (ret < 0)
+		return ret;
+
+	ret = clk_enable(fimc->clock[CLK_BUS]);
+	if (ret < 0)
+		return ret;
 
 	ret = devm_request_irq(&pdev->dev, res->start, fimc_irq_handler,
 			       0, dev_name(&pdev->dev), fimc);
@@ -959,6 +947,7 @@ err_pm:
 err_sd:
 	fimc_unregister_capture_subdev(fimc);
 err_clk:
+	clk_disable(fimc->clock[CLK_BUS]);
 	fimc_clk_put(fimc);
 	return ret;
 }
@@ -1035,7 +1024,7 @@ static int fimc_suspend(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
-static int __devexit fimc_remove(struct platform_device *pdev)
+static int fimc_remove(struct platform_device *pdev)
 {
 	struct fimc_dev *fimc = platform_get_drvdata(pdev);
 
@@ -1278,7 +1267,7 @@ static const struct dev_pm_ops fimc_pm_ops = {
 
 static struct platform_driver fimc_driver = {
 	.probe		= fimc_probe,
-	.remove		= __devexit_p(fimc_remove),
+	.remove		= fimc_remove,
 	.id_table	= fimc_driver_ids,
 	.driver = {
 		.name	= FIMC_MODULE_NAME,

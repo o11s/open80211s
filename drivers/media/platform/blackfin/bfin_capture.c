@@ -91,8 +91,6 @@ struct bcap_device {
 	int num_sensor_formats;
 	/* pointing to current video buffer */
 	struct bcap_buffer *cur_frm;
-	/* pointing to next video buffer */
-	struct bcap_buffer *next_frm;
 	/* buffer queue used in videobuf2 */
 	struct vb2_queue buffer_queue;
 	/* allocator-specific contexts for each plane */
@@ -455,10 +453,10 @@ static int bcap_stop_streaming(struct vb2_queue *vq)
 
 	/* release all active buffers */
 	while (!list_empty(&bcap_dev->dma_queue)) {
-		bcap_dev->next_frm = list_entry(bcap_dev->dma_queue.next,
+		bcap_dev->cur_frm = list_entry(bcap_dev->dma_queue.next,
 						struct bcap_buffer, list);
-		list_del(&bcap_dev->next_frm->list);
-		vb2_buffer_done(&bcap_dev->next_frm->vb, VB2_BUF_STATE_ERROR);
+		list_del(&bcap_dev->cur_frm->list);
+		vb2_buffer_done(&bcap_dev->cur_frm->vb, VB2_BUF_STATE_ERROR);
 	}
 	return 0;
 }
@@ -535,10 +533,21 @@ static irqreturn_t bcap_isr(int irq, void *dev_id)
 
 	spin_lock(&bcap_dev->lock);
 
-	if (bcap_dev->cur_frm != bcap_dev->next_frm) {
+	if (!list_empty(&bcap_dev->dma_queue)) {
 		v4l2_get_timestamp(&vb->v4l2_buf.timestamp);
-		vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
-		bcap_dev->cur_frm = bcap_dev->next_frm;
+		if (ppi->err) {
+			vb2_buffer_done(vb, VB2_BUF_STATE_ERROR);
+			ppi->err = false;
+		} else {
+			vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+		}
+		bcap_dev->cur_frm = list_entry(bcap_dev->dma_queue.next,
+				struct bcap_buffer, list);
+		list_del(&bcap_dev->cur_frm->list);
+	} else {
+		/* clear error flag, we will get a new frame */
+		if (ppi->err)
+			ppi->err = false;
 	}
 
 	ppi->ops->stop(ppi);
@@ -546,13 +555,8 @@ static irqreturn_t bcap_isr(int irq, void *dev_id)
 	if (bcap_dev->stop) {
 		complete(&bcap_dev->comp);
 	} else {
-		if (!list_empty(&bcap_dev->dma_queue)) {
-			bcap_dev->next_frm = list_entry(bcap_dev->dma_queue.next,
-						struct bcap_buffer, list);
-			list_del(&bcap_dev->next_frm->list);
-			addr = vb2_dma_contig_plane_dma_addr(&bcap_dev->next_frm->vb, 0);
-			ppi->ops->update_addr(ppi, (unsigned long)addr);
-		}
+		addr = vb2_dma_contig_plane_dma_addr(&bcap_dev->cur_frm->vb, 0);
+		ppi->ops->update_addr(ppi, (unsigned long)addr);
 		ppi->ops->start(ppi);
 	}
 
@@ -586,9 +590,8 @@ static int bcap_streamon(struct file *file, void *priv,
 	}
 
 	/* get the next frame from the dma queue */
-	bcap_dev->next_frm = list_entry(bcap_dev->dma_queue.next,
+	bcap_dev->cur_frm = list_entry(bcap_dev->dma_queue.next,
 					struct bcap_buffer, list);
-	bcap_dev->cur_frm = bcap_dev->next_frm;
 	/* remove buffer from the dma queue */
 	list_del(&bcap_dev->cur_frm->list);
 	addr = vb2_dma_contig_plane_dma_addr(&bcap_dev->cur_frm->vb, 0);
@@ -946,7 +949,7 @@ static struct v4l2_file_operations bcap_fops = {
 	.poll = bcap_poll
 };
 
-static int __devinit bcap_probe(struct platform_device *pdev)
+static int bcap_probe(struct platform_device *pdev)
 {
 	struct bcap_device *bcap_dev;
 	struct video_device *vfd;
@@ -1144,7 +1147,7 @@ err_free_dev:
 	return ret;
 }
 
-static int __devexit bcap_remove(struct platform_device *pdev)
+static int bcap_remove(struct platform_device *pdev)
 {
 	struct v4l2_device *v4l2_dev = platform_get_drvdata(pdev);
 	struct bcap_device *bcap_dev = container_of(v4l2_dev,
@@ -1166,7 +1169,7 @@ static struct platform_driver bcap_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = bcap_probe,
-	.remove = __devexit_p(bcap_remove),
+	.remove = bcap_remove,
 };
 module_platform_driver(bcap_driver);
 

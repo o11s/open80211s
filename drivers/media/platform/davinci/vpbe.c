@@ -631,8 +631,10 @@ static int vpbe_initialize(struct device *dev, struct vpbe_device *vpbe_dev)
 
 	err = bus_for_each_dev(&platform_bus_type, NULL, vpbe_dev,
 			       platform_device_get);
-	if (err < 0)
-		return err;
+	if (err < 0) {
+		ret = err;
+		goto fail_dev_unregister;
+	}
 
 	vpbe_dev->venc = venc_sub_dev_init(&vpbe_dev->v4l2_dev,
 					   vpbe_dev->cfg->venc.module_name);
@@ -805,7 +807,7 @@ static struct vpbe_device_ops vpbe_dev_ops = {
 	.set_mode = vpbe_set_mode,
 };
 
-static __devinit int vpbe_probe(struct platform_device *pdev)
+static int vpbe_probe(struct platform_device *pdev)
 {
 	struct vpbe_device *vpbe_dev;
 	struct vpbe_config *cfg;

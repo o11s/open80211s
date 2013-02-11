@@ -108,14 +108,13 @@ static int go7007_load_encoder(struct go7007 *go)
 		return -1;
 	}
 	fw_len = fw_entry->size - 16;
-	bounce = kmalloc(fw_len, GFP_KERNEL);
+	bounce = kmemdup(fw_entry->data + 16, fw_len, GFP_KERNEL);
 	if (bounce == NULL) {
 		v4l2_err(go, "unable to allocate %d bytes for "
 				"firmware transfer\n", fw_len);
 		release_firmware(fw_entry);
 		return -1;
 	}
-	memcpy(bounce, fw_entry->data + 16, fw_len);
 	release_firmware(fw_entry);
 	if (go7007_interface_reset(go) < 0 ||
 			go7007_send_firmware(go, bounce, fw_len) < 0 ||
@@ -172,6 +171,11 @@ static int go7007_init_encoder(struct go7007 *go)
 		/* Set GPIO pin 0 to be an output (audio clock control) */
 		go7007_write_addr(go, 0x3c82, 0x0001);
 		go7007_write_addr(go, 0x3c80, 0x00fe);
+	}
+	if (go->board_id == GO7007_BOARDID_ADLINK_MPG24) {
+		/* set GPIO5 to be an output, currently low */
+		go7007_write_addr(go, 0x3c82, 0x0000);
+		go7007_write_addr(go, 0x3c80, 0x00df);
 	}
 	return 0;
 }
@@ -572,7 +576,7 @@ struct go7007 *go7007_alloc(struct go7007_board_info *board, struct device *dev)
 	struct go7007 *go;
 	int i;
 
-	go = kmalloc(sizeof(struct go7007), GFP_KERNEL);
+	go = kzalloc(sizeof(struct go7007), GFP_KERNEL);
 	if (go == NULL)
 		return NULL;
 	go->dev = dev;

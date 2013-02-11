@@ -1429,7 +1429,7 @@ static irqreturn_t mx27_camera_emma_irq(int irq_emma, void *data)
 	return IRQ_HANDLED;
 }
 
-static int __devinit mx27_camera_emma_init(struct platform_device *pdev)
+static int mx27_camera_emma_init(struct platform_device *pdev)
 {
 	struct mx2_camera_dev *pcdev = platform_get_drvdata(pdev);
 	struct resource *res_emma;
@@ -1444,9 +1444,9 @@ static int __devinit mx27_camera_emma_init(struct platform_device *pdev)
 		goto out;
 	}
 
-	pcdev->base_emma = devm_request_and_ioremap(pcdev->dev, res_emma);
-	if (!pcdev->base_emma) {
-		err = -EADDRNOTAVAIL;
+	pcdev->base_emma = devm_ioremap_resource(pcdev->dev, res_emma);
+	if (IS_ERR(pcdev->base_emma)) {
+		err = PTR_ERR(pcdev->base_emma);
 		goto out;
 	}
 
@@ -1487,7 +1487,7 @@ out:
 	return err;
 }
 
-static int __devinit mx2_camera_probe(struct platform_device *pdev)
+static int mx2_camera_probe(struct platform_device *pdev)
 {
 	struct mx2_camera_dev *pcdev;
 	struct resource *res_csi;
@@ -1547,9 +1547,9 @@ static int __devinit mx2_camera_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&pcdev->discard);
 	spin_lock_init(&pcdev->lock);
 
-	pcdev->base_csi = devm_request_and_ioremap(&pdev->dev, res_csi);
-	if (!pcdev->base_csi) {
-		err = -EADDRNOTAVAIL;
+	pcdev->base_csi = devm_ioremap_resource(&pdev->dev, res_csi);
+	if (IS_ERR(pcdev->base_csi)) {
+		err = PTR_ERR(pcdev->base_csi);
 		goto exit;
 	}
 
@@ -1595,7 +1595,7 @@ exit:
 	return err;
 }
 
-static int __devexit mx2_camera_remove(struct platform_device *pdev)
+static int mx2_camera_remove(struct platform_device *pdev)
 {
 	struct soc_camera_host *soc_host = to_soc_camera_host(&pdev->dev);
 	struct mx2_camera_dev *pcdev = container_of(soc_host,
@@ -1618,7 +1618,7 @@ static struct platform_driver mx2_camera_driver = {
 		.name	= MX2_CAM_DRV_NAME,
 	},
 	.id_table	= mx2_camera_devtype,
-	.remove		= __devexit_p(mx2_camera_remove),
+	.remove		= mx2_camera_remove,
 	.probe		= mx2_camera_probe,
 };
 

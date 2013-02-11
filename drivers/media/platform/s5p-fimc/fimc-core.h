@@ -112,9 +112,7 @@ enum fimc_color_fmt {
 
 /* The hardware context state. */
 #define	FIMC_PARAMS		(1 << 0)
-#define	FIMC_SRC_FMT		(1 << 3)
-#define	FIMC_DST_FMT		(1 << 4)
-#define	FIMC_COMPOSE		(1 << 5)
+#define	FIMC_COMPOSE		(1 << 1)
 #define	FIMC_CTX_M2M		(1 << 16)
 #define	FIMC_CTX_CAP		(1 << 17)
 #define	FIMC_CTX_SHUT		(1 << 18)
@@ -265,6 +263,7 @@ struct fimc_vid_buffer {
  * @width:	image pixel width
  * @height:	image pixel weight
  * @payload:	image size in bytes (w x h x bpp)
+ * @bytesperline: bytesperline value for each plane
  * @paddr:	image frame buffer physical addresses
  * @dma_offset:	DMA offset in bytes
  * @fmt:	fimc color format pointer
@@ -279,6 +278,7 @@ struct fimc_frame {
 	u32	width;
 	u32	height;
 	unsigned int		payload[VIDEO_MAX_PLANES];
+	unsigned int		bytesperline[VIDEO_MAX_PLANES];
 	struct fimc_addr	paddr;
 	struct fimc_dma_offset	dma_offset;
 	struct fimc_fmt		*fmt;
@@ -637,7 +637,7 @@ int fimc_ctrls_create(struct fimc_ctx *ctx);
 void fimc_ctrls_delete(struct fimc_ctx *ctx);
 void fimc_ctrls_activate(struct fimc_ctx *ctx, bool active);
 void fimc_alpha_ctrl_update(struct fimc_ctx *ctx);
-int fimc_fill_format(struct fimc_frame *frame, struct v4l2_format *f);
+void __fimc_get_format(struct fimc_frame *frame, struct v4l2_format *f);
 void fimc_adjust_mplane_format(struct fimc_fmt *fmt, u32 width, u32 height,
 			       struct v4l2_pix_format_mplane *pix);
 struct fimc_fmt *fimc_find_format(const u32 *pixelformat, const u32 *mbus_code,
@@ -652,7 +652,6 @@ int fimc_prepare_addr(struct fimc_ctx *ctx, struct vb2_buffer *vb,
 		      struct fimc_frame *frame, struct fimc_addr *paddr);
 void fimc_prepare_dma_offset(struct fimc_ctx *ctx, struct fimc_frame *f);
 void fimc_set_yuv_order(struct fimc_ctx *ctx);
-void fimc_fill_frame(struct fimc_frame *frame, struct v4l2_format *f);
 void fimc_capture_irq_handler(struct fimc_dev *fimc, int deq_buf);
 
 int fimc_register_m2m_device(struct fimc_dev *fimc,
