@@ -430,8 +430,9 @@ mesh_sta_info_alloc(struct ieee80211_sub_if_data *sdata, u8 *addr,
 {
 	struct sta_info *sta = NULL;
 
-	/* Userspace handles peer allocation when security is enabled */
-	if (sdata->u.mesh.security & IEEE80211_MESH_SEC_AUTHED)
+	/* Userspace handles station allocation */
+	if (sdata->u.mesh.user_mpm ||
+	    sdata->u.mesh.security & IEEE80211_MESH_SEC_AUTHED)
 		cfg80211_notify_new_peer_candidate(sdata->dev, addr,
 						   elems->ie_start,
 						   elems->total_len,
@@ -598,7 +599,7 @@ void mesh_plink_quiesce(struct sta_info *sta)
 		return;
 
 	/* no kernel mesh sta timers have been initialized */
-	if (sta->sdata->u.mesh.security != IEEE80211_MESH_SEC_NONE)
+	if (sta->sdata->u.mesh.user_mpm)
 		return;
 
 	if (del_timer_sync(&sta->plink_timer))
@@ -719,6 +720,12 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata, struct ieee80211_m
 			sdata->u.mesh.security == IEEE80211_MESH_SEC_NONE) {
 		mpl_dbg(sdata,
 			"Mesh plink: can't establish link with secure peer\n");
+		return;
+	}
+
+	if (sdata->u.mesh.user_mpm) {
+		mpl_dbg(sdata, "Ignoring peering frame, "
+				"userspace needs to register for these\n");
 		return;
 	}
 
