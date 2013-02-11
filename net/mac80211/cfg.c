@@ -1802,11 +1802,10 @@ static int ieee80211_update_mesh_config(struct wiphy *wiphy,
 		conf->power_mode = nconf->power_mode;
 		ieee80211_mps_local_status_update(sdata);
 	}
-	if (_chg_mesh_attr(NL80211_MESHCONF_AWAKE_WINDOW, mask)) {
+	if (_chg_mesh_attr(NL80211_MESHCONF_AWAKE_WINDOW, mask))
 		conf->dot11MeshAwakeWindowDuration =
 			nconf->dot11MeshAwakeWindowDuration;
-		ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON);
-	}
+	ieee80211_mbss_info_change_notify(sdata, BSS_CHANGED_BEACON);
 	return 0;
 }
 
