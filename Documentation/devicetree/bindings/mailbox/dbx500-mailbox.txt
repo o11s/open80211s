@@ -1,0 +1,27 @@
+ST-Ericsson DBx500 PRCM Mailbox Driver
+
+Required properties:
+- compatible		: Should be
+			  "stericsson,db8500-mailbox" for db8500 and db9500
+			  "stericsson,db9540-mailbox" for db9540
+- reg			: Physical base address and length of mailbox's
+			  registers and shared memory
+- reg-names		: Should contain the reg names "prcm-reg" and
+			  "prcmu-tcdm"
+- interrupts		: contains the IRQ line for the PRCM mailbox
+- interrupt-names	: Should contain the interrupt name "irq"
+- legacy-offset		: Memory offset in shared mem for legacy mailboxes
+
+Optional properties:
+- upap-offset		: Memory offset in shared mem for upap mailboxes
+
+Examples:
+
+mailbox {
+	compatible = "stericsson,db8500-mailbox";
+	reg = <0x80157000 0x1000>, <0x801B8000 0x2000>;
+	reg-names = "prcm-reg", "prcmu-tcdm";
+	interrupts = <0 47 0x4>;
+	interrupt-names = "irq";
+	legacy-offset = <0xdd4>;
+};
