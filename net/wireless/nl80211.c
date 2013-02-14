@@ -3468,7 +3468,6 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 	memset(&params, 0, sizeof(params));
 
 	params.listen_interval = -1;
-	params.plink_state = -1;
 
 	if (info->attrs[NL80211_ATTR_STA_AID])
 		return -EINVAL;
@@ -3507,13 +3506,20 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 	if (parse_station_flags(info, dev->ieee80211_ptr->iftype, &params))
 		return -EINVAL;
 
-	if (info->attrs[NL80211_ATTR_STA_PLINK_ACTION])
+	if (info->attrs[NL80211_ATTR_STA_PLINK_ACTION]) {
 		params.plink_action =
-		    nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_ACTION]);
+			nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_ACTION]);
+		if (params.plink_action >= NUM_NL80211_PLINK_ACTIONS)
+			return -EINVAL;
+	}
 
-	if (info->attrs[NL80211_ATTR_STA_PLINK_STATE])
+	if (info->attrs[NL80211_ATTR_STA_PLINK_STATE]) {
 		params.plink_state =
-		    nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_STATE]);
+			nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_STATE]);
+		if (params.plink_state >= NUM_NL80211_PLINK_STATES)
+			return -EINVAL;
+		params.sta_modify_mask |= STATION_PARAM_APPLY_PLINK_STATE;
+	}
 
 	if (info->attrs[NL80211_ATTR_LOCAL_MESH_POWER_MODE]) {
 		enum nl80211_mesh_power_mode pm = nla_get_u32(
@@ -3534,6 +3540,8 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 		if (params.plink_action)
 			return -EINVAL;
 		if (params.local_pm)
+			return -EINVAL;
+		if (params.sta_modify_mask & STATION_PARAM_APPLY_PLINK_STATE)
 			return -EINVAL;
 
 		/* TDLS can't be set, ... */
@@ -3598,6 +3606,8 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 			return -EINVAL;
 		if (params.local_pm)
 			return -EINVAL;
+		if (params.sta_modify_mask & STATION_PARAM_APPLY_PLINK_STATE)
+			return -EINVAL;
 		/* reject any changes other than AUTHORIZED or WME (for TDLS) */
 		if (params.sta_flags_mask & ~(BIT(NL80211_STA_FLAG_AUTHORIZED) |
 					      BIT(NL80211_STA_FLAG_WME)))
@@ -3608,6 +3618,8 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
 		if (params.plink_action)
 			return -EINVAL;
 		if (params.local_pm)
+			return -EINVAL;
+		if (params.sta_modify_mask & STATION_PARAM_APPLY_PLINK_STATE)
 			return -EINVAL;
 		if (info->attrs[NL80211_ATTR_HT_CAPABILITY] ||
 		    info->attrs[NL80211_ATTR_VHT_CAPABILITY])
@@ -3708,9 +3720,12 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
 		params.vht_capa =
 			nla_data(info->attrs[NL80211_ATTR_VHT_CAPABILITY]);
 
-	if (info->attrs[NL80211_ATTR_STA_PLINK_ACTION])
+	if (info->attrs[NL80211_ATTR_STA_PLINK_ACTION]) {
 		params.plink_action =
-		    nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_ACTION]);
+			nla_get_u8(info->attrs[NL80211_ATTR_STA_PLINK_ACTION]);
+		if (params.plink_action >= NUM_NL80211_PLINK_ACTIONS)
+			return -EINVAL;
+	}
 
 	if (!rdev->ops->add_station)
 		return -EOPNOTSUPP;
