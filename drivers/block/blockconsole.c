@@ -65,6 +65,7 @@ struct blockconsole {
 	struct block_device *bdev;
 	struct console console;
 	struct work_struct unregister_work;
+	struct work_struct release_work;
 	struct task_struct *writeback_thread;
 	struct notifier_block panic_block;
 };
@@ -74,15 +75,24 @@ static void bcon_get(struct blockconsole *bc)
 	kref_get(&bc->kref);
 }
 
-static void bcon_release(struct kref *kref)
+static void __bcon_release(struct work_struct *work)
 {
-	struct blockconsole *bc = container_of(kref, struct blockconsole, kref);
+	struct blockconsole *bc = container_of(work, struct blockconsole,
+			release_work);
 
 	__free_pages(bc->zero_page, 0);
 	__free_pages(bc->pages, 8);
 	invalidate_mapping_pages(bc->bdev->bd_inode->i_mapping, 0, -1);
 	blkdev_put(bc->bdev, FMODE_READ|FMODE_WRITE);
 	kfree(bc);
+}
+
+static void bcon_release(struct kref *kref)
+{
+	struct blockconsole *bc = container_of(kref, struct blockconsole, kref);
+
+	/* bcon_release can be called from atomic context */
+	schedule_work(&bc->release_work);
 }
 
 static void bcon_put(struct blockconsole *bc)
@@ -512,6 +522,7 @@ static int bcon_create(const char *devname)
 	if (IS_ERR(bc->writeback_thread))
 		goto out2;
 	INIT_WORK(&bc->unregister_work, bcon_unregister);
+	INIT_WORK(&bc->release_work, __bcon_release);
 	register_console(&bc->console);
 	bc->panic_block.notifier_call = blockconsole_panic;
 	bc->panic_block.priority = INT_MAX;
