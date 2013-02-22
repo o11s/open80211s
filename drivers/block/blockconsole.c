@@ -18,7 +18,6 @@
 #include <linux/sched.h>
 #include <linux/ctype.h>
 
-#define BLOCKCONSOLE_MAGIC_OLD	"\nLinux blockconsole version 1.0\n"
 #define BLOCKCONSOLE_MAGIC	"\nLinux blockconsole version 1.1\n"
 #define BCON_UUID_OFS		(32)
 #define BCON_ROUND_OFS		(41)
@@ -234,18 +233,6 @@ static void bcon_advance_write_bytes(struct blockconsole *bc, int bytes)
 	}
 }
 
-static int bcon_convert_old_format(struct blockconsole *bc)
-{
-	bc->uuid = get_random_int();
-	bc->round = 0;
-	bc->console_bytes = bc->write_bytes = 0;
-	bcon_advance_console_bytes(bc, 0); /* To skip the header */
-	bcon_advance_write_bytes(bc, 0); /* To wrap around, if necessary */
-	bcon_erase_segment(bc);
-	pr_info("converted %s from old format\n", bc->devname);
-	return 0;
-}
-
 static int bcon_find_end_of_log(struct blockconsole *bc)
 {
 	u64 start = 0, end = bc->max_bytes, middle;
@@ -258,8 +245,8 @@ static int bcon_find_end_of_log(struct blockconsole *bc)
 		return err;
 	/* Second sanity check, out of sheer paranoia */
 	version = bcon_magic_present(sec0);
-	if (version == 10)
-		return bcon_convert_old_format(bc);
+	if (!version)
+		return -EINVAL;
 
 	bc->uuid = simple_strtoull(sec0 + BCON_UUID_OFS, NULL, 16);
 	bc->round = simple_strtoull(sec0 + BCON_ROUND_OFS, NULL, 16);
@@ -618,8 +605,6 @@ int bcon_magic_present(const void *data)
 {
 	size_t len = strlen(BLOCKCONSOLE_MAGIC);
 
-	if (!memcmp(data, BLOCKCONSOLE_MAGIC_OLD, len))
-		return 10;
 	if (memcmp(data, BLOCKCONSOLE_MAGIC, len))
 		return 0;
 	if (!is_four_byte_hex(data + BCON_UUID_OFS))
