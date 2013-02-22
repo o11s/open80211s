@@ -58,6 +58,21 @@ end_of_log() {
 # HEADER contains a newline, so the funny quoting is necessary
 HEADER='
 Linux blockconsole version 1.1'
+
+DEV="$1"
+if [ -n "$DEV" ]; then
+	if [ ! -b "$DEV" ]; then
+		echo "bcon_tail: No block device file $DEV"
+		exit 1
+	fi
+	if [ "`head -c32 $DEV`" != "$HEADER" ]; then
+		echo "bcon_tail: Invalid device file $DEV"
+		exit 1
+	fi
+	end_of_log $DEV
+	exit 0
+fi
+
 CANDIDATES=`lsscsi |sed 's|.*/dev|/dev|'`
 
 for DEV in $CANDIDATES; do
