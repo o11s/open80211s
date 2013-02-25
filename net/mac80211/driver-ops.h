@@ -1091,4 +1091,28 @@ static inline void drv_ipv6_addr_change(struct ieee80211_local *local,
 }
 #endif
 
+#ifdef CONFIG_MAC80211_MESH
+
+static inline void drv_mesh_ps_doze(struct ieee80211_local *local, u64 nexttbtt)
+{
+	might_sleep();
+
+	trace_drv_mesh_ps_doze(local, nexttbtt);
+	if (local->ops->mesh_ps_doze)
+		local->ops->mesh_ps_doze(&local->hw, nexttbtt);
+	trace_drv_return_void(local);
+}
+
+static inline void drv_mesh_ps_wakeup(struct ieee80211_local *local)
+{
+	might_sleep();
+
+	trace_drv_mesh_ps_wakeup(local);
+	if (local->ops->mesh_ps_wakeup)
+		local->ops->mesh_ps_wakeup(&local->hw);
+	trace_drv_return_void(local);
+}
+
+#endif
+
 #endif /* __MAC80211_DRIVER_OPS */

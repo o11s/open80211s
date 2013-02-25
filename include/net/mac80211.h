@@ -2640,6 +2640,11 @@ enum ieee80211_roc_type {
  * @ipv6_addr_change: IPv6 address assignment on the given interface changed.
  *	Currently, this is only called for managed or P2P client interfaces.
  *	This callback is optional; it must not sleep.
+ *
+ * @mesh_ps_doze: Put the device to doze state now; schedule wakeup at given
+ *	TSF value (if non-zero). This callback is optional and may sleep.
+ * @mesh_ps_wakeup: Wake the device up now. This callback is optional and may
+ *	sleep.
  */
 struct ieee80211_ops {
 	void (*tx)(struct ieee80211_hw *hw,
@@ -2830,6 +2835,11 @@ struct ieee80211_ops {
 	void (*ipv6_addr_change)(struct ieee80211_hw *hw,
 				 struct ieee80211_vif *vif,
 				 struct inet6_dev *idev);
+#endif
+
+#ifdef CONFIG_MAC80211_MESH
+	void (*mesh_ps_doze)(struct ieee80211_hw *hw, u64 nexttbtt);
+	void (*mesh_ps_wakeup)(struct ieee80211_hw *hw);
 #endif
 };
 
