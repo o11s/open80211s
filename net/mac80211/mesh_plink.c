@@ -427,6 +427,8 @@ __mesh_sta_info_alloc(struct ieee80211_sub_if_data *sdata, u8 *hw_addr)
 		return NULL;
 
 	sta->plink_state = NL80211_PLINK_LISTEN;
+	setup_timer(&sta->nexttbtt_timer, ieee80211_mps_sta_tbtt_timeout,
+		    (unsigned long) sta);
 
 	sta_info_pre_move_state(sta, IEEE80211_STA_AUTH);
 	sta_info_pre_move_state(sta, IEEE80211_STA_ASSOC);
@@ -522,6 +524,7 @@ void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
 		changed = mesh_plink_open(sta);
 
 	ieee80211_mps_frame_release(sta, elems);
+	ieee80211_mps_sta_tbtt_update(sta, mgmt, elems->tim, t_r);
 out:
 	rcu_read_unlock();
 	ieee80211_mbss_info_change_notify(sdata, changed);

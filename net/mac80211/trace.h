@@ -1536,6 +1536,36 @@ DEFINE_EVENT(local_sdata_evt, drv_leave_ibss,
 	TP_ARGS(local, sdata)
 );
 
+#ifdef CONFIG_MAC80211_MESH
+
+TRACE_EVENT(drv_mesh_ps_doze,
+	TP_PROTO(struct ieee80211_local *local, u64 nexttbtt),
+
+	TP_ARGS(local, nexttbtt),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		__field(u64, nexttbtt)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		__entry->nexttbtt = nexttbtt;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " nexttbtt:%llu",
+		LOCAL_PR_ARG, (unsigned long long)__entry->nexttbtt
+	)
+);
+
+DEFINE_EVENT(local_only_evt, drv_mesh_ps_wakeup,
+	TP_PROTO(struct ieee80211_local *local),
+	TP_ARGS(local)
+);
+
+#endif
+
 /*
  * Tracing for API calls that drivers call.
  */
