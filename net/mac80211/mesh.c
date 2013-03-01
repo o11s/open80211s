@@ -786,6 +786,9 @@ void ieee80211_mbss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 
 int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 {
+	struct mesh_setup setup = {};
+	int ret;
+
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee80211_local *local = sdata->local;
 	u32 changed = BSS_CHANGED_BEACON |
@@ -820,6 +823,19 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	if (ieee80211_mesh_build_beacon(ifmsh)) {
 		ieee80211_stop_mesh(sdata);
 		return -ENOMEM;
+	}
+
+	setup.mesh_id_len = ifmsh->mesh_id_len;
+	setup.mesh_id = ifmsh->mesh_id;
+	setup.path_sel_proto = ifmsh->mesh_pp_id;
+	setup.sync_method = ifmsh->mesh_pm_id;
+	setup.path_metric = ifmsh->mesh_cc_id;
+	setup.is_secure = ifmsh->security & IEEE80211_MESH_SEC_SECURED;
+
+	ret = cfg80211_mesh_joined(sdata->dev, &setup, &ifmsh->mshcfg);
+	if (ret) {
+		ieee80211_stop_mesh(sdata);
+		return ret;
 	}
 
 	ieee80211_bss_info_change_notify(sdata, changed);
