@@ -4820,6 +4820,9 @@ static int nl80211_parse_mesh_setup(struct genl_info *info,
 			nla_get_u8(tb[NL80211_MESH_SETUP_AUTH_PROTOCOL]);
 	}
 
+	if (tb[NL80211_MESH_SETUP_CAN_SHARE])
+		setup->shared = nla_get_u8(tb[NL80211_MESH_SETUP_CAN_SHARE]);
+
 	return 0;
 }
 
