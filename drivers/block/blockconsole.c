@@ -16,6 +16,7 @@
 #include <linux/string.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
+#include <linux/sched/rt.h>
 #include <linux/ctype.h>
 
 #define BLOCKCONSOLE_MAGIC	"\nLinux blockconsole version 1.1\n"
