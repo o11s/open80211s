@@ -564,7 +564,7 @@ static void bcon_do_add(struct work_struct *work)
 	}
 }
 
-DECLARE_WORK(bcon_add_work, bcon_do_add);
+static DECLARE_WORK(bcon_add_work, bcon_do_add);
 
 void bcon_add(const char *name)
 {
