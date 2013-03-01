@@ -94,6 +94,21 @@ const struct mesh_setup default_mesh_setup = {
 	.dtim_period = MESH_DEFAULT_DTIM_PERIOD,
 };
 
+static void dump_mbss_list(char *reason)
+{
+	struct mesh_local_bss *mbss;
+	struct wireless_dev *wdev;
+
+	printk(KERN_DEBUG "mbss dump start (%s)\n", reason);
+	list_for_each_entry(mbss, &mesh_bss_list, bss_list) {
+		printk(KERN_DEBUG "mbss ssid: %s\n", mbss->mesh_id);
+		list_for_each_entry(wdev, &mbss->wdevs, mbss_wdevs) {
+			printk(KERN_DEBUG "mbss iface: %s\n", netdev_name(wdev->netdev));
+		}
+	}
+	printk(KERN_DEBUG "mbss dump end\n");
+}
+
 static inline bool
 mesh_bss_matches(struct mesh_local_bss *mbss,
 		 struct mesh_setup *setup,
@@ -197,6 +212,7 @@ int cfg80211_mesh_joined(struct net_device *dev,
 	wdev->mesh_bss = mbss;
 	list_add(&wdev->mbss_wdevs, &mbss->wdevs);
 
+	dump_mbss_list("join");
 	ret = 0;
 
  out_fail:
@@ -281,6 +297,8 @@ int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
 				    CHAN_MODE_SHARED);
 	if (err)
 		return err;
+
+	dump_mbss_list("pre-join");
 
 	err = rdev_join_mesh(rdev, dev, conf, setup);
 	if (!err) {
@@ -402,6 +420,8 @@ int cfg80211_leave_mesh(struct cfg80211_registered_device *rdev,
 	wdev_lock(wdev);
 	err = __cfg80211_leave_mesh(rdev, dev);
 	wdev_unlock(wdev);
+
+	dump_mbss_list("post-leave");
 
 	return err;
 }
