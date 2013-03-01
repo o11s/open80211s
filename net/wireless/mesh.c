@@ -92,6 +92,7 @@ const struct mesh_setup default_mesh_setup = {
 	.is_secure = false,
 	.beacon_interval = MESH_DEFAULT_BEACON_INTERVAL,
 	.dtim_period = MESH_DEFAULT_DTIM_PERIOD,
+	.shared = false,
 };
 
 static void dump_mbss_list(char *reason)
@@ -115,6 +116,7 @@ mesh_bss_matches(struct mesh_local_bss *mbss,
 		 const struct mesh_config *conf)
 {
 	return mbss->can_share &&
+	       setup->shared &&
 	       mbss->mesh_id_len == setup->mesh_id_len &&
 	       memcmp(mbss->mesh_id, setup->mesh_id, mbss->mesh_id_len) == 0 &&
 	       mbss->path_sel_proto == setup->path_sel_proto &&
@@ -159,7 +161,7 @@ cfg80211_mesh_bss_create(struct mesh_setup *setup,
 
 	mbss->mesh_id_len = setup->mesh_id_len;
 	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
-	mbss->can_share = true;
+	mbss->can_share = setup->shared;
 	mbss->path_metric = setup->path_metric;
 	mbss->path_sel_proto = setup->path_sel_proto;
 	mbss->sync_method = setup->sync_method;

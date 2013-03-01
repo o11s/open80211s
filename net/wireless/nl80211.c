@@ -4758,6 +4758,7 @@ static int nl80211_parse_mesh_setup(struct genl_info *info,
 	}
 	setup->is_authenticated = nla_get_flag(tb[NL80211_MESH_SETUP_USERSPACE_AUTH]);
 	setup->is_secure = nla_get_flag(tb[NL80211_MESH_SETUP_USERSPACE_AMPE]);
+	setup->shared = nla_get_flag(tb[NL80211_MESH_SETUP_CAN_SHARE]);
 
 	return 0;
 }
