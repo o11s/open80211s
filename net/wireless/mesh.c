@@ -48,6 +48,11 @@
 #define MESH_DEFAULT_DTIM_PERIOD	2
 #define MESH_DEFAULT_AWAKE_WINDOW	10	/* in 1024 us units (=TUs) */
 
+
+/* protects mesh_bss_list for reads and updates */
+static DEFINE_MUTEX(mesh_bss_mtx);
+static LIST_HEAD(mesh_bss_list);
+
 const struct mesh_config default_mesh_config = {
 	.dot11MeshRetryTimeout = MESH_RET_T,
 	.dot11MeshConfirmTimeout = MESH_CONF_T,
@@ -88,6 +93,117 @@ const struct mesh_setup default_mesh_setup = {
 	.beacon_interval = MESH_DEFAULT_BEACON_INTERVAL,
 	.dtim_period = MESH_DEFAULT_DTIM_PERIOD,
 };
+
+static inline bool
+mesh_bss_matches(struct mesh_local_bss *mbss,
+		 struct mesh_setup *setup,
+		 const struct mesh_config *conf)
+{
+	return mbss->can_share &&
+	       mbss->mesh_id_len == setup->mesh_id_len &&
+	       memcmp(mbss->mesh_id, setup->mesh_id, mbss->mesh_id_len) == 0 &&
+	       mbss->path_sel_proto == setup->path_sel_proto &&
+	       mbss->path_metric == setup->path_metric &&
+	       mbss->sync_method == setup->sync_method &&
+	       mbss->is_secure == setup->is_secure;
+}
+
+struct mesh_local_bss * __must_check
+cfg80211_mesh_bss_find(struct mesh_setup *setup,
+		       const struct mesh_config *conf)
+{
+	struct mesh_local_bss *mbss;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return NULL;
+
+	list_for_each_entry(mbss, &mesh_bss_list, bss_list)
+		if (mesh_bss_matches(mbss, setup, conf))
+			return mbss;
+
+	return NULL;
+}
+
+struct mesh_local_bss * __must_check
+cfg80211_mesh_bss_create(struct mesh_setup *setup,
+			 const struct mesh_config *conf)
+{
+	struct mesh_local_bss *mbss;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
+	if (!mbss)
+		return NULL;
+
+	if (WARN_ON(setup->mesh_id_len > IEEE80211_MAX_SSID_LEN))
+		return NULL;
+
+	INIT_LIST_HEAD(&mbss->wdevs);
+
+	mbss->mesh_id_len = setup->mesh_id_len;
+	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
+	mbss->can_share = true;
+	mbss->path_metric = setup->path_metric;
+	mbss->path_sel_proto = setup->path_sel_proto;
+	mbss->sync_method = setup->sync_method;
+	mbss->is_secure = setup->is_secure;
+	return mbss;
+}
+
+void cfg80211_mesh_bss_remove(struct net_device *dev)
+{
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct mesh_local_bss *mbss = wdev->mesh_bss;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	if (!mbss)
+		return;
+
+	list_del(&wdev->mbss_wdevs);
+	wdev->mesh_bss = NULL;
+
+	/* free when no more devs have this mbss */
+	if (list_empty(&mbss->wdevs)) {
+		list_del(&mbss->bss_list);
+		kfree(mbss);
+	}
+}
+
+int cfg80211_mesh_joined(struct net_device *dev,
+			 struct mesh_setup *setup,
+			 const struct mesh_config *conf)
+{
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct mesh_local_bss *mbss;
+	int ret;
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return -EINVAL;
+
+	mutex_lock(&mesh_bss_mtx);
+	mbss = cfg80211_mesh_bss_find(setup, conf);
+	if (!mbss) {
+		mbss = cfg80211_mesh_bss_create(setup, conf);
+		if (!mbss) {
+			ret = -ENOMEM;
+			goto out_fail;
+		}
+		list_add(&mbss->bss_list, &mesh_bss_list);
+	}
+
+	wdev->mesh_bss = mbss;
+	list_add(&wdev->mbss_wdevs, &mbss->wdevs);
+
+	ret = 0;
+
+ out_fail:
+	mutex_unlock(&mesh_bss_mtx);
+	return ret;
+}
+EXPORT_SYMBOL(cfg80211_mesh_joined);
 
 int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
 			 struct net_device *dev,
@@ -266,6 +382,10 @@ static int __cfg80211_leave_mesh(struct cfg80211_registered_device *rdev,
 
 	err = rdev_leave_mesh(rdev, dev);
 	if (!err) {
+		mutex_lock(&mesh_bss_mtx);
+		cfg80211_mesh_bss_remove(dev);
+		mutex_unlock(&mesh_bss_mtx);
+
 		wdev->mesh_id_len = 0;
 		wdev->channel = NULL;
 	}

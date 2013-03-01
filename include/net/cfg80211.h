@@ -1174,6 +1174,37 @@ struct mesh_setup {
 };
 
 /**
+ * mesh_local_bss - a mesh BSS running on this host
+ *
+ * @mesh_id: the mesh id
+ * @mesh_id_len: size of mesh id in bytes
+ * @sync_method: which synchronization method to use
+ * @path_sel_proto: which path selection protocol to use
+ * @path_metric: which metric to use
+ * @is_secure: true if the mesh is secure
+ * @can_share: true if this bss can be shared (user-configurable per-if)
+ * @bss_list: listptr for siblings in mesh_bss_list
+ * @wdevs: interfaces sharing this bss
+ */
+struct mesh_local_bss {
+	/*
+	 * FIXME should we just embed a setup struct here?
+	 * and mesh_id ptr could point to any of wdev->ssid.
+	 */
+	u8 mesh_id[IEEE80211_MAX_SSID_LEN];
+	u8 mesh_id_len;
+	u8 sync_method;
+	u8 path_sel_proto;
+	u8 path_metric;
+	bool is_secure;
+
+	bool can_share;
+
+	struct list_head bss_list;
+	struct list_head wdevs;
+};
+
+/**
  * struct ieee80211_txq_params - TX queue parameters
  * @ac: AC identifier
  * @txop: Maximum burst time in units of 32 usecs, 0 meaning disabled
@@ -2837,6 +2868,9 @@ struct wireless_dev {
 	/* for AP and mesh channel tracking */
 	struct ieee80211_channel *channel;
 
+	struct mesh_local_bss *mesh_bss;
+	struct list_head mbss_wdevs;
+
 	bool ibss_fixed;
 
 	bool ps;
@@ -3511,6 +3545,19 @@ void cfg80211_ibss_joined(struct net_device *dev, const u8 *bssid, gfp_t gfp);
 void cfg80211_notify_new_peer_candidate(struct net_device *dev,
 		const u8 *macaddr, const u8 *ie, u8 ie_len, gfp_t gfp);
 
+/**
+ * cfg80211_mesh_joined - Notify cfg80211 that device joined a mesh
+ *
+ * @dev: network device
+ * @setup: mesh setup parameters
+ * @conf: mesh config parameters
+ *
+ * This function notifies cfg80211 that the device joined a mesh
+ * using the specified parameters.
+ */
+int cfg80211_mesh_joined(struct net_device *dev,
+			 struct mesh_setup *setup,
+			 const struct mesh_config *conf);
 /**
  * DOC: RFkill integration
  *
