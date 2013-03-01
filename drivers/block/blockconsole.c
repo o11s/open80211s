@@ -546,17 +546,17 @@ static void bcon_create_fuzzy(const char *name)
 	}
 }
 
-static DEFINE_SPINLOCK(device_lock);
+static DEFINE_SPINLOCK(bcon_device_lock);
 static char scanned_devices[80];
 
 static void bcon_do_add(struct work_struct *work)
 {
 	char local_devices[80], *name, *remainder = local_devices;
 
-	spin_lock(&device_lock);
+	spin_lock(&bcon_device_lock);
 	memcpy(local_devices, scanned_devices, sizeof(local_devices));
 	memset(scanned_devices, 0, sizeof(scanned_devices));
-	spin_unlock(&device_lock);
+	spin_unlock(&bcon_device_lock);
 
 	while (remainder && remainder[0]) {
 		name = strsep(&remainder, ",");
@@ -573,11 +573,11 @@ void bcon_add(const char *name)
 	 * to go pick it up asap.  Once it is picked up, the buffer is empty
 	 * again, so hopefully it will suffice for all sane users.
 	 */
-	spin_lock(&device_lock);
+	spin_lock(&bcon_device_lock);
 	if (scanned_devices[0])
 		strncat(scanned_devices, ",", sizeof(scanned_devices));
 	strncat(scanned_devices, name, sizeof(scanned_devices));
-	spin_unlock(&device_lock);
+	spin_unlock(&bcon_device_lock);
 	schedule_work(&bcon_add_work);
 }
 
