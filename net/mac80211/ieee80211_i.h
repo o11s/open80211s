@@ -632,6 +632,7 @@ struct ieee80211_if_mesh {
 	struct ps_data ps;
 
 	/* mbss sharing */
+	bool share_mbss;
 	struct mesh_local_bss *mesh_bss;
 	struct list_head if_list;
 };

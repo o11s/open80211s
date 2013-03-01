@@ -1742,6 +1742,7 @@ static int copy_mesh_setup(struct ieee80211_if_mesh *ifmsh,
 	/* now copy the rest of the setup parameters */
 	ifmsh->mesh_id_len = setup->mesh_id_len;
 	memcpy(ifmsh->mesh_id, setup->mesh_id, ifmsh->mesh_id_len);
+	ifmsh->share_mbss = setup->shared;
 	ifmsh->mesh_sp_id = setup->sync_method;
 	ifmsh->mesh_pp_id = setup->path_sel_proto;
 	ifmsh->mesh_pm_id = setup->path_metric;
