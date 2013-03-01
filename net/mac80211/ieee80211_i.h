@@ -600,6 +600,7 @@ struct ieee80211_if_mesh {
 	int ps_peers_light_sleep;
 	int ps_peers_deep_sleep;
 	struct ps_data ps;
+	bool share_mbss;
 };
 
 #ifdef CONFIG_MAC80211_MESH
