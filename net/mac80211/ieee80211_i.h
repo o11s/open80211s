@@ -285,6 +285,35 @@ struct mesh_stats {
 	__u32 dropped_frames_congestion;/* Not forwarded due to congestion */
 };
 
+/**
+ * mesh_local_bss - a mesh BSS running on this host
+ *
+ * @mesh_id: the mesh id
+ * @mesh_id_len: size of mesh id in bytes
+ * @sync_method: which synchronization method to use
+ * @path_sel_proto: which path selection protocol to use
+ * @path_metric: which metric to use
+ * @is_secure: true if the mesh is secure
+ * @can_share: true if this bss can be shared (user-configurable per-if)
+ * @net: network namespace devices in this mbss belong to
+ * @list: listptr for siblings in mesh_bss_list
+ * @if_list: interfaces sharing this bss
+ */
+struct mesh_local_bss {
+	u8 mesh_id[IEEE80211_MAX_SSID_LEN];
+	u8 mesh_id_len;
+	u8 sync_method;
+	u8 path_sel_proto;
+	u8 path_metric;
+	bool is_secure;
+
+	bool can_share;
+	struct net *net;
+
+	struct list_head list;
+	struct list_head if_list;
+};
+
 #define PREQ_Q_F_START		0x1
 #define PREQ_Q_F_REFRESH	0x2
 struct mesh_preq_queue {
@@ -600,6 +629,10 @@ struct ieee80211_if_mesh {
 	int ps_peers_light_sleep;
 	int ps_peers_deep_sleep;
 	struct ps_data ps;
+
+	/* mbss sharing */
+	struct mesh_local_bss *mesh_bss;
+	struct list_head if_list;
 };
 
 #ifdef CONFIG_MAC80211_MESH

@@ -361,6 +361,10 @@ void ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local);
 void mesh_path_flush_by_iface(struct ieee80211_sub_if_data *sdata);
 void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata);
 void ieee80211s_stop(void);
+struct ieee80211_sub_if_data *
+mesh_bss_find_if(struct mesh_local_bss *mbss, const u8 *addr);
+bool mesh_bss_matches_addr(struct mesh_local_bss *mbss, const u8 *addr);
+#define mbss(sdata) (sdata->u.mesh.mesh_bss)
 #else
 static inline void
 ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local) {}
