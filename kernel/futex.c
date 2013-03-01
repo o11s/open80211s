@@ -60,6 +60,7 @@
 #include <linux/pid.h>
 #include <linux/nsproxy.h>
 #include <linux/ptrace.h>
+#include <linux/sched/rt.h>
 
 #include <asm/futex.h>
 
@@ -2470,8 +2471,6 @@ SYSCALL_DEFINE3(get_robust_list, int, pid,
 
 	if (!futex_cmpxchg_enabled)
 		return -ENOSYS;
-
-	WARN_ONCE(1, "deprecated: get_robust_list will be deleted in 2013.\n");
 
 	rcu_read_lock();
 

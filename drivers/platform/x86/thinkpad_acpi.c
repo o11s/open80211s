@@ -852,7 +852,7 @@ static ssize_t dispatch_proc_write(struct file *file,
 			const char __user *userbuf,
 			size_t count, loff_t *pos)
 {
-	struct ibm_struct *ibm = PDE(file->f_path.dentry->d_inode)->data;
+	struct ibm_struct *ibm = PDE(file_inode(file))->data;
 	char *kernbuf;
 	int ret;
 
@@ -4877,8 +4877,7 @@ static int __init light_init(struct ibm_init_struct *iibm)
 static void light_exit(void)
 {
 	led_classdev_unregister(&tpacpi_led_thinklight.led_classdev);
-	if (work_pending(&tpacpi_led_thinklight.work))
-		flush_workqueue(tpacpi_wq);
+	flush_workqueue(tpacpi_wq);
 }
 
 static int light_read(struct seq_file *m)

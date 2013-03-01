@@ -705,7 +705,7 @@ static int vpe_run(struct vpe * v)
 
 			printk(KERN_WARNING
 			       "VPE loader: TC %d is already in use.\n",
-                               t->index);
+			       v->tc->index);
 			return -ENOEXEC;
 		}
 	} else {
@@ -1149,7 +1149,7 @@ static ssize_t vpe_write(struct file *file, const char __user * buffer,
 	size_t ret = count;
 	struct vpe *v;
 
-	if (iminor(file->f_path.dentry->d_inode) != minor)
+	if (iminor(file_inode(file)) != minor)
 		return -ENODEV;
 
 	v = get_vpe(tclimit);

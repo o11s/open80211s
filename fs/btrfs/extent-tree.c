@@ -3689,20 +3689,6 @@ static int can_overcommit(struct btrfs_root *root,
 	return 0;
 }
 
-static int writeback_inodes_sb_nr_if_idle_safe(struct super_block *sb,
-					       unsigned long nr_pages,
-					       enum wb_reason reason)
-{
-	if (!writeback_in_progress(sb->s_bdi) &&
-	    down_read_trylock(&sb->s_umount)) {
-		writeback_inodes_sb_nr(sb, nr_pages, reason);
-		up_read(&sb->s_umount);
-		return 1;
-	}
-
-	return 0;
-}
-
 /*
  * shrink metadata reservation for delalloc
  */
@@ -3735,9 +3721,9 @@ static void shrink_delalloc(struct btrfs_root *root, u64 to_reclaim, u64 orig,
 	while (delalloc_bytes && loops < 3) {
 		max_reclaim = min(delalloc_bytes, to_reclaim);
 		nr_pages = max_reclaim >> PAGE_CACHE_SHIFT;
-		writeback_inodes_sb_nr_if_idle_safe(root->fs_info->sb,
-						    nr_pages,
-						    WB_REASON_FS_FREE_SPACE);
+		try_to_writeback_inodes_sb_nr(root->fs_info->sb,
+					      nr_pages,
+					      WB_REASON_FS_FREE_SPACE);
 
 		/*
 		 * We need to wait for the async pages to actually start before
@@ -4534,7 +4520,7 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 	unsigned nr_extents = 0;
 	int extra_reserve = 0;
 	enum btrfs_reserve_flush_enum flush = BTRFS_RESERVE_FLUSH_ALL;
-	int ret;
+	int ret = 0;
 	bool delalloc_lock = true;
 
 	/* If we are a free space inode we need to not flush since we will be in
@@ -4579,20 +4565,18 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 	csum_bytes = BTRFS_I(inode)->csum_bytes;
 	spin_unlock(&BTRFS_I(inode)->lock);
 
-	if (root->fs_info->quota_enabled) {
+	if (root->fs_info->quota_enabled)
 		ret = btrfs_qgroup_reserve(root, num_bytes +
 					   nr_extents * root->leafsize);
-		if (ret) {
-			spin_lock(&BTRFS_I(inode)->lock);
-			calc_csum_metadata_size(inode, num_bytes, 0);
-			spin_unlock(&BTRFS_I(inode)->lock);
-			if (delalloc_lock)
-				mutex_unlock(&BTRFS_I(inode)->delalloc_mutex);
-			return ret;
-		}
-	}
 
-	ret = reserve_metadata_bytes(root, block_rsv, to_reserve, flush);
+	/*
+	 * ret != 0 here means the qgroup reservation failed, we go straight to
+	 * the shared error handling then.
+	 */
+	if (ret == 0)
+		ret = reserve_metadata_bytes(root, block_rsv,
+					     to_reserve, flush);
+
 	if (ret) {
 		u64 to_free = 0;
 		unsigned dropped;
@@ -6524,7 +6508,7 @@ reada:
 }
 
 /*
- * hepler to process tree block while walking down the tree.
+ * helper to process tree block while walking down the tree.
  *
  * when wc->stage == UPDATE_BACKREF, this function updates
  * back refs for pointers in the block.
@@ -6599,7 +6583,7 @@ static noinline int walk_down_proc(struct btrfs_trans_handle *trans,
 }
 
 /*
- * hepler to process tree block pointer.
+ * helper to process tree block pointer.
  *
  * when wc->stage == DROP_REFERENCE, this function checks
  * reference count of the block pointed to. if the block
@@ -6737,7 +6721,7 @@ skip:
 }
 
 /*
- * hepler to process tree block while walking up the tree.
+ * helper to process tree block while walking up the tree.
  *
  * when wc->stage == DROP_REFERENCE, this function drops
  * reference count on the block.

@@ -318,7 +318,6 @@ static void __exit dm_exit(void)
 	/*
 	 * Should be empty by this point.
 	 */
-	idr_remove_all(&_minor_idr);
 	idr_destroy(&_minor_idr);
 }
 
@@ -627,7 +626,6 @@ static void dec_pending(struct dm_io *io, int error)
 			queue_io(md, bio);
 		} else {
 			/* done with normal IO or empty flush */
-			trace_block_bio_complete(md->queue, bio, io_error);
 			bio_endio(bio, io_error);
 		}
 	}
@@ -1188,6 +1186,7 @@ static int __clone_and_map_changing_extent_only(struct clone_info *ci,
 {
 	struct dm_target *ti;
 	sector_t len;
+	unsigned num_requests;
 
 	do {
 		ti = dm_table_find_target(ci->map, ci->sector);
@@ -1200,7 +1199,8 @@ static int __clone_and_map_changing_extent_only(struct clone_info *ci,
 		 * reconfiguration might also have changed that since the
 		 * check was performed.
 		 */
-		if (!get_num_requests || !get_num_requests(ti))
+		num_requests = get_num_requests ? get_num_requests(ti) : 0;
+		if (!num_requests)
 			return -EOPNOTSUPP;
 
 		if (is_split_required && !is_split_required(ti))
@@ -1208,7 +1208,7 @@ static int __clone_and_map_changing_extent_only(struct clone_info *ci,
 		else
 			len = min(ci->sector_count, max_io_len(ci->sector, ti));
 
-		__issue_target_requests(ci, ti, ti->num_discard_requests, len);
+		__issue_target_requests(ci, ti, num_requests, len);
 
 		ci->sector += len;
 	} while (ci->sector_count -= len);
@@ -1754,62 +1754,38 @@ static void free_minor(int minor)
  */
 static int specific_minor(int minor)
 {
-	int r, m;
+	int r;
 
 	if (minor >= (1 << MINORBITS))
 		return -EINVAL;
 
-	r = idr_pre_get(&_minor_idr, GFP_KERNEL);
-	if (!r)
-		return -ENOMEM;
-
+	idr_preload(GFP_KERNEL);
 	spin_lock(&_minor_lock);
 
-	if (idr_find(&_minor_idr, minor)) {
-		r = -EBUSY;
-		goto out;
-	}
+	r = idr_alloc(&_minor_idr, MINOR_ALLOCED, minor, minor + 1, GFP_NOWAIT);
 
-	r = idr_get_new_above(&_minor_idr, MINOR_ALLOCED, minor, &m);
-	if (r)
-		goto out;
-
-	if (m != minor) {
-		idr_remove(&_minor_idr, m);
-		r = -EBUSY;
-		goto out;
-	}
-
-out:
 	spin_unlock(&_minor_lock);
-	return r;
+	idr_preload_end();
+	if (r < 0)
+		return r == -ENOSPC ? -EBUSY : r;
+	return 0;
 }
 
 static int next_free_minor(int *minor)
 {
-	int r, m;
+	int r;
 
-	r = idr_pre_get(&_minor_idr, GFP_KERNEL);
-	if (!r)
-		return -ENOMEM;
-
+	idr_preload(GFP_KERNEL);
 	spin_lock(&_minor_lock);
 
-	r = idr_get_new(&_minor_idr, MINOR_ALLOCED, &m);
-	if (r)
-		goto out;
+	r = idr_alloc(&_minor_idr, MINOR_ALLOCED, 0, 1 << MINORBITS, GFP_NOWAIT);
 
-	if (m >= (1 << MINORBITS)) {
-		idr_remove(&_minor_idr, m);
-		r = -ENOSPC;
-		goto out;
-	}
-
-	*minor = m;
-
-out:
 	spin_unlock(&_minor_lock);
-	return r;
+	idr_preload_end();
+	if (r < 0)
+		return r;
+	*minor = r;
+	return 0;
 }
 
 static const struct block_device_operations dm_blk_dops;

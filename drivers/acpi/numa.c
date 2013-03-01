@@ -116,14 +116,16 @@ acpi_table_print_srat_entry(struct acpi_subtable_header *header)
 			struct acpi_srat_mem_affinity *p =
 			    (struct acpi_srat_mem_affinity *)header;
 			ACPI_DEBUG_PRINT((ACPI_DB_INFO,
-					  "SRAT Memory (0x%lx length 0x%lx) in proximity domain %d %s%s\n",
+					  "SRAT Memory (0x%lx length 0x%lx) in proximity domain %d %s%s%s\n",
 					  (unsigned long)p->base_address,
 					  (unsigned long)p->length,
 					  p->proximity_domain,
 					  (p->flags & ACPI_SRAT_MEM_ENABLED)?
 					  "enabled" : "disabled",
 					  (p->flags & ACPI_SRAT_MEM_HOT_PLUGGABLE)?
-					  " hot-pluggable" : ""));
+					  " hot-pluggable" : "",
+					  (p->flags & ACPI_SRAT_MEM_NON_VOLATILE)?
+					  " non-volatile" : ""));
 		}
 #endif				/* ACPI_DEBUG_OUTPUT */
 		break;
@@ -273,17 +275,17 @@ static int __init acpi_parse_srat(struct acpi_table_header *table)
 
 static int __init
 acpi_table_parse_srat(enum acpi_srat_type id,
-		      acpi_table_entry_handler handler, unsigned int max_entries)
+		      acpi_tbl_entry_handler handler, unsigned int max_entries)
 {
 	return acpi_table_parse_entries(ACPI_SIG_SRAT,
 					    sizeof(struct acpi_table_srat), id,
 					    handler, max_entries);
 }
 
-int __init acpi_numa_init(void)
-{
-	int cnt = 0;
+static int srat_mem_cnt;
 
+void __init early_parse_srat(void)
+{
 	/*
 	 * Should not limit number with cpu num that is from NR_CPUS or nr_cpus=
 	 * SRAT cpu entries could have different order with that in MADT.
@@ -293,21 +295,24 @@ int __init acpi_numa_init(void)
 	/* SRAT: Static Resource Affinity Table */
 	if (!acpi_table_parse(ACPI_SIG_SRAT, acpi_parse_srat)) {
 		acpi_table_parse_srat(ACPI_SRAT_TYPE_X2APIC_CPU_AFFINITY,
-				     acpi_parse_x2apic_affinity, 0);
+				      acpi_parse_x2apic_affinity, 0);
 		acpi_table_parse_srat(ACPI_SRAT_TYPE_CPU_AFFINITY,
-				     acpi_parse_processor_affinity, 0);
-		cnt = acpi_table_parse_srat(ACPI_SRAT_TYPE_MEMORY_AFFINITY,
-					    acpi_parse_memory_affinity,
-					    NR_NODE_MEMBLKS);
+				      acpi_parse_processor_affinity, 0);
+		srat_mem_cnt = acpi_table_parse_srat(ACPI_SRAT_TYPE_MEMORY_AFFINITY,
+						     acpi_parse_memory_affinity,
+						     NR_NODE_MEMBLKS);
 	}
+}
 
+int __init acpi_numa_init(void)
+{
 	/* SLIT: System Locality Information Table */
 	acpi_table_parse(ACPI_SIG_SLIT, acpi_parse_slit);
 
 	acpi_numa_arch_fixup();
 
-	if (cnt < 0)
-		return cnt;
+	if (srat_mem_cnt < 0)
+		return srat_mem_cnt;
 	else if (!parsed_numa_memblks)
 		return -ENOENT;
 	return 0;
