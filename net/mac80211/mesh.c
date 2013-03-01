@@ -16,6 +16,10 @@
 static int mesh_allocated;
 static struct kmem_cache *rm_cache;
 
+/* mesh_bss_mtx protects updates; internal iface list uses RCU */
+static DEFINE_MUTEX(mesh_bss_mtx);
+static LIST_HEAD(mesh_bss_list);
+
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
@@ -47,6 +51,155 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
 
 	ieee80211_queue_work(&local->hw, &sdata->work);
+}
+
+static inline bool
+mesh_bss_matches(struct ieee80211_sub_if_data *sdata,
+		 struct mesh_setup *setup,
+		 struct mesh_local_bss *mbss)
+{
+	return setup->shared &&
+	       mbss->mesh_id_len == setup->mesh_id_len &&
+	       memcmp(mbss->mesh_id, setup->mesh_id, mbss->mesh_id_len) == 0 &&
+	       mbss->path_sel_proto == setup->path_sel_proto &&
+	       mbss->path_metric == setup->path_metric &&
+	       mbss->sync_method == setup->sync_method &&
+	       mbss->is_secure == setup->is_secure &&
+	       net_eq(wiphy_net(sdata->wdev.wiphy), mbss->net);
+}
+
+static struct mesh_local_bss * __must_check
+mesh_bss_find(struct ieee80211_sub_if_data *sdata, struct mesh_setup *setup)
+{
+	struct mesh_local_bss *mbss;
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return NULL;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	list_for_each_entry(mbss, &mesh_bss_list, list)
+		if (mesh_bss_matches(sdata, setup, mbss))
+			return mbss;
+
+	return NULL;
+}
+
+static struct mesh_local_bss * __must_check
+mesh_bss_create(struct ieee80211_sub_if_data *sdata, struct mesh_setup *setup)
+{
+	struct mesh_local_bss *mbss;
+
+	if (WARN_ON(setup->mesh_id_len > IEEE80211_MAX_SSID_LEN))
+		return NULL;
+
+	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
+	if (!mbss)
+		return NULL;
+
+	INIT_LIST_HEAD(&mbss->list);
+	INIT_LIST_HEAD(&mbss->if_list);
+
+	mbss->mesh_id_len = setup->mesh_id_len;
+	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
+	mbss->path_metric = setup->path_metric;
+	mbss->path_sel_proto = setup->path_sel_proto;
+	mbss->sync_method = setup->sync_method;
+	mbss->is_secure = setup->is_secure;
+	mbss->net = wiphy_net(sdata->wdev.wiphy);
+	return mbss;
+}
+
+static void mesh_bss_remove(struct ieee80211_sub_if_data *sdata)
+{
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	struct mesh_local_bss *mbss = ifmsh->mesh_bss;
+
+	if (!mbss)
+		return;
+
+	mutex_lock(&mesh_bss_mtx);
+	list_del_rcu(&ifmsh->if_list);
+	synchronize_rcu();
+	ifmsh->mesh_bss = NULL;
+
+	/* free when no more devs have this mbss */
+	if (list_empty(&mbss->if_list)) {
+		list_del(&mbss->list);
+		kfree(mbss);
+	}
+	mutex_unlock(&mesh_bss_mtx);
+}
+
+static
+int mesh_bss_add(struct ieee80211_sub_if_data *sdata,
+		 struct mesh_setup *setup)
+{
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	struct mesh_local_bss *mbss;
+	int ret;
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return -EINVAL;
+
+	mutex_lock(&mesh_bss_mtx);
+	mbss = mesh_bss_find(sdata, setup);
+	if (!mbss || !setup->shared) {
+		mbss = mesh_bss_create(sdata, setup);
+		if (!mbss) {
+			ret = -ENOMEM;
+			goto out_fail;
+		}
+		if (!setup->shared)
+			goto out_add;
+		list_add(&mbss->list, &mesh_bss_list);
+	}
+
+out_add:
+	ifmsh->mesh_bss = mbss;
+	list_add_rcu(&ifmsh->if_list, &mbss->if_list);
+	ret = 0;
+
+out_fail:
+	mutex_unlock(&mesh_bss_mtx);
+	return ret;
+}
+
+/**
+ * mesh_bss_find_if - return the interface in the local mbss matching addr
+ *
+ * @mbss: mesh bss on this host
+ * @addr: address to find in the interface list
+ *
+ * Returns an interface in mbss matching addr, or NULL if none found.
+ */
+struct ieee80211_sub_if_data *
+mesh_bss_find_if(struct mesh_local_bss *mbss, const u8 *addr)
+{
+	struct ieee80211_sub_if_data *sdata;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list) {
+		if (ether_addr_equal(addr, sdata->vif.addr)) {
+			rcu_read_unlock();
+			return sdata;
+		}
+	}
+	rcu_read_unlock();
+	return NULL;
+}
+
+/**
+ * mesh_bss_matches_addr - check if the specified addr is in the local mbss
+ *
+ * @mbss: mesh bss on this host
+ * @addr: address to find in the interface list
+ *
+ * Returns true if the addr is used by an interface in the mbss.
+ */
+bool mesh_bss_matches_addr(struct mesh_local_bss *mbss, const u8 *addr)
+{
+	return mesh_bss_find_if(mbss, addr) != NULL;
 }
 
 /**
@@ -734,6 +887,9 @@ void ieee80211_mbss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 
 int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 {
+	struct mesh_setup setup = {};
+	int ret;
+
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee80211_local *local = sdata->local;
 	u32 changed = BSS_CHANGED_BEACON |
@@ -768,6 +924,20 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	if (ieee80211_mesh_build_beacon(ifmsh)) {
 		ieee80211_stop_mesh(sdata);
 		return -ENOMEM;
+	}
+
+	setup.mesh_id_len = ifmsh->mesh_id_len;
+	setup.mesh_id = ifmsh->mesh_id;
+	setup.path_sel_proto = ifmsh->mesh_pp_id;
+	setup.sync_method = ifmsh->mesh_pm_id;
+	setup.path_metric = ifmsh->mesh_cc_id;
+	setup.is_secure = ifmsh->security & IEEE80211_MESH_SEC_SECURED;
+	setup.shared = ifmsh->share_mbss;
+
+	ret = mesh_bss_add(sdata, &setup);
+	if (ret) {
+		ieee80211_stop_mesh(sdata);
+		return ret;
 	}
 
 	ieee80211_bss_info_change_notify(sdata, changed);
@@ -819,6 +989,10 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	local->fif_other_bss--;
 	atomic_dec(&local->iff_allmultis);
 	ieee80211_configure_filter(local);
+
+	netif_tx_stop_all_queues(sdata->dev);
+
+	mesh_bss_remove(sdata);
 }
 
 static void
