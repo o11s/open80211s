@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <asm/unaligned.h>
 #include "ieee80211_i.h"
+#include "wme.h"
 #include "mesh.h"
 
 static int mesh_allocated;
@@ -199,6 +200,48 @@ mesh_bss_find_if(struct mesh_local_bss *mbss, const u8 *addr)
 bool mesh_bss_matches_addr(struct mesh_local_bss *mbss, const u8 *addr)
 {
 	return mesh_bss_find_if(mbss, addr) != NULL;
+}
+
+/**
+ * mesh_bss_forward_tx - send a frame on all other interfaces in a bss
+ *
+ * @sdata: interface to exclude from tx
+ * @skb: frame to send
+ *
+ * Forwards group-directed frames from sdata for tx on all other interfaces
+ * which are participating in an mbss.
+ */
+void mesh_bss_forward_tx(struct ieee80211_sub_if_data *sdata,
+			 struct sk_buff *skb)
+{
+	struct mesh_local_bss *mbss = mbss(sdata);
+	struct ieee80211_hdr *fwd_hdr;
+	struct sk_buff *fwd_skb;
+	struct ieee80211_tx_info *info;
+	struct ieee80211_sub_if_data *tmp_sdata;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
+
+		if (sdata == tmp_sdata)
+			continue;
+
+		fwd_skb = skb_copy(skb, GFP_ATOMIC);
+		if (!fwd_skb)
+			goto out;
+
+		fwd_hdr =  (struct ieee80211_hdr *) fwd_skb->data;
+		info = IEEE80211_SKB_CB(fwd_skb);
+		memset(info, 0, sizeof(*info));
+		info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+		info->control.vif = &tmp_sdata->vif;
+
+		memcpy(fwd_hdr->addr2, tmp_sdata->vif.addr, ETH_ALEN);
+		ieee80211_set_qos_hdr(tmp_sdata, fwd_skb);
+		ieee80211_add_pending_skb(tmp_sdata->local, fwd_skb);
+	}
+out:
+	rcu_read_unlock();
 }
 
 /**
