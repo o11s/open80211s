@@ -125,7 +125,7 @@ mesh_bss_matches(struct mesh_local_bss *mbss,
 	       mbss->is_secure == setup->is_secure;
 }
 
-struct mesh_local_bss * __must_check
+static struct mesh_local_bss * __must_check
 cfg80211_mesh_bss_find(struct mesh_setup *setup,
 		       const struct mesh_config *conf)
 {
@@ -141,18 +141,19 @@ cfg80211_mesh_bss_find(struct mesh_setup *setup,
 	return NULL;
 }
 
-struct mesh_local_bss * __must_check
+static struct mesh_local_bss * __must_check
 cfg80211_mesh_bss_create(struct mesh_setup *setup,
 			 const struct mesh_config *conf)
 {
 	struct mesh_local_bss *mbss;
 
 	lockdep_assert_held(&mesh_bss_mtx);
-	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
-	if (!mbss)
-		return NULL;
 
 	if (WARN_ON(setup->mesh_id_len > IEEE80211_MAX_SSID_LEN))
+		return NULL;
+
+	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
+	if (!mbss)
 		return NULL;
 
 	INIT_LIST_HEAD(&mbss->wdevs);
@@ -167,7 +168,7 @@ cfg80211_mesh_bss_create(struct mesh_setup *setup,
 	return mbss;
 }
 
-void cfg80211_mesh_bss_remove(struct net_device *dev)
+static void cfg80211_mesh_bss_remove(struct net_device *dev)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct mesh_local_bss *mbss = wdev->mesh_bss;
