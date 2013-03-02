@@ -305,6 +305,42 @@ int mesh_path_error_tx(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
+void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
+			    struct sk_buff *skb)
+{
+	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
+	struct ieee80211_hdr *fwd_hdr;
+	struct wireless_dev *wdev;
+	struct sk_buff *fwd_skb;
+	struct ieee80211_tx_info *info;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
+		struct ieee80211_sub_if_data *tmp_sdata =
+			IEEE80211_WDEV_TO_SUB_IF(wdev);
+
+		if (ether_addr_equal(sdata->vif.addr, tmp_sdata->vif.addr))
+			continue;
+
+		fwd_skb = skb_copy(skb, GFP_ATOMIC);
+		if (!fwd_skb)
+			goto out;
+
+		fwd_hdr =  (struct ieee80211_hdr *) fwd_skb->data;
+		info = IEEE80211_SKB_CB(fwd_skb);
+		memset(info, 0, sizeof(*info));
+		info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+		info->control.vif = &tmp_sdata->vif;
+		info->control.jiffies = jiffies;
+
+		memcpy(fwd_hdr->addr2, tmp_sdata->vif.addr, ETH_ALEN);
+		ieee80211_add_pending_skb(tmp_sdata->local, fwd_skb);
+	}
+out:
+	rcu_read_unlock();
+	return;
+}
+
 void ieee80211s_update_metric(struct ieee80211_local *local,
 		struct sta_info *sta, struct sk_buff *skb)
 {

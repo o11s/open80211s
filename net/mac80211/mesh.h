@@ -366,6 +366,8 @@ void mesh_plink_restart(struct sta_info *sta);
 void mesh_path_flush_by_iface(struct ieee80211_sub_if_data *sdata);
 void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata);
 void ieee80211s_stop(void);
+void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
+			    struct sk_buff *skb);
 #else
 static inline void
 ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local) {}
@@ -380,6 +382,8 @@ static inline bool mesh_path_sel_is_hwmp(struct ieee80211_sub_if_data *sdata)
 static inline void mesh_path_flush_by_iface(struct ieee80211_sub_if_data *sdata)
 {}
 static inline void ieee80211s_stop(void) {}
+static inline void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
+			    struct sk_buff *skb) {}
 #endif
 
 #endif /* IEEE80211S_H */
