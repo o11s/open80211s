@@ -49,7 +49,7 @@
 #define MESH_DEFAULT_AWAKE_WINDOW	10	/* in 1024 us units (=TUs) */
 
 
-/* protects mesh_bss_list for reads and updates */
+/* protects mesh_bss_list for updates, iface list protected by RCU */
 static DEFINE_MUTEX(mesh_bss_mtx);
 static LIST_HEAD(mesh_bss_list);
 
@@ -131,8 +131,6 @@ cfg80211_mesh_bss_find(struct mesh_setup *setup,
 {
 	struct mesh_local_bss *mbss;
 
-	lockdep_assert_held(&mesh_bss_mtx);
-
 	if (WARN_ON(!setup->mesh_id_len))
 		return NULL;
 
@@ -179,7 +177,8 @@ void cfg80211_mesh_bss_remove(struct net_device *dev)
 	if (!mbss)
 		return;
 
-	list_del(&wdev->mbss_wdevs);
+	list_del_rcu(&wdev->mbss_wdevs);
+	synchronize_rcu();
 	wdev->mesh_bss = NULL;
 
 	/* free when no more devs have this mbss */
@@ -212,7 +211,7 @@ int cfg80211_mesh_joined(struct net_device *dev,
 	}
 
 	wdev->mesh_bss = mbss;
-	list_add(&wdev->mbss_wdevs, &mbss->wdevs);
+	list_add_rcu(&wdev->mbss_wdevs, &mbss->wdevs);
 
 	dump_mbss_list("join");
 	ret = 0;
