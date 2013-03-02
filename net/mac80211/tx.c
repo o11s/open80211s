@@ -1500,6 +1500,11 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 		} else {
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
 		}
+		/*
+		XXX should we forward locally-originated tx to other if?
+		if (is_multicast_ether_addr(hdr->addr1))
+			mesh_local_bss_forward(sdata, skb);
+		*/
 	}
 
 	ieee80211_set_qos_hdr(sdata, skb);
