@@ -328,9 +328,8 @@ static void mesh_path_move_to_queue(struct mesh_path *gate_mpath,
 	spin_unlock_irqrestore(&from_mpath->frame_queue.lock, flags);
 }
 
-
-static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
-				      struct ieee80211_sub_if_data *sdata)
+static struct mesh_path *__mpath_lookup(struct mesh_table *tbl, const u8 *dst,
+					struct ieee80211_sub_if_data *sdata)
 {
 	struct mesh_path *mpath;
 	struct hlist_node *n;
@@ -349,6 +348,23 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 			}
 			return mpath;
 		}
+	}
+	return NULL;
+}
+
+static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
+				      struct ieee80211_sub_if_data *sdata)
+{
+	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
+	struct wireless_dev *wdev;
+	struct mesh_path *mpath;
+
+	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
+		struct ieee80211_sub_if_data *tmp_sdata =
+			IEEE80211_WDEV_TO_SUB_IF(wdev);
+		mpath = __mpath_lookup(tbl, dst, tmp_sdata);
+		if (mpath)
+			return mpath;
 	}
 	return NULL;
 }

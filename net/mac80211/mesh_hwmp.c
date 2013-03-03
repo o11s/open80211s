@@ -101,14 +101,14 @@ enum mpath_frame_type {
 
 static const u8 broadcast_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
-				  const u8 *orig_addr, __le32 orig_sn,
-				  u8 target_flags, const u8 *target,
-				  __le32 target_sn, const u8 *da,
-				  u8 hop_count, u8 ttl,
-				  __le32 lifetime, __le32 metric,
-				  __le32 preq_id,
-				  struct ieee80211_sub_if_data *sdata)
+static int __mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
+				    const u8 *orig_addr, __le32 orig_sn,
+				    u8 target_flags, const u8 *target,
+				    __le32 target_sn, const u8 *da,
+				    u8 hop_count, u8 ttl,
+				    __le32 lifetime, __le32 metric,
+				    __le32 preq_id,
+				    struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct sk_buff *skb;
@@ -200,6 +200,56 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 	ieee80211_tx_skb(sdata, skb);
 	return 0;
 }
+
+static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
+				    const u8 *orig_addr, __le32 orig_sn,
+				    u8 target_flags, const u8 *target,
+				    __le32 target_sn, const u8 *da,
+				    u8 hop_count, u8 ttl,
+				    __le32 lifetime, __le32 metric,
+				    __le32 preq_id,
+				    struct ieee80211_sub_if_data *sdata)
+{
+	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
+	struct wireless_dev *wdev;
+	int ret = 0;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
+		struct ieee80211_sub_if_data *tmp_sdata =
+			IEEE80211_WDEV_TO_SUB_IF(wdev);
+
+		ret = __mesh_path_sel_frame_tx(action, flags, orig_addr, orig_sn,
+					 target_flags, target, target_sn,
+					 da, hop_count, ttl,
+					 lifetime, metric, preq_id,
+					 tmp_sdata);
+	}
+	rcu_read_unlock();
+	return ret;
+}
+
+static inline bool matches_local_if(struct ieee80211_sub_if_data *sdata,
+				    const u8 *addr)
+{
+	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
+	struct wireless_dev *wdev;
+	bool found = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
+		struct ieee80211_sub_if_data *tmp_sdata =
+			IEEE80211_WDEV_TO_SUB_IF(wdev);
+
+		if (ether_addr_equal(addr, tmp_sdata->vif.addr)) {
+			found = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+	return found;
+}
+
 
 
 /*  Headroom is not adjusted.  Caller should ensure that skb has sufficient
@@ -459,7 +509,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 		new_metric = MAX_METRIC;
 	exp_time = TU_TO_EXP_TIME(orig_lifetime);
 
-	if (ether_addr_equal(orig_addr, sdata->vif.addr)) {
+	if (matches_local_if(sdata, orig_addr)) {
 		/* This MP is the originator, we are not interested in this
 		 * frame, except for updating transmitter's path info.
 		 */
@@ -575,18 +625,21 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 
 	mhwmp_dbg(sdata, "received PREQ from %pM\n", orig_addr);
 
-	if (ether_addr_equal(target_addr, sdata->vif.addr)) {
+	if (matches_local_if(sdata, target_addr)) {
 		mhwmp_dbg(sdata, "PREQ is for us\n");
 		forward = false;
 		reply = true;
 		metric = 0;
+		/* XXX right ifmsh? */
 		if (time_after(jiffies, ifmsh->last_sn_update +
 					net_traversal_jiffies(sdata)) ||
 		    time_before(jiffies, ifmsh->last_sn_update)) {
 			target_sn = ++ifmsh->sn;
 			ifmsh->last_sn_update = jiffies;
 		}
-	} else if (is_broadcast_ether_addr(target_addr) &&
+	}
+
+	if (!reply && is_broadcast_ether_addr(target_addr) &&
 		   (target_flags & IEEE80211_PREQ_TO_FLAG)) {
 		rcu_read_lock();
 		mpath = mesh_path_lookup(sdata, orig_addr);
@@ -602,7 +655,7 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 				mesh_path_add_gate(mpath);
 		}
 		rcu_read_unlock();
-	} else {
+	} else if (!reply) {
 		rcu_read_lock();
 		mpath = mesh_path_lookup(sdata, target_addr);
 		if (mpath) {
@@ -663,11 +716,12 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 		}
 
 		mesh_path_sel_frame_tx(MPATH_PREQ, flags, orig_addr,
-				cpu_to_le32(orig_sn), target_flags, target_addr,
-				cpu_to_le32(target_sn), da,
-				hopcount, ttl, cpu_to_le32(lifetime),
-				cpu_to_le32(metric), cpu_to_le32(preq_id),
-				sdata);
+				       cpu_to_le32(orig_sn), target_flags, target_addr,
+				       cpu_to_le32(target_sn), da,
+				       hopcount, ttl, cpu_to_le32(lifetime),
+				       cpu_to_le32(metric), cpu_to_le32(preq_id),
+				       sdata);
+
 		if (!is_multicast_ether_addr(da))
 			ifmsh->mshstats.fwded_unicast++;
 		else
@@ -684,7 +738,6 @@ next_hop_deref_protected(struct mesh_path *mpath)
 					 lockdep_is_held(&mpath->state_lock));
 }
 
-
 static void hwmp_prep_frame_process(struct ieee80211_sub_if_data *sdata,
 				    struct ieee80211_mgmt *mgmt,
 				    const u8 *prep_elem, u32 metric)
@@ -700,7 +753,7 @@ static void hwmp_prep_frame_process(struct ieee80211_sub_if_data *sdata,
 		  PREP_IE_ORIG_ADDR(prep_elem));
 
 	orig_addr = PREP_IE_ORIG_ADDR(prep_elem);
-	if (ether_addr_equal(orig_addr, sdata->vif.addr))
+	if (matches_local_if(sdata, orig_addr))
 		/* destination, no forwarding required */
 		return;
 
@@ -822,7 +875,7 @@ static void hwmp_rann_frame_process(struct ieee80211_sub_if_data *sdata,
 	metric = le32_to_cpu(rann->rann_metric);
 
 	/*  Ignore our own RANNs */
-	if (ether_addr_equal(orig_addr, sdata->vif.addr))
+	if (matches_local_if(sdata, orig_addr))
 		return;
 
 	mhwmp_dbg(sdata,
@@ -1189,7 +1242,7 @@ int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
 	if (time_after(jiffies,
 		       mpath->exp_time -
 		       msecs_to_jiffies(sdata->u.mesh.mshcfg.path_refresh_time)) &&
-	    ether_addr_equal(sdata->vif.addr, hdr->addr4) &&
+	    matches_local_if(sdata, hdr->addr4) &&
 	    !(mpath->flags & MESH_PATH_RESOLVING) &&
 	    !(mpath->flags & MESH_PATH_FIXED))
 		mesh_queue_preq(mpath, PREQ_Q_F_START | PREQ_Q_F_REFRESH);
