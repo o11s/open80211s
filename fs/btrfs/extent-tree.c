@@ -3800,23 +3800,6 @@ static int can_overcommit(struct btrfs_root *root,
 	return 0;
 }
 
-static inline int writeback_inodes_sb_nr_if_idle_safe(struct super_block *sb,
-						      unsigned long nr_pages,
-						      enum wb_reason reason)
-{
-	/* the flusher is dealing with the dirty inodes now. */
-	if (writeback_in_progress(sb->s_bdi))
-		return 1;
-
-	if (down_read_trylock(&sb->s_umount)) {
-		writeback_inodes_sb_nr(sb, nr_pages, reason);
-		up_read(&sb->s_umount);
-		return 1;
-	}
-
-	return 0;
-}
-
 void btrfs_writeback_inodes_sb_nr(struct btrfs_root *root,
 				  unsigned long nr_pages)
 {
@@ -3824,7 +3807,7 @@ void btrfs_writeback_inodes_sb_nr(struct btrfs_root *root,
 	int started;
 
 	/* If we can not start writeback, just sync all the delalloc file. */
-	started = writeback_inodes_sb_nr_if_idle_safe(sb, nr_pages,
+	started = try_to_writeback_inodes_sb_nr(sb, nr_pages,
 						      WB_REASON_FS_FREE_SPACE);
 	if (!started) {
 		/*
@@ -6716,7 +6699,7 @@ reada:
 }
 
 /*
- * hepler to process tree block while walking down the tree.
+ * helper to process tree block while walking down the tree.
  *
  * when wc->stage == UPDATE_BACKREF, this function updates
  * back refs for pointers in the block.
@@ -6791,7 +6774,7 @@ static noinline int walk_down_proc(struct btrfs_trans_handle *trans,
 }
 
 /*
- * hepler to process tree block pointer.
+ * helper to process tree block pointer.
  *
  * when wc->stage == DROP_REFERENCE, this function checks
  * reference count of the block pointed to. if the block
@@ -6929,7 +6912,7 @@ skip:
 }
 
 /*
- * hepler to process tree block while walking up the tree.
+ * helper to process tree block while walking up the tree.
  *
  * when wc->stage == DROP_REFERENCE, this function drops
  * reference count on the block.
