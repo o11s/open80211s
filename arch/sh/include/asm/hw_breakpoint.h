@@ -7,23 +7,13 @@
 
 #include <linux/kdebug.h>
 #include <linux/types.h>
+#include <cpu/ubc.h>
 
 struct arch_hw_breakpoint {
 	char		*name; /* Contains name of the symbol to set bkpt */
 	unsigned long	address;
 	u16		len;
 	u16		type;
-};
-
-enum {
-	SH_BREAKPOINT_READ	= (1 << 1),
-	SH_BREAKPOINT_WRITE	= (1 << 2),
-	SH_BREAKPOINT_RW	= SH_BREAKPOINT_READ | SH_BREAKPOINT_WRITE,
-
-	SH_BREAKPOINT_LEN_1	= (1 << 12),
-	SH_BREAKPOINT_LEN_2	= (1 << 13),
-	SH_BREAKPOINT_LEN_4	= SH_BREAKPOINT_LEN_1 | SH_BREAKPOINT_LEN_2,
-	SH_BREAKPOINT_LEN_8	= (1 << 14),
 };
 
 struct sh_ubc {
