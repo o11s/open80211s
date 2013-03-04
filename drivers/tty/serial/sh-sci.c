@@ -52,6 +52,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
+#include <linux/of.h>
 
 #ifdef CONFIG_SUPERH
 #include <asm/sh_bios.h>
