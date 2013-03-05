@@ -320,7 +320,7 @@ config HID_LOGITECH_DJ
 	Say Y if you want support for Logitech Unifying receivers and devices.
 	Unifying receivers are capable of pairing up to 6 Logitech compliant
 	devices to the same receiver. Without this driver it will be handled by
-	generic USB_HID driver and all incomming events will be multiplexed
+	generic USB_HID driver and all incoming events will be multiplexed
 	into a single mouse and a single keyboard device.
 
 config LOGITECH_FF
@@ -738,7 +738,7 @@ config HID_SENSOR_HUB
 	depends on USB_HID && GENERIC_HARDIRQS
 	select MFD_CORE
 	default n
-	-- help---
+	---help---
 	  Support for HID Sensor framework. This creates a MFD instance
 	  for a sensor hub and identifies all the sensors connected to it.
 	  Each sensor is registered as a MFD cell, so that sensor specific

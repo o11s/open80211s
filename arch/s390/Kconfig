@@ -78,7 +78,6 @@ config S390
 	select HAVE_KVM if 64BIT
 	select HAVE_ARCH_TRACEHOOK
 	select INIT_ALL_POSSIBLE
-	select HAVE_IRQ_WORK
 	select HAVE_PERF_EVENTS
 	select ARCH_HAVE_NMI_SAFE_CMPXCHG
 	select HAVE_DEBUG_KMEMLEAK
@@ -718,8 +717,8 @@ source "arch/s390/kvm/Kconfig"
 
 config S390_GUEST
 	def_bool y
-	prompt "s390 support for virtio devices (EXPERIMENTAL)"
-	depends on 64BIT && EXPERIMENTAL
+	prompt "s390 support for virtio devices"
+	depends on 64BIT
 	select VIRTUALIZATION
 	select VIRTIO
 	select VIRTIO_CONSOLE

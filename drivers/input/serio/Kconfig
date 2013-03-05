@@ -36,6 +36,7 @@ config SERIO_I8042
 config SERIO_SERPORT
 	tristate "Serial port line discipline"
 	default y
+	depends on TTY
 	help
 	  Say Y here if you plan to use an input device (mouse, joystick,
 	  tablet, 6dof) that communicates over the RS232 serial (COM) port.
@@ -236,6 +237,7 @@ config SERIO_PS2MULT
 
 config SERIO_ARC_PS2
 	tristate "ARC PS/2 support"
+	depends on GENERIC_HARDIRQS
 	help
 	  Say Y here if you have an ARC FPGA platform with a PS/2
 	  controller in it.

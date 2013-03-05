@@ -151,9 +151,7 @@ static struct sctp_endpoint *sctp_endpoint_init(struct sctp_endpoint *ep,
 	ep->rcvbuf_policy = net->sctp.rcvbuf_policy;
 
 	/* Initialize the secret key used with cookie. */
-	get_random_bytes(&ep->secret_key[0], SCTP_SECRET_SIZE);
-	ep->last_key = ep->current_key = 0;
-	ep->key_changed_at = jiffies;
+	get_random_bytes(ep->secret_key, sizeof(ep->secret_key));
 
 	/* SCTP-AUTH extensions*/
 	INIT_LIST_HEAD(&ep->endpoint_shared_keys);
@@ -270,6 +268,8 @@ static void sctp_endpoint_destroy(struct sctp_endpoint *ep)
 	/* Cleanup. */
 	sctp_inq_free(&ep->base.inqueue);
 	sctp_bind_addr_free(&ep->base.bind_addr);
+
+	memset(ep->secret_key, 0, sizeof(ep->secret_key));
 
 	/* Remove and free the port */
 	if (sctp_sk(ep->base.sk)->bind_hash)
