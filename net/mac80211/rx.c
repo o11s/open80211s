@@ -2077,13 +2077,6 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	    ether_addr_equal(sdata->vif.addr, hdr->addr3))
 		return RX_CONTINUE;
 
-	q = ieee80211_select_queue_80211(sdata, skb, hdr);
-	if (ieee80211_queue_stopped(&local->hw, q)) {
-		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_congestion);
-		return RX_DROP_MONITOR;
-	}
-	skb_set_queue_mapping(skb, q);
-
 	if (!--mesh_hdr->ttl) {
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_ttl);
 		goto out;
@@ -2106,21 +2099,45 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
 	info->control.vif = &rx->sdata->vif;
 	info->control.jiffies = jiffies;
+
+	/* unicast frame may go out on a different HW, so resolve now */
+	if (!is_multicast_ether_addr(fwd_hdr->addr1)) {
+		if (!mesh_nexthop_lookup(mbss, fwd_skb))
+			/* next hop may be on a different interface */
+			local = vif_to_sdata(info->control.vif)->local;
+		else {
+			/* unable to resolve next hop */
+			mesh_path_error_tx(sdata, ifmsh->mshcfg.element_ttl,
+					   fwd_hdr->addr3, 0, reason,
+					   fwd_hdr->addr2);
+			IEEE80211_IFSTA_MESH_CTR_INC(ifmsh,
+						     dropped_frames_no_route);
+			kfree_skb(fwd_skb);
+			return RX_DROP_MONITOR;
+	       }
+	}
+
+	/*
+	 * note: ifmsh still points to RX iface (for forwarded frame
+	 * statistics), while local is sending HW
+	 */
+	q = ieee80211_select_queue_80211(vif_to_sdata(info->control.vif),
+					 fwd_skb, fwd_hdr);
+	if (ieee80211_queue_stopped(&local->hw, q)) {
+		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_congestion);
+		kfree_skb(fwd_skb);
+		return RX_DROP_MONITOR;
+	}
+	skb_set_queue_mapping(fwd_skb, q);
+
 	if (is_multicast_ether_addr(fwd_hdr->addr1)) {
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, fwded_mcast);
 		memcpy(fwd_hdr->addr2, sdata->vif.addr, ETH_ALEN);
 		/* update power mode indication when forwarding */
 		ieee80211_mps_set_frame_flags(sdata, NULL, fwd_hdr);
-	} else if (!mesh_nexthop_lookup(mbss, fwd_skb)) {
+	} else {
 		/* mesh power mode flags updated in mesh_nexthop_lookup */
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, fwded_unicast);
-	} else {
-		/* unable to resolve next hop */
-		mesh_path_error_tx(sdata, ifmsh->mshcfg.element_ttl,
-				   fwd_hdr->addr3, 0, reason, fwd_hdr->addr2);
-		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_no_route);
-		kfree_skb(fwd_skb);
-		return RX_DROP_MONITOR;
 	}
 
 	IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, fwded_frames);
