@@ -210,15 +210,12 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 				    __le32 preq_id,
 				    struct ieee80211_sub_if_data *sdata)
 {
-	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
-	struct wireless_dev *wdev;
+	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
+	struct ieee80211_sub_if_data *tmp_sdata;
 	int ret = 0;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
-		struct ieee80211_sub_if_data *tmp_sdata =
-			IEEE80211_WDEV_TO_SUB_IF(wdev);
-
+	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 		ret = __mesh_path_sel_frame_tx(action, flags, orig_addr, orig_sn,
 					 target_flags, target, target_sn,
 					 da, hop_count, ttl,
@@ -232,15 +229,12 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 static inline bool matches_local_if(struct ieee80211_sub_if_data *sdata,
 				    const u8 *addr)
 {
-	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
-	struct wireless_dev *wdev;
+	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
+	struct ieee80211_sub_if_data *tmp_sdata;
 	bool found = false;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
-		struct ieee80211_sub_if_data *tmp_sdata =
-			IEEE80211_WDEV_TO_SUB_IF(wdev);
-
+	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 		if (ether_addr_equal(addr, tmp_sdata->vif.addr)) {
 			found = true;
 			break;
@@ -358,16 +352,14 @@ int mesh_path_error_tx(struct ieee80211_sub_if_data *sdata,
 void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
 			    struct sk_buff *skb)
 {
-	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
+	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
 	struct ieee80211_hdr *fwd_hdr;
-	struct wireless_dev *wdev;
 	struct sk_buff *fwd_skb;
 	struct ieee80211_tx_info *info;
+	struct ieee80211_sub_if_data *tmp_sdata;
 
 	rcu_read_lock();
-	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
-		struct ieee80211_sub_if_data *tmp_sdata =
-			IEEE80211_WDEV_TO_SUB_IF(wdev);
+	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 
 		if (ether_addr_equal(sdata->vif.addr, tmp_sdata->vif.addr))
 			continue;

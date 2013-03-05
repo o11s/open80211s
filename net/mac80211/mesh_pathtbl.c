@@ -355,13 +355,11 @@ static struct mesh_path *__mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 				      struct ieee80211_sub_if_data *sdata)
 {
-	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
-	struct wireless_dev *wdev;
+	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
+	struct ieee80211_sub_if_data *tmp_sdata;
 	struct mesh_path *mpath;
 
-	list_for_each_entry_rcu(wdev, &mbss->wdevs, mbss_wdevs) {
-		struct ieee80211_sub_if_data *tmp_sdata =
-			IEEE80211_WDEV_TO_SUB_IF(wdev);
+	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 		mpath = __mpath_lookup(tbl, dst, tmp_sdata);
 		if (mpath)
 			return mpath;

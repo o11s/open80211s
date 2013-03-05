@@ -65,13 +65,13 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 static void dump_mbss_list(char *reason)
 {
 	struct mesh_local_bss *mbss;
-	struct wireless_dev *wdev;
+	struct ieee80211_sub_if_data *sdata;
 
 	printk(KERN_DEBUG "mbss dump start (%s)\n", reason);
-	list_for_each_entry(mbss, &mesh_bss_list, bss_list) {
+	list_for_each_entry(mbss, &mesh_bss_list, list) {
 		printk(KERN_DEBUG "mbss ssid: %s\n", mbss->mesh_id);
-		list_for_each_entry(wdev, &mbss->wdevs, mbss_wdevs) {
-			printk(KERN_DEBUG "mbss iface: %s\n", netdev_name(wdev->netdev));
+		list_for_each_entry(sdata, &mbss->if_list, u.mesh.if_list) {
+			printk(KERN_DEBUG "mbss iface: %s\n", netdev_name(sdata->dev));
 		}
 	}
 	printk(KERN_DEBUG "mbss dump end\n");
@@ -102,7 +102,7 @@ mesh_bss_find(struct mesh_setup *setup, const struct mesh_config *conf)
 
 	lockdep_assert_held(&mesh_bss_mtx);
 
-	list_for_each_entry(mbss, &mesh_bss_list, bss_list)
+	list_for_each_entry(mbss, &mesh_bss_list, list)
 		if (mesh_bss_matches(mbss, setup, conf))
 			return mbss;
 
@@ -123,7 +123,7 @@ mesh_bss_create(struct mesh_setup *setup, const struct mesh_config *conf)
 	if (!mbss)
 		return NULL;
 
-	INIT_LIST_HEAD(&mbss->wdevs);
+	INIT_LIST_HEAD(&mbss->if_list);
 
 	mbss->mesh_id_len = setup->mesh_id_len;
 	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
@@ -135,33 +135,33 @@ mesh_bss_create(struct mesh_setup *setup, const struct mesh_config *conf)
 	return mbss;
 }
 
-static void mesh_bss_remove(struct net_device *dev)
+static void mesh_bss_remove(struct ieee80211_sub_if_data *sdata)
 {
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-	struct mesh_local_bss *mbss = wdev->mesh_bss;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	struct mesh_local_bss *mbss = ifmsh->mesh_bss;
 
 	lockdep_assert_held(&mesh_bss_mtx);
 
 	if (!mbss)
 		return;
 
-	list_del_rcu(&wdev->mbss_wdevs);
+	list_del_rcu(&ifmsh->if_list);
 	synchronize_rcu();
-	wdev->mesh_bss = NULL;
+	ifmsh->mesh_bss = NULL;
 
 	/* free when no more devs have this mbss */
-	if (list_empty(&mbss->wdevs)) {
-		list_del(&mbss->bss_list);
+	if (list_empty(&mbss->if_list)) {
+		list_del(&mbss->list);
 		kfree(mbss);
 	}
 }
 
 static
-int mesh_bss_add(struct net_device *dev,
+int mesh_bss_add(struct ieee80211_sub_if_data *sdata,
 		 struct mesh_setup *setup,
 		 const struct mesh_config *conf)
 {
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct mesh_local_bss *mbss;
 	int ret;
 
@@ -176,11 +176,11 @@ int mesh_bss_add(struct net_device *dev,
 			ret = -ENOMEM;
 			goto out_fail;
 		}
-		list_add(&mbss->bss_list, &mesh_bss_list);
+		list_add(&mbss->list, &mesh_bss_list);
 	}
 
-	wdev->mesh_bss = mbss;
-	list_add_rcu(&wdev->mbss_wdevs, &mbss->wdevs);
+	ifmsh->mesh_bss = mbss;
+	list_add_rcu(&ifmsh->if_list, &mbss->if_list);
 
 	dump_mbss_list("join");
 	ret = 0;
@@ -965,7 +965,7 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	setup.is_secure = ifmsh->security & IEEE80211_MESH_SEC_SECURED;
 	setup.shared = ifmsh->share_mbss;
 
-	ret = mesh_bss_add(sdata->dev, &setup, &ifmsh->mshcfg);
+	ret = mesh_bss_add(sdata, &setup, &ifmsh->mshcfg);
 	if (ret) {
 		ieee80211_stop_mesh(sdata);
 		return ret;
@@ -986,7 +986,7 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	netif_carrier_off(sdata->dev);
 
 	mutex_lock(&mesh_bss_mtx);
-	mesh_bss_remove(sdata->dev);
+	mesh_bss_remove(sdata);
 	mutex_unlock(&mesh_bss_mtx);
 
 	/* stop the beacon */
