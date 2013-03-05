@@ -212,6 +212,8 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 {
 	struct mesh_local_bss *mbss = sdata->wdev.mesh_bss;
 	struct wireless_dev *wdev;
+	bool broadcast = is_broadcast_ether_addr(da);
+	struct sta_info *sta;
 	int ret = 0;
 
 	rcu_read_lock();
@@ -219,6 +221,12 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 		struct ieee80211_sub_if_data *tmp_sdata =
 			IEEE80211_WDEV_TO_SUB_IF(wdev);
 
+		if (!broadcast) {
+			/* find right outgoing interface */
+			sta = sta_info_get(tmp_sdata, da);
+			if (!sta)
+				continue;
+		}
 		ret = __mesh_path_sel_frame_tx(action, flags, orig_addr, orig_sn,
 					 target_flags, target, target_sn,
 					 da, hop_count, ttl,
