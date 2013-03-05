@@ -1215,12 +1215,13 @@ endlookup:
 }
 
 /**
- * mesh_nexthop_lookup - put the appropriate next hop on a mesh frame. Calling
- * this function is considered "using" the associated mpath, so preempt a path
- * refresh if this mpath expires soon.
+ * mesh_nexthop_lookup - put the appropriate next hop on a mesh frame and
+ * insert the correct outgoing interface on the skb cb. Calling this function
+ * is considered "using" the associated mpath, so preempt a path refresh if
+ * this mpath expires soon.
  *
  * @skb: 802.11 frame to be sent
- * @sdata: network subif the frame will be sent through
+ * @sdata: network subif which is a member of this MBSS
  *
  * Returns: 0 if the next hop was found. Nonzero otherwise.
  */
@@ -1230,6 +1231,7 @@ int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
 	struct mesh_path *mpath;
 	struct sta_info *next_hop;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	struct ieee80211_tx_info *info;
 	u8 *target_addr = hdr->addr3;
 	int err = -ENOENT;
 
@@ -1249,9 +1251,11 @@ int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
 
 	next_hop = rcu_dereference(mpath->next_hop);
 	if (next_hop) {
+		info = IEEE80211_SKB_CB(skb);
+		info->control.vif = &next_hop->sdata->vif;
 		memcpy(hdr->addr1, next_hop->sta.addr, ETH_ALEN);
-		memcpy(hdr->addr2, sdata->vif.addr, ETH_ALEN);
-		ieee80211_mps_set_frame_flags(sdata, next_hop, hdr);
+		memcpy(hdr->addr2, mpath->sdata->vif.addr, ETH_ALEN);
+		ieee80211_mps_set_frame_flags(mpath->sdata, next_hop, hdr);
 		err = 0;
 	}
 
