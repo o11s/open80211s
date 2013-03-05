@@ -95,134 +95,6 @@ const struct mesh_setup default_mesh_setup = {
 	.shared = false,
 };
 
-static void dump_mbss_list(char *reason)
-{
-	struct mesh_local_bss *mbss;
-	struct wireless_dev *wdev;
-
-	printk(KERN_DEBUG "mbss dump start (%s)\n", reason);
-	list_for_each_entry(mbss, &mesh_bss_list, bss_list) {
-		printk(KERN_DEBUG "mbss ssid: %s\n", mbss->mesh_id);
-		list_for_each_entry(wdev, &mbss->wdevs, mbss_wdevs) {
-			printk(KERN_DEBUG "mbss iface: %s\n", netdev_name(wdev->netdev));
-		}
-	}
-	printk(KERN_DEBUG "mbss dump end\n");
-}
-
-static inline bool
-mesh_bss_matches(struct mesh_local_bss *mbss,
-		 struct mesh_setup *setup,
-		 const struct mesh_config *conf)
-{
-	return mbss->can_share &&
-	       setup->shared &&
-	       mbss->mesh_id_len == setup->mesh_id_len &&
-	       memcmp(mbss->mesh_id, setup->mesh_id, mbss->mesh_id_len) == 0 &&
-	       mbss->path_sel_proto == setup->path_sel_proto &&
-	       mbss->path_metric == setup->path_metric &&
-	       mbss->sync_method == setup->sync_method &&
-	       mbss->is_secure == setup->is_secure;
-}
-
-static struct mesh_local_bss * __must_check
-cfg80211_mesh_bss_find(struct mesh_setup *setup,
-		       const struct mesh_config *conf)
-{
-	struct mesh_local_bss *mbss;
-
-	if (WARN_ON(!setup->mesh_id_len))
-		return NULL;
-
-	list_for_each_entry(mbss, &mesh_bss_list, bss_list)
-		if (mesh_bss_matches(mbss, setup, conf))
-			return mbss;
-
-	return NULL;
-}
-
-static struct mesh_local_bss * __must_check
-cfg80211_mesh_bss_create(struct mesh_setup *setup,
-			 const struct mesh_config *conf)
-{
-	struct mesh_local_bss *mbss;
-
-	lockdep_assert_held(&mesh_bss_mtx);
-
-	if (WARN_ON(setup->mesh_id_len > IEEE80211_MAX_SSID_LEN))
-		return NULL;
-
-	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
-	if (!mbss)
-		return NULL;
-
-	INIT_LIST_HEAD(&mbss->wdevs);
-
-	mbss->mesh_id_len = setup->mesh_id_len;
-	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
-	mbss->can_share = setup->shared;
-	mbss->path_metric = setup->path_metric;
-	mbss->path_sel_proto = setup->path_sel_proto;
-	mbss->sync_method = setup->sync_method;
-	mbss->is_secure = setup->is_secure;
-	return mbss;
-}
-
-static void cfg80211_mesh_bss_remove(struct net_device *dev)
-{
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-	struct mesh_local_bss *mbss = wdev->mesh_bss;
-
-	lockdep_assert_held(&mesh_bss_mtx);
-
-	if (!mbss)
-		return;
-
-	list_del_rcu(&wdev->mbss_wdevs);
-	synchronize_rcu();
-	wdev->mesh_bss = NULL;
-
-	/* free when no more devs have this mbss */
-	if (list_empty(&mbss->wdevs)) {
-		list_del(&mbss->bss_list);
-		kfree(mbss);
-	}
-}
-
-int cfg80211_mesh_joined(struct net_device *dev,
-			 struct mesh_setup *setup,
-			 const struct mesh_config *conf)
-{
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-	struct mesh_local_bss *mbss;
-	int ret;
-
-	if (WARN_ON(!setup->mesh_id_len))
-		return -EINVAL;
-
-	mutex_lock(&mesh_bss_mtx);
-	mbss = cfg80211_mesh_bss_find(setup, conf);
-	if (!mbss) {
-		mbss = cfg80211_mesh_bss_create(setup, conf);
-		if (!mbss) {
-			ret = -ENOMEM;
-			goto out_fail;
-		}
-		list_add(&mbss->bss_list, &mesh_bss_list);
-	}
-
-	wdev->mesh_bss = mbss;
-	list_add_rcu(&wdev->mbss_wdevs, &mbss->wdevs);
-
-	dump_mbss_list("join");
-	ret = 0;
-
- out_fail:
-	mutex_unlock(&mesh_bss_mtx);
-	return ret;
-}
-EXPORT_SYMBOL(cfg80211_mesh_joined);
-
 int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
 			 struct net_device *dev,
 			 struct mesh_setup *setup,
@@ -299,8 +171,6 @@ int __cfg80211_join_mesh(struct cfg80211_registered_device *rdev,
 				    CHAN_MODE_SHARED);
 	if (err)
 		return err;
-
-	dump_mbss_list("pre-join");
 
 	err = rdev_join_mesh(rdev, dev, conf, setup);
 	if (!err) {
@@ -402,10 +272,6 @@ static int __cfg80211_leave_mesh(struct cfg80211_registered_device *rdev,
 
 	err = rdev_leave_mesh(rdev, dev);
 	if (!err) {
-		mutex_lock(&mesh_bss_mtx);
-		cfg80211_mesh_bss_remove(dev);
-		mutex_unlock(&mesh_bss_mtx);
-
 		wdev->mesh_id_len = 0;
 		wdev->channel = NULL;
 	}
@@ -422,8 +288,6 @@ int cfg80211_leave_mesh(struct cfg80211_registered_device *rdev,
 	wdev_lock(wdev);
 	err = __cfg80211_leave_mesh(rdev, dev);
 	wdev_unlock(wdev);
-
-	dump_mbss_list("post-leave");
 
 	return err;
 }

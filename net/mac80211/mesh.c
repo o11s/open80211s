@@ -20,6 +20,10 @@
 static int mesh_allocated;
 static struct kmem_cache *rm_cache;
 
+/* mesh_bss_mtx protects updates; internal iface list uses RCU */
+static DEFINE_MUTEX(mesh_bss_mtx);
+static LIST_HEAD(mesh_bss_list);
+
 bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 {
 	return (mgmt->u.action.u.mesh_action.action_code ==
@@ -56,6 +60,134 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 	}
 
 	ieee80211_queue_work(&local->hw, &sdata->work);
+}
+
+static void dump_mbss_list(char *reason)
+{
+	struct mesh_local_bss *mbss;
+	struct wireless_dev *wdev;
+
+	printk(KERN_DEBUG "mbss dump start (%s)\n", reason);
+	list_for_each_entry(mbss, &mesh_bss_list, bss_list) {
+		printk(KERN_DEBUG "mbss ssid: %s\n", mbss->mesh_id);
+		list_for_each_entry(wdev, &mbss->wdevs, mbss_wdevs) {
+			printk(KERN_DEBUG "mbss iface: %s\n", netdev_name(wdev->netdev));
+		}
+	}
+	printk(KERN_DEBUG "mbss dump end\n");
+}
+
+static inline bool
+mesh_bss_matches(struct mesh_local_bss *mbss,
+		 struct mesh_setup *setup,
+		 const struct mesh_config *conf)
+{
+	return mbss->can_share &&
+	       setup->shared &&
+	       mbss->mesh_id_len == setup->mesh_id_len &&
+	       memcmp(mbss->mesh_id, setup->mesh_id, mbss->mesh_id_len) == 0 &&
+	       mbss->path_sel_proto == setup->path_sel_proto &&
+	       mbss->path_metric == setup->path_metric &&
+	       mbss->sync_method == setup->sync_method &&
+	       mbss->is_secure == setup->is_secure;
+}
+
+static struct mesh_local_bss * __must_check
+mesh_bss_find(struct mesh_setup *setup, const struct mesh_config *conf)
+{
+	struct mesh_local_bss *mbss;
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return NULL;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	list_for_each_entry(mbss, &mesh_bss_list, bss_list)
+		if (mesh_bss_matches(mbss, setup, conf))
+			return mbss;
+
+	return NULL;
+}
+
+static struct mesh_local_bss * __must_check
+mesh_bss_create(struct mesh_setup *setup, const struct mesh_config *conf)
+{
+	struct mesh_local_bss *mbss;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	if (WARN_ON(setup->mesh_id_len > IEEE80211_MAX_SSID_LEN))
+		return NULL;
+
+	mbss = kzalloc(sizeof(*mbss), GFP_KERNEL);
+	if (!mbss)
+		return NULL;
+
+	INIT_LIST_HEAD(&mbss->wdevs);
+
+	mbss->mesh_id_len = setup->mesh_id_len;
+	memcpy(mbss->mesh_id, setup->mesh_id, setup->mesh_id_len);
+	mbss->can_share = setup->shared;
+	mbss->path_metric = setup->path_metric;
+	mbss->path_sel_proto = setup->path_sel_proto;
+	mbss->sync_method = setup->sync_method;
+	mbss->is_secure = setup->is_secure;
+	return mbss;
+}
+
+static void mesh_bss_remove(struct net_device *dev)
+{
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct mesh_local_bss *mbss = wdev->mesh_bss;
+
+	lockdep_assert_held(&mesh_bss_mtx);
+
+	if (!mbss)
+		return;
+
+	list_del_rcu(&wdev->mbss_wdevs);
+	synchronize_rcu();
+	wdev->mesh_bss = NULL;
+
+	/* free when no more devs have this mbss */
+	if (list_empty(&mbss->wdevs)) {
+		list_del(&mbss->bss_list);
+		kfree(mbss);
+	}
+}
+
+static
+int mesh_bss_add(struct net_device *dev,
+		 struct mesh_setup *setup,
+		 const struct mesh_config *conf)
+{
+	struct wireless_dev *wdev = dev->ieee80211_ptr;
+	struct mesh_local_bss *mbss;
+	int ret;
+
+	if (WARN_ON(!setup->mesh_id_len))
+		return -EINVAL;
+
+	mutex_lock(&mesh_bss_mtx);
+	mbss = mesh_bss_find(setup, conf);
+	if (!mbss) {
+		mbss = mesh_bss_create(setup, conf);
+		if (!mbss) {
+			ret = -ENOMEM;
+			goto out_fail;
+		}
+		list_add(&mbss->bss_list, &mesh_bss_list);
+	}
+
+	wdev->mesh_bss = mbss;
+	list_add_rcu(&wdev->mbss_wdevs, &mbss->wdevs);
+
+	dump_mbss_list("join");
+	ret = 0;
+
+ out_fail:
+	mutex_unlock(&mesh_bss_mtx);
+	return ret;
 }
 
 /**
@@ -833,7 +965,7 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	setup.is_secure = ifmsh->security & IEEE80211_MESH_SEC_SECURED;
 	setup.shared = ifmsh->share_mbss;
 
-	ret = cfg80211_mesh_joined(sdata->dev, &setup, &ifmsh->mshcfg);
+	ret = mesh_bss_add(sdata->dev, &setup, &ifmsh->mshcfg);
 	if (ret) {
 		ieee80211_stop_mesh(sdata);
 		return ret;
@@ -852,6 +984,10 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	struct beacon_data *bcn;
 
 	netif_carrier_off(sdata->dev);
+
+	mutex_lock(&mesh_bss_mtx);
+	mesh_bss_remove(sdata->dev);
+	mutex_unlock(&mesh_bss_mtx);
 
 	/* stop the beacon */
 	ifmsh->mesh_id_len = 0;
