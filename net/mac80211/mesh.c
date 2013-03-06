@@ -984,6 +984,7 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	struct beacon_data *bcn;
 
 	netif_carrier_off(sdata->dev);
+	netif_tx_stop_all_queues(sdata->dev);
 
 	mutex_lock(&mesh_bss_mtx);
 	mesh_bss_remove(sdata);
