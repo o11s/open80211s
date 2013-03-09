@@ -1500,7 +1500,8 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 		} else {
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
 		}
-		if (is_multicast_ether_addr(hdr->addr1))
+		if (is_multicast_ether_addr(hdr->addr1) &&
+		    !ieee80211_is_probe_req(hdr->frame_control))
 			mesh_local_bss_forward(sdata, skb);
 	}
 
