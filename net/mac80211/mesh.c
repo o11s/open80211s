@@ -984,11 +984,6 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	struct beacon_data *bcn;
 
 	netif_carrier_off(sdata->dev);
-	netif_tx_stop_all_queues(sdata->dev);
-
-	mutex_lock(&mesh_bss_mtx);
-	mesh_bss_remove(sdata);
-	mutex_unlock(&mesh_bss_mtx);
 
 	/* stop the beacon */
 	ifmsh->mesh_id_len = 0;
@@ -1025,6 +1020,12 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	local->fif_other_bss--;
 	atomic_dec(&local->iff_allmultis);
 	ieee80211_configure_filter(local);
+
+	netif_tx_stop_all_queues(sdata->dev);
+
+	mutex_lock(&mesh_bss_mtx);
+	mesh_bss_remove(sdata);
+	mutex_unlock(&mesh_bss_mtx);
 
 	sdata->u.mesh.timers_running = 0;
 }
