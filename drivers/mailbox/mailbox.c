@@ -31,7 +31,7 @@
 #include <linux/notifier.h>
 #include <linux/module.h>
 
-#include <plat/mailbox.h>
+#include "mailbox_internal.h"
 
 static struct omap_mbox **mboxes;
 
@@ -130,7 +130,7 @@ static void mbox_tx_tasklet(unsigned long tx_data)
 		}
 
 		ret = kfifo_out(&mq->fifo, (unsigned char *)&msg,
-								sizeof(msg));
+				sizeof(msg));
 		WARN_ON(ret != sizeof(msg));
 
 		mbox_fifo_write(mbox, msg);
@@ -143,7 +143,7 @@ static void mbox_tx_tasklet(unsigned long tx_data)
 static void mbox_rx_work(struct work_struct *work)
 {
 	struct omap_mbox_queue *mq =
-			container_of(work, struct omap_mbox_queue, work);
+		container_of(work, struct omap_mbox_queue, work);
 	mbox_msg_t msg;
 	int len;
 
@@ -152,7 +152,7 @@ static void mbox_rx_work(struct work_struct *work)
 		WARN_ON(len != sizeof(msg));
 
 		blocking_notifier_call_chain(&mq->mbox->notifier, len,
-								(void *)msg);
+				(void *)msg);
 		spin_lock_irq(&mq->lock);
 		if (mq->full) {
 			mq->full = false;
@@ -214,8 +214,8 @@ static irqreturn_t mbox_interrupt(int irq, void *p)
 }
 
 static struct omap_mbox_queue *mbox_queue_alloc(struct omap_mbox *mbox,
-					void (*work) (struct work_struct *),
-					void (*tasklet)(unsigned long))
+		void (*work) (struct work_struct *),
+		void (*tasklet)(unsigned long))
 {
 	struct omap_mbox_queue *mq;
 
@@ -262,10 +262,10 @@ static int omap_mbox_startup(struct omap_mbox *mbox)
 
 	if (!mbox->use_count++) {
 		ret = request_irq(mbox->irq, mbox_interrupt, IRQF_SHARED,
-							mbox->name, mbox);
+				mbox->name, mbox);
 		if (unlikely(ret)) {
 			pr_err("failed to register mailbox interrupt:%d\n",
-									ret);
+					ret);
 			goto fail_request_irq;
 		}
 		mq = mbox_queue_alloc(mbox, NULL, mbox_tx_tasklet);
@@ -417,7 +417,7 @@ static int __init omap_mbox_init(void)
 	/* kfifo size sanity check: alignment and minimal size */
 	mbox_kfifo_size = ALIGN(mbox_kfifo_size, sizeof(mbox_msg_t));
 	mbox_kfifo_size = max_t(unsigned int, mbox_kfifo_size,
-							sizeof(mbox_msg_t));
+			sizeof(mbox_msg_t));
 
 	return 0;
 }

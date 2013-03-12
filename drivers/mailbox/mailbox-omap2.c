@@ -19,7 +19,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/platform_data/mailbox-omap.h>
 
-#include <plat/mailbox.h>
+#include "mailbox_internal.h"
 
 #define MAILBOX_REVISION		0x000
 #define MAILBOX_MESSAGE(m)		(0x040 + 4 * (m))
@@ -63,7 +63,7 @@ struct omap_mbox2_priv {
 };
 
 static void omap2_mbox_enable_irq(struct omap_mbox *mbox,
-				  omap_mbox_type_t irq);
+		omap_mbox_type_t irq);
 
 static inline unsigned int mbox_read_reg(size_t ofs)
 {
@@ -185,7 +185,7 @@ static void omap2_mbox_save_ctx(struct omap_mbox *mbox)
 		p->ctx[i] = mbox_read_reg(i * sizeof(u32));
 
 		dev_dbg(mbox->dev, "%s: [%02x] %08x\n", __func__,
-			i, p->ctx[i]);
+				i, p->ctx[i]);
 	}
 }
 
@@ -203,7 +203,7 @@ static void omap2_mbox_restore_ctx(struct omap_mbox *mbox)
 		mbox_write_reg(p->ctx[i], i * sizeof(u32));
 
 		dev_dbg(mbox->dev, "%s: [%02x] %08x\n", __func__,
-			i, p->ctx[i]);
+				i, p->ctx[i]);
 	}
 }
 
@@ -325,9 +325,9 @@ static int omap2_mbox_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver omap2_mbox_driver = {
-	.probe = omap2_mbox_probe,
-	.remove = omap2_mbox_remove,
-	.driver = {
+	.probe	= omap2_mbox_probe,
+	.remove	= omap2_mbox_remove,
+	.driver	= {
 		.name = "omap-mailbox",
 	},
 };

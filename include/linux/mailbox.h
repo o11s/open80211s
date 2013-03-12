@@ -1,4 +1,10 @@
-/* mailbox.h */
+/*
+ * mailbox: interprocessor communication module
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
 
 #ifndef MAILBOX_H
 #define MAILBOX_H
@@ -58,7 +64,7 @@ struct omap_mbox {
 	struct device		*dev;
 	void			*priv;
 	int			use_count;
-	struct blocking_notifier_head   notifier;
+	struct blocking_notifier_head	notifier;
 };
 
 int omap_mbox_msg_send(struct omap_mbox *, mbox_msg_t msg);
