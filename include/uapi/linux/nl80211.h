@@ -2592,7 +2592,7 @@ enum nl80211_meshconf_params {
  *
  * @NL80211_MESH_SETUP_CAN_SHARE: Enable this option to allow sharing an MBSS
  *	profile and frame forwarding across multiple virtual interfaces with the
- *	same profile. Defaults to off.
+ *	same profile. Defaults to on.
  *
  * @NL80211_MESH_SETUP_ATTR_MAX: highest possible mesh setup attribute number
  *
