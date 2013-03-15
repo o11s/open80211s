@@ -27,6 +27,10 @@ next/multiplatform
 	cns3xxx/multiplatform
 		patches <1363299271-8283-1-git-send-email-arnd@arndb.de>
 
+next/dt
+	mvebu/dt
+		git://git.infradead.org/users/jcooper/linux.git tags/mvebu_dt_for_v3.10
+
 next/drivers
 	samsung/timer
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/timer-samsung
