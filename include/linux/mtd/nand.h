@@ -591,6 +591,8 @@ struct nand_chip {
  * @chipsize: total chip size in MiB
  * @erasesize: eraseblock size in bytes (determined from the extended ID if 0)
  * @options: stores various chip bit options
+ * @id_len: The valid length of the @id.
+ * @oobsize: OOB size
  */
 struct nand_flash_dev {
 	char *name;
@@ -605,6 +607,8 @@ struct nand_flash_dev {
 	unsigned int chipsize;
 	unsigned int erasesize;
 	unsigned int options;
+	uint16_t id_len;
+	uint16_t oobsize;
 };
 
 /**
