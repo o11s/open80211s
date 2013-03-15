@@ -25,3 +25,12 @@ next/multiplatform
 	cns3xxx/multiplatform
 		patches <1363299271-8283-1-git-send-email-arnd@arndb.de>
 
+next/drivers
+	samsung/timer
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/timer-samsung
+		depends on samsung/cleanup-s3c
+	samsung/irq-s3c24xx
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/irq-s3c24xx
+	samsung/pinctrl-exynos
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/pinctrl-exynos
+
