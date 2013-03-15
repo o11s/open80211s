@@ -10,3 +10,12 @@ Format is a little different from before in an attempt to make it easier to read
 next/fixes-non-critical
 	ux500/dt-fixes
 		  git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-dt-fixes
+
+next/multiplatform
+	nomadik/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-multiplatform
+	spear/multiplatform
+		patches <1363106816-9603-1-git-send-email-arnd@arndb.de>
+	cns3xxx/multiplatform
+		patches <1363299271-8283-1-git-send-email-arnd@arndb.de>
+
