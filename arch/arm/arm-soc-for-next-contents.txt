@@ -16,6 +16,8 @@ next/cleanup
 		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s3c
 	samsung/cleanup-s5p
 		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s5p
+	clksrc/cleanup
+		  git://sources.calxeda.com/kernel/linux.git tags/clksrc-cleanup-for-3.10
 
 next/multiplatform
 	nomadik/multiplatform
