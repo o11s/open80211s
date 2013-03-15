@@ -11,6 +11,12 @@ next/fixes-non-critical
 	ux500/dt-fixes
 		  git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-dt-fixes
 
+next/cleanup
+	samsung/cleanup-s3c
+		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s3c
+	samsung/cleanup-s5p
+		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s5p
+
 next/multiplatform
 	nomadik/multiplatform
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-multiplatform
