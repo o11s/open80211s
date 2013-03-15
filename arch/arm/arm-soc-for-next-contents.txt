@@ -18,6 +18,8 @@ next/cleanup
 		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s5p
 	clksrc/cleanup
 		  git://sources.calxeda.com/kernel/linux.git tags/clksrc-cleanup-for-3.10
+	at91/cleanup
+		  git://github.com/at91linux/linux-at91.git tags/at91-soc
 
 next/multiplatform
 	nomadik/multiplatform
@@ -39,4 +41,5 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/irq-s3c24xx
 	samsung/pinctrl-exynos
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/pinctrl-exynos
-
+	at91/lcdfb
+		git://github.com/at91linux/linux-at91.git tags/at91-driversLCD
