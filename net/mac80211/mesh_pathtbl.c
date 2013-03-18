@@ -357,14 +357,17 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 {
 	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
 	struct ieee80211_sub_if_data *tmp_sdata;
-	struct mesh_path *mpath;
+	struct mesh_path *mpath, *ret = NULL;
 
 	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 		mpath = __mpath_lookup(tbl, dst, tmp_sdata);
-		if (mpath)
-			return mpath;
+		if (!mpath)
+			continue;
+
+		if (!ret || mpath->metric < ret->metric)
+			ret = mpath;
 	}
-	return NULL;
+	return ret;
 }
 
 /**
