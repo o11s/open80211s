@@ -43,3 +43,7 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/pinctrl-exynos
 	at91/lcdfb
 		git://github.com/at91linux/linux-at91.git tags/at91-driversLCD
+
+next/soc
+	prima2/soc
+		patches <1363590279-5656-1-git-send-email-Barry.Song@csr.com>
