@@ -195,27 +195,34 @@ static u32 mesh_table_hash(const u8 *addr, struct ieee80211_sub_if_data *sdata,
 
 /**
  *
- * mesh_path_assign_nexthop - update mesh path next hop
+ * mesh_path_assign_nexthop - update mesh path info
  *
  * @mpath: mesh path to update
  * @sta: next hop to assign
+ *
+ * Updates queued frames and outgoing interface.
  *
  * Locking: mpath->state_lock must be held when calling this function
  */
 void mesh_path_assign_nexthop(struct mesh_path *mpath, struct sta_info *sta)
 {
+	struct ieee80211_sub_if_data *sdata = sta->sdata;
+	struct ieee80211_tx_info *info;
 	struct sk_buff *skb;
 	struct ieee80211_hdr *hdr;
 	unsigned long flags;
 
 	rcu_assign_pointer(mpath->next_hop, sta);
+	mpath->sdata = sdata;
 
 	spin_lock_irqsave(&mpath->frame_queue.lock, flags);
 	skb_queue_walk(&mpath->frame_queue, skb) {
+		info = IEEE80211_SKB_CB(skb);
 		hdr = (struct ieee80211_hdr *) skb->data;
 		memcpy(hdr->addr1, sta->sta.addr, ETH_ALEN);
-		memcpy(hdr->addr2, mpath->sdata->vif.addr, ETH_ALEN);
-		ieee80211_mps_set_frame_flags(sta->sdata, sta, hdr);
+		memcpy(hdr->addr2, sdata->vif.addr, ETH_ALEN);
+		info->control.vif = &sdata->vif;
+		ieee80211_mps_set_frame_flags(sdata, sta, hdr);
 	}
 
 	spin_unlock_irqrestore(&mpath->frame_queue.lock, flags);
