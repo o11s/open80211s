@@ -368,6 +368,7 @@ void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata);
 void ieee80211s_stop(void);
 void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
 			    struct sk_buff *skb);
+#define mbss(sdata) sdata->u.mesh.mesh_bss
 #else
 static inline void
 ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local) {}
