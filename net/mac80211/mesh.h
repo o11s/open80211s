@@ -258,14 +258,14 @@ void ieee80211_mps_frame_release(struct sta_info *sta,
 				 struct ieee802_11_elems *elems);
 
 /* Mesh paths */
-int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
+int mesh_nexthop_lookup(struct mesh_local_bss *mbss,
 			struct sk_buff *skb);
 int mesh_nexthop_resolve(struct ieee80211_sub_if_data *sdata,
 			 struct sk_buff *skb);
 void mesh_path_start_discovery(struct ieee80211_sub_if_data *sdata);
-struct mesh_path *mesh_path_lookup(struct ieee80211_sub_if_data *sdata,
+struct mesh_path *mesh_path_lookup(struct mesh_local_bss *mbss,
 				   const u8 *dst);
-struct mesh_path *mpp_path_lookup(struct ieee80211_sub_if_data *sdata,
+struct mesh_path *mpp_path_lookup(struct mesh_local_bss *mbss,
 				  const u8 *dst);
 int mpp_path_add(struct ieee80211_sub_if_data *sdata,
 		 const u8 *dst, const u8 *mpp);

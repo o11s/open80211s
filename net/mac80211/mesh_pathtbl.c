@@ -359,15 +359,14 @@ static struct mesh_path *__mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 	return NULL;
 }
 
-static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
-				      struct ieee80211_sub_if_data *sdata)
+static struct mesh_path *mpath_lookup(struct mesh_table *tbl,
+				      struct mesh_local_bss *mbss, const u8 *dst)
 {
-	struct mesh_local_bss *mbss = sdata->u.mesh.mesh_bss;
-	struct ieee80211_sub_if_data *tmp_sdata;
+	struct ieee80211_sub_if_data *sdata;
 	struct mesh_path *mpath, *ret = NULL;
 
-	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
-		mpath = __mpath_lookup(tbl, dst, tmp_sdata);
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list) {
+		mpath = __mpath_lookup(tbl, dst, sdata);
 		if (!mpath)
 			continue;
 
@@ -379,7 +378,8 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 
 /**
  * mesh_path_lookup - look up a path in the mesh path table
- * @sdata: local subif
+ *
+ * @mbss: MBSS where this destination might be found
  * @dst: hardware address (ETH_ALEN length) of destination
  *
  * Returns: pointer to the mesh path structure, or NULL if not found
@@ -387,15 +387,15 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
  * Locking: must be called within a read rcu section.
  */
 struct mesh_path *
-mesh_path_lookup(struct ieee80211_sub_if_data *sdata, const u8 *dst)
+mesh_path_lookup(struct mesh_local_bss *mbss, const u8 *dst)
 {
-	return mpath_lookup(rcu_dereference(mesh_paths), dst, sdata);
+	return mpath_lookup(rcu_dereference(mesh_paths), mbss, dst);
 }
 
 struct mesh_path *
-mpp_path_lookup(struct ieee80211_sub_if_data *sdata, const u8 *dst)
+mpp_path_lookup(struct mesh_local_bss *mbss, const u8 *dst)
 {
-	return mpath_lookup(rcu_dereference(mpp_paths), dst, sdata);
+	return mpath_lookup(rcu_dereference(mpp_paths), mbss, dst);
 }
 
 

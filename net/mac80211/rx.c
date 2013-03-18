@@ -1992,6 +1992,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	struct sk_buff *skb = rx->skb, *fwd_skb;
 	struct ieee80211_local *local = rx->local;
 	struct ieee80211_sub_if_data *sdata = rx->sdata;
+	struct mesh_local_bss *mbss = mbss(sdata);
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	__le16 reason = cpu_to_le16(WLAN_REASON_MESH_PATH_NOFORWARD);
@@ -2045,7 +2046,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		}
 
 		rcu_read_lock();
-		mppath = mpp_path_lookup(sdata, proxied_addr);
+		mppath = mpp_path_lookup(mbss, proxied_addr);
 		if (!mppath) {
 			mpp_path_add(sdata, proxied_addr, mpp_addr);
 		} else {
@@ -2086,7 +2087,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 	/* unicast frame may go out on a different HW, so resolve now */
 	if (!is_multicast_ether_addr(fwd_hdr->addr1)) {
-		if (!mesh_nexthop_lookup(sdata, fwd_skb))
+		if (!mesh_nexthop_lookup(mbss, fwd_skb))
 			local = vif_to_sdata(info->control.vif)->local;
 		else {
 			/* unable to resolve next hop */
