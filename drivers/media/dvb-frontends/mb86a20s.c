@@ -24,6 +24,18 @@ static int debug = 1;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activates frontend debugging (default:0)");
 
+enum mb86a20s_bandwidth {
+	MB86A20S_13SEG = 0,
+	MB86A20S_13SEG_PARTIAL = 1,
+	MB86A20S_1SEG = 2,
+	MB86A20S_3SEG = 3,
+};
+
+u8 mb86a20s_subchannel[] = {
+	0xb0, 0xc0, 0xd0, 0xe0,
+	0xf0, 0x00, 0x10, 0x20,
+};
+
 struct mb86a20s_state {
 	struct i2c_adapter *i2c;
 	const struct mb86a20s_config *config;
@@ -31,7 +43,13 @@ struct mb86a20s_state {
 
 	struct dvb_frontend frontend;
 
+	u32 if_freq;
+	enum mb86a20s_bandwidth bw;
+	bool inversion;
+	u32 subchannel;
+
 	u32 estimated_rate[3];
+	unsigned long get_strength_time;
 
 	bool need_init;
 };
@@ -47,35 +65,33 @@ struct regdata {
  * Initialization sequence: Use whatevere default values that PV SBTVD
  * does on its initialisation, obtained via USB snoop
  */
-static struct regdata mb86a20s_init[] = {
+static struct regdata mb86a20s_init1[] = {
 	{ 0x70, 0x0f },
 	{ 0x70, 0xff },
 	{ 0x08, 0x01 },
-	{ 0x09, 0x3e },
-	{ 0x50, 0xd1 }, { 0x51, 0x22 },
-	{ 0x39, 0x01 },
-	{ 0x71, 0x00 },
-	{ 0x28, 0x2a }, { 0x29, 0x00 }, { 0x2a, 0xff }, { 0x2b, 0x80 },
-	{ 0x28, 0x20 }, { 0x29, 0x33 }, { 0x2a, 0xdf }, { 0x2b, 0xa9 },
+	{ 0x50, 0xd1 }, { 0x51, 0x20 },
+};
+
+static struct regdata mb86a20s_init2[] = {
 	{ 0x28, 0x22 }, { 0x29, 0x00 }, { 0x2a, 0x1f }, { 0x2b, 0xf0 },
 	{ 0x3b, 0x21 },
-	{ 0x3c, 0x3a },
+	{ 0x3c, 0x38 },
 	{ 0x01, 0x0d },
-	{ 0x04, 0x08 }, { 0x05, 0x05 },
+	{ 0x04, 0x08 }, { 0x05, 0x03 },
 	{ 0x04, 0x0e }, { 0x05, 0x00 },
-	{ 0x04, 0x0f }, { 0x05, 0x14 },
-	{ 0x04, 0x0b }, { 0x05, 0x8c },
+	{ 0x04, 0x0f }, { 0x05, 0x37 },
+	{ 0x04, 0x0b }, { 0x05, 0x78 },
 	{ 0x04, 0x00 }, { 0x05, 0x00 },
-	{ 0x04, 0x01 }, { 0x05, 0x07 },
-	{ 0x04, 0x02 }, { 0x05, 0x0f },
-	{ 0x04, 0x03 }, { 0x05, 0xa0 },
+	{ 0x04, 0x01 }, { 0x05, 0x1e },
+	{ 0x04, 0x02 }, { 0x05, 0x07 },
+	{ 0x04, 0x03 }, { 0x05, 0xd0 },
 	{ 0x04, 0x09 }, { 0x05, 0x00 },
 	{ 0x04, 0x0a }, { 0x05, 0xff },
-	{ 0x04, 0x27 }, { 0x05, 0x64 },
+	{ 0x04, 0x27 }, { 0x05, 0x00 },
 	{ 0x04, 0x28 }, { 0x05, 0x00 },
-	{ 0x04, 0x1e }, { 0x05, 0xff },
-	{ 0x04, 0x29 }, { 0x05, 0x0a },
-	{ 0x04, 0x32 }, { 0x05, 0x0a },
+	{ 0x04, 0x1e }, { 0x05, 0x00 },
+	{ 0x04, 0x29 }, { 0x05, 0x64 },
+	{ 0x04, 0x32 }, { 0x05, 0x02 },
 	{ 0x04, 0x14 }, { 0x05, 0x02 },
 	{ 0x04, 0x04 }, { 0x05, 0x00 },
 	{ 0x04, 0x05 }, { 0x05, 0x22 },
@@ -142,39 +158,39 @@ static struct regdata mb86a20s_init[] = {
 	{ 0x50, 0xd5 }, { 0x51, 0x01 },		/* Serial */
 	{ 0x50, 0xd6 }, { 0x51, 0x1f },
 	{ 0x50, 0xd2 }, { 0x51, 0x03 },
-	{ 0x50, 0xd7 }, { 0x51, 0x3f },
-	{ 0x28, 0x74 }, { 0x29, 0x00 }, { 0x28, 0x74 }, { 0x29, 0x40 },
-	{ 0x28, 0x46 }, { 0x29, 0x2c }, { 0x28, 0x46 }, { 0x29, 0x0c },
+	{ 0x50, 0xd7 }, { 0x51, 0xbf },
+	{ 0x28, 0x74 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0xff },
+	{ 0x28, 0x46 }, { 0x29, 0x00 }, { 0x2a, 0x1a }, { 0x2b, 0x0c },
 
 	{ 0x04, 0x40 }, { 0x05, 0x00 },
-	{ 0x28, 0x00 }, { 0x29, 0x10 },
-	{ 0x28, 0x05 }, { 0x29, 0x02 },
+	{ 0x28, 0x00 }, { 0x2b, 0x08 },
+	{ 0x28, 0x05 }, { 0x2b, 0x00 },
 	{ 0x1c, 0x01 },
-	{ 0x28, 0x06 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x03 },
-	{ 0x28, 0x07 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x0d },
-	{ 0x28, 0x08 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x02 },
-	{ 0x28, 0x09 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x01 },
-	{ 0x28, 0x0a }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x21 },
-	{ 0x28, 0x0b }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x29 },
-	{ 0x28, 0x0c }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x16 },
-	{ 0x28, 0x0d }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x31 },
-	{ 0x28, 0x0e }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x0e },
-	{ 0x28, 0x0f }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x4e },
-	{ 0x28, 0x10 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x46 },
-	{ 0x28, 0x11 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x0f },
-	{ 0x28, 0x12 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x56 },
-	{ 0x28, 0x13 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x35 },
-	{ 0x28, 0x14 }, { 0x29, 0x00 }, { 0x2a, 0x01 }, { 0x2b, 0xbe },
-	{ 0x28, 0x15 }, { 0x29, 0x00 }, { 0x2a, 0x01 }, { 0x2b, 0x84 },
-	{ 0x28, 0x16 }, { 0x29, 0x00 }, { 0x2a, 0x03 }, { 0x2b, 0xee },
-	{ 0x28, 0x17 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x98 },
-	{ 0x28, 0x18 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x9f },
-	{ 0x28, 0x19 }, { 0x29, 0x00 }, { 0x2a, 0x07 }, { 0x2b, 0xb2 },
-	{ 0x28, 0x1a }, { 0x29, 0x00 }, { 0x2a, 0x06 }, { 0x2b, 0xc2 },
-	{ 0x28, 0x1b }, { 0x29, 0x00 }, { 0x2a, 0x07 }, { 0x2b, 0x4a },
-	{ 0x28, 0x1c }, { 0x29, 0x00 }, { 0x2a, 0x01 }, { 0x2b, 0xbc },
-	{ 0x28, 0x1d }, { 0x29, 0x00 }, { 0x2a, 0x04 }, { 0x2b, 0xba },
-	{ 0x28, 0x1e }, { 0x29, 0x00 }, { 0x2a, 0x06 }, { 0x2b, 0x14 },
+	{ 0x28, 0x06 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x1f },
+	{ 0x28, 0x07 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x18 },
+	{ 0x28, 0x08 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x12 },
+	{ 0x28, 0x09 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x30 },
+	{ 0x28, 0x0a }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x37 },
+	{ 0x28, 0x0b }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x02 },
+	{ 0x28, 0x0c }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x09 },
+	{ 0x28, 0x0d }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x06 },
+	{ 0x28, 0x0e }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x7b },
+	{ 0x28, 0x0f }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x76 },
+	{ 0x28, 0x10 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x7d },
+	{ 0x28, 0x11 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x08 },
+	{ 0x28, 0x12 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x0b },
+	{ 0x28, 0x13 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x00 },
+	{ 0x28, 0x14 }, { 0x29, 0x00 }, { 0x2a, 0x01 }, { 0x2b, 0xf2 },
+	{ 0x28, 0x15 }, { 0x29, 0x00 }, { 0x2a, 0x01 }, { 0x2b, 0xf3 },
+	{ 0x28, 0x16 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x05 },
+	{ 0x28, 0x17 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x16 },
+	{ 0x28, 0x18 }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x0f },
+	{ 0x28, 0x19 }, { 0x29, 0x00 }, { 0x2a, 0x07 }, { 0x2b, 0xef },
+	{ 0x28, 0x1a }, { 0x29, 0x00 }, { 0x2a, 0x07 }, { 0x2b, 0xd8 },
+	{ 0x28, 0x1b }, { 0x29, 0x00 }, { 0x2a, 0x07 }, { 0x2b, 0xf1 },
+	{ 0x28, 0x1c }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x3d },
+	{ 0x28, 0x1d }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x94 },
+	{ 0x28, 0x1e }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0xba },
 	{ 0x50, 0x1e }, { 0x51, 0x5d },
 	{ 0x50, 0x22 }, { 0x51, 0x00 },
 	{ 0x50, 0x23 }, { 0x51, 0xc8 },
@@ -183,6 +199,8 @@ static struct regdata mb86a20s_init[] = {
 	{ 0x50, 0x26 }, { 0x51, 0x00 },
 	{ 0x50, 0x27 }, { 0x51, 0xc3 },
 	{ 0x50, 0x39 }, { 0x51, 0x02 },
+	{ 0xec, 0x0f },
+	{ 0xeb, 0x1f },
 	{ 0x28, 0x6a }, { 0x29, 0x00 }, { 0x2a, 0x00 }, { 0x2b, 0x00 },
 	{ 0xd0, 0x00 },
 };
@@ -308,14 +326,22 @@ static int mb86a20s_read_status(struct dvb_frontend *fe, fe_status_t *status)
 	dev_dbg(&state->i2c->dev, "%s: Status = 0x%02x (state = %d)\n",
 		 __func__, *status, val);
 
-	return 0;
+	return val;
 }
 
 static int mb86a20s_read_signal_strength(struct dvb_frontend *fe)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
+	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
 	int rc;
 	unsigned rf_max, rf_min, rf;
+
+	if (state->get_strength_time &&
+	   (!time_after(jiffies, state->get_strength_time)))
+		return c->strength.stat[0].uvalue;
+
+	/* Reset its value if an error happen */
+	c->strength.stat[0].uvalue = 0;
 
 	/* Does a binary search to get RF strength */
 	rf_max = 0xfff;
@@ -331,7 +357,7 @@ static int mb86a20s_read_signal_strength(struct dvb_frontend *fe)
 		rc = mb86a20s_writereg(state, 0x04, 0x20);
 		if (rc < 0)
 			return rc;
-		rc = mb86a20s_writereg(state, 0x04, rf);
+		rc = mb86a20s_writereg(state, 0x05, rf);
 		if (rc < 0)
 			return rc;
 
@@ -346,15 +372,19 @@ static int mb86a20s_read_signal_strength(struct dvb_frontend *fe)
 			rf = (rf_max + rf_min) / 2;
 
 			/* Rescale it from 2^12 (4096) to 2^16 */
-			rf <<= (16 - 12);
+			rf = rf << (16 - 12);
+			if (rf)
+				rf |= (1 << 12) - 1;
+
 			dev_dbg(&state->i2c->dev,
 				"%s: signal strength = %d (%d < RF=%d < %d)\n",
 				__func__, rf, rf_min, rf >> 4, rf_max);
-			return rf;
+			c->strength.stat[0].uvalue = rf;
+			state->get_strength_time = jiffies +
+						   msecs_to_jiffies(1000);
+			return 0;
 		}
 	} while (1);
-
-	return 0;
 }
 
 static int mb86a20s_get_modulation(struct mb86a20s_state *state,
@@ -735,7 +765,6 @@ static int mb86a20s_reset_counters(struct dvb_frontend *fe)
 
 	/* Reset the counters, if the channel changed */
 	if (state->last_frequency != c->frequency) {
-		memset(&c->strength, 0, sizeof(c->strength));
 		memset(&c->cnr, 0, sizeof(c->cnr));
 		memset(&c->pre_bit_error, 0, sizeof(c->pre_bit_error));
 		memset(&c->pre_bit_count, 0, sizeof(c->pre_bit_count));
@@ -1095,7 +1124,7 @@ static int mb86a20s_get_blk_error(struct dvb_frontend *fe,
 	if (rc < 0)
 		return rc;
 	*error |= rc;
-	dev_err(&state->i2c->dev, "%s: block error for layer %c: %d.\n",
+	dev_dbg(&state->i2c->dev, "%s: block error for layer %c: %d.\n",
 		__func__, 'A' + layer, *error);
 
 	/* Read Bit Count */
@@ -1386,7 +1415,7 @@ static int mb86a20s_get_main_CNR(struct dvb_frontend *fe)
 		return rc;
 
 	if (!(rc & 0x40)) {
-		dev_info(&state->i2c->dev, "%s: CNR is not available yet.\n",
+		dev_dbg(&state->i2c->dev, "%s: CNR is not available yet.\n",
 			 __func__);
 		return -EBUSY;
 	}
@@ -1441,7 +1470,7 @@ static int mb86a20s_get_blk_error_layer_CNR(struct dvb_frontend *fe)
 
 	/* Check if data is available */
 	if (!(rc & 0x01)) {
-		dev_info(&state->i2c->dev,
+		dev_dbg(&state->i2c->dev,
 			"%s: MER measures aren't available yet.\n", __func__);
 		return -EBUSY;
 	}
@@ -1560,7 +1589,7 @@ static void mb86a20s_stats_not_ready(struct dvb_frontend *fe)
 	}
 }
 
-static int mb86a20s_get_stats(struct dvb_frontend *fe)
+static int mb86a20s_get_stats(struct dvb_frontend *fe, int status_nr)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
@@ -1579,6 +1608,14 @@ static int mb86a20s_get_stats(struct dvb_frontend *fe)
 
 	/* Get per-layer stats */
 	mb86a20s_get_blk_error_layer_CNR(fe);
+
+	/*
+	 * At state 7, only CNR is available
+	 * For BER measures, state=9 is required
+	 * FIXME: we may get MER measures with state=8
+	 */
+	if (status_nr < 9)
+		return 0;
 
 	for (i = 0; i < 3; i++) {
 		if (c->isdbt_layer_enabled & (1 << i)) {
@@ -1737,8 +1774,10 @@ static int mb86a20s_get_stats(struct dvb_frontend *fe)
 static int mb86a20s_initfe(struct dvb_frontend *fe)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
+	u64 pll;
+	u32 fclk;
 	int rc;
-	u8  regD5 = 1;
+	u8  regD5 = 1, reg71, reg09 = 0x3a;
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
@@ -1746,9 +1785,77 @@ static int mb86a20s_initfe(struct dvb_frontend *fe)
 		fe->ops.i2c_gate_ctrl(fe, 0);
 
 	/* Initialize the frontend */
-	rc = mb86a20s_writeregdata(state, mb86a20s_init);
+	rc = mb86a20s_writeregdata(state, mb86a20s_init1);
 	if (rc < 0)
 		goto err;
+
+	if (!state->inversion)
+		reg09 |= 0x04;
+	rc = mb86a20s_writereg(state, 0x09, reg09);
+	if (rc < 0)
+		goto err;
+	if (!state->bw)
+		reg71 = 1;
+	else
+		reg71 = 0;
+	rc = mb86a20s_writereg(state, 0x39, reg71);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x71, state->bw);
+	if (rc < 0)
+		goto err;
+	if (state->subchannel) {
+		rc = mb86a20s_writereg(state, 0x44, state->subchannel);
+		if (rc < 0)
+			goto err;
+	}
+
+	fclk = state->config->fclk;
+	if (!fclk)
+		fclk = 32571428;
+
+	/* Adjust IF frequency to match tuner */
+	if (fe->ops.tuner_ops.get_if_frequency)
+		fe->ops.tuner_ops.get_if_frequency(fe, &state->if_freq);
+
+	if (!state->if_freq)
+		state->if_freq = 3300000;
+
+	pll = (((u64)1) << 34) * state->if_freq;
+	do_div(pll, 63 * fclk);
+	pll = (1 << 25) - pll;
+	rc = mb86a20s_writereg(state, 0x28, 0x2a);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x29, (pll >> 16) & 0xff);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x2a, (pll >> 8) & 0xff);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x2b, pll & 0xff);
+	if (rc < 0)
+		goto err;
+	dev_dbg(&state->i2c->dev, "%s: fclk=%d, IF=%d, clock reg=0x%06llx\n",
+		__func__, fclk, state->if_freq, (long long)pll);
+
+	/* pll = freq[Hz] * 2^24/10^6 / 16.285714286 */
+	pll = state->if_freq * 1677721600L;
+	do_div(pll, 1628571429L);
+	rc = mb86a20s_writereg(state, 0x28, 0x20);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x29, (pll >> 16) & 0xff);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x2a, (pll >> 8) & 0xff);
+	if (rc < 0)
+		goto err;
+	rc = mb86a20s_writereg(state, 0x2b, pll & 0xff);
+	if (rc < 0)
+		goto err;
+	dev_dbg(&state->i2c->dev, "%s: IF=%d, IF reg=0x%06llx\n",
+		__func__, state->if_freq, (long long)pll);
 
 	if (!state->config->is_serial) {
 		regD5 &= ~1;
@@ -1760,6 +1867,11 @@ static int mb86a20s_initfe(struct dvb_frontend *fe)
 		if (rc < 0)
 			goto err;
 	}
+
+	rc = mb86a20s_writeregdata(state, mb86a20s_init2);
+	if (rc < 0)
+		goto err;
+
 
 err:
 	if (fe->ops.i2c_gate_ctrl)
@@ -1779,14 +1891,33 @@ err:
 static int mb86a20s_set_frontend(struct dvb_frontend *fe)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
-	int rc;
-#if 0
-	/*
-	 * FIXME: Properly implement the set frontend properties
-	 */
 	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-#endif
+	int rc, if_freq;
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
+
+	if (!c->isdbt_layer_enabled)
+		c->isdbt_layer_enabled = 7;
+
+	if (c->isdbt_layer_enabled == 1)
+		state->bw = MB86A20S_1SEG;
+	else if (c->isdbt_partial_reception)
+		state->bw = MB86A20S_13SEG_PARTIAL;
+	else
+		state->bw = MB86A20S_13SEG;
+
+	if (c->inversion == INVERSION_ON)
+		state->inversion = true;
+	else
+		state->inversion = false;
+
+	if (!c->isdbt_sb_mode) {
+		state->subchannel = 0;
+	} else {
+		if (c->isdbt_sb_subchannel > ARRAY_SIZE(mb86a20s_subchannel))
+			c->isdbt_sb_subchannel = 0;
+
+		state->subchannel = mb86a20s_subchannel[c->isdbt_sb_subchannel];
+	}
 
 	/*
 	 * Gate should already be opened, but it doesn't hurt to
@@ -1795,6 +1926,9 @@ static int mb86a20s_set_frontend(struct dvb_frontend *fe)
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 1);
 	fe->ops.tuner_ops.set_params(fe);
+
+	if (fe->ops.tuner_ops.get_if_frequency)
+		fe->ops.tuner_ops.get_if_frequency(fe, &if_freq);
 
 	/*
 	 * Make it more reliable: if, for some reason, the initial
@@ -1805,15 +1939,22 @@ static int mb86a20s_set_frontend(struct dvb_frontend *fe)
 	 * the agc callback logic is not called during DVB attach time,
 	 * causing mb86a20s to not be initialized with Kworld SBTVD.
 	 * So, this hack is needed, in order to make Kworld SBTVD to work.
+	 *
+	 * It is also needed to change the IF after the initial init.
+	 *
+	 * HACK: Always init the frontend when set_frontend is called:
+	 * it was noticed that, on some devices, it fails to lock on a
+	 * different channel. So, it is better to reset everything, even
+	 * wasting some time, than to loose channel lock.
 	 */
-	if (state->need_init)
-		mb86a20s_initfe(fe);
+	mb86a20s_initfe(fe);
 
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 0);
 
 	rc = mb86a20s_writeregdata(state, mb86a20s_reset_reception);
 	mb86a20s_reset_counters(fe);
+	mb86a20s_stats_not_ready(fe);
 
 	if (fe->ops.i2c_gate_ctrl)
 		fe->ops.i2c_gate_ctrl(fe, 1);
@@ -1825,8 +1966,7 @@ static int mb86a20s_read_status_and_stats(struct dvb_frontend *fe,
 					  fe_status_t *status)
 {
 	struct mb86a20s_state *state = fe->demodulator_priv;
-	struct dtv_frontend_properties *c = &fe->dtv_property_cache;
-	int rc;
+	int rc, status_nr;
 
 	dev_dbg(&state->i2c->dev, "%s called.\n", __func__);
 
@@ -1834,12 +1974,12 @@ static int mb86a20s_read_status_and_stats(struct dvb_frontend *fe,
 		fe->ops.i2c_gate_ctrl(fe, 0);
 
 	/* Get lock */
-	rc = mb86a20s_read_status(fe, status);
-	if (!(*status & FE_HAS_LOCK)) {
+	status_nr = mb86a20s_read_status(fe, status);
+	if (status_nr < 7) {
 		mb86a20s_stats_not_ready(fe);
 		mb86a20s_reset_frontend_cache(fe);
 	}
-	if (rc < 0) {
+	if (status_nr < 0) {
 		dev_err(&state->i2c->dev,
 			"%s: Can't read frontend lock status\n", __func__);
 		goto error;
@@ -1856,10 +1996,8 @@ static int mb86a20s_read_status_and_stats(struct dvb_frontend *fe,
 		rc = 0;		/* Status is OK */
 		goto error;
 	}
-	/* Fill signal strength */
-	c->strength.stat[0].uvalue = rc;
 
-	if (*status & FE_HAS_LOCK) {
+	if (status_nr >= 7) {
 		/* Get TMCC info*/
 		rc = mb86a20s_get_frontend(fe);
 		if (rc < 0) {
@@ -1870,7 +2008,7 @@ static int mb86a20s_read_status_and_stats(struct dvb_frontend *fe,
 		}
 
 		/* Get statistics */
-		rc = mb86a20s_get_stats(fe);
+		rc = mb86a20s_get_stats(fe, status_nr);
 		if (rc < 0 && rc != -EBUSY) {
 			dev_err(&state->i2c->dev,
 				"%s: Can't get FE statistics.\n", __func__);
@@ -1994,7 +2132,7 @@ static struct dvb_frontend_ops mb86a20s_ops = {
 	/* Use dib8000 values per default */
 	.info = {
 		.name = "Fujitsu mb86A20s",
-		.caps = FE_CAN_INVERSION_AUTO | FE_CAN_RECOVER |
+		.caps = FE_CAN_RECOVER  |
 			FE_CAN_FEC_1_2  | FE_CAN_FEC_2_3 | FE_CAN_FEC_3_4 |
 			FE_CAN_FEC_5_6  | FE_CAN_FEC_7_8 | FE_CAN_FEC_AUTO |
 			FE_CAN_QPSK     | FE_CAN_QAM_16  | FE_CAN_QAM_64 |
