@@ -2123,8 +2123,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 	IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, fwded_frames);
 	ieee80211_add_pending_skb(local, fwd_skb);
-	if (is_multicast_ether_addr(fwd_hdr->addr1) &&
-	    ieee80211_is_data(fwd_hdr->frame_control))
+	if (is_multicast_ether_addr(fwd_hdr->addr1))
 		mesh_local_bss_forward(sdata, fwd_skb);
  out:
 	if (is_multicast_ether_addr(hdr->addr1) ||
