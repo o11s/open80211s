@@ -369,7 +369,7 @@ void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
 	rcu_read_lock();
 	list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 
-		if (ether_addr_equal(sdata->vif.addr, tmp_sdata->vif.addr))
+		if (sdata == tmp_sdata)
 			continue;
 
 		fwd_skb = skb_copy(skb, GFP_ATOMIC);
