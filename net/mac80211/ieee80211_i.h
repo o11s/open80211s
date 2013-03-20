@@ -296,6 +296,7 @@ struct mesh_stats {
  * @is_secure: true if the mesh is secure
  * @can_share: true if this bss can be shared (user-configurable per-if)
  * @net: network namespace devices in this mbss belong to
+ * @rmc: Recent Multicast Cache for this mbss
  * @list: listptr for siblings in mesh_bss_list
  * @if_list: interfaces sharing this bss
  */
@@ -310,6 +311,7 @@ struct mesh_local_bss {
 	bool can_share;
 	struct net *net;
 
+	struct mesh_rmc *rmc;
 	struct list_head list;
 	struct list_head if_list;
 };
@@ -598,7 +600,6 @@ struct ieee80211_if_mesh {
 	unsigned long next_perr;
 	/* Timestamp of last PREQ sent */
 	unsigned long last_preq;
-	struct mesh_rmc *rmc;
 	spinlock_t mesh_preq_queue_lock;
 	struct mesh_preq_queue preq_queue;
 	int preq_queue_len;
