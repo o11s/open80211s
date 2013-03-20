@@ -490,12 +490,11 @@ static int worker_pool_assign_id(struct worker_pool *pool)
 
 	lockdep_assert_held(&wq_mutex);
 
-	do {
-		if (!idr_pre_get(&worker_pool_idr, GFP_KERNEL))
-			return -ENOMEM;
-		ret = idr_get_new(&worker_pool_idr, pool, &pool->id);
-	} while (ret == -EAGAIN);
-
+	ret = idr_alloc(&worker_pool_idr, pool, 0, 0, GFP_KERNEL);
+	if (ret >= 0) {
+		pool->id = ret;
+		return 0;
+	}
 	return ret;
 }
 
