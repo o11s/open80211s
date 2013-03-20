@@ -98,6 +98,11 @@ mesh_bss_create(struct ieee80211_sub_if_data *sdata, struct mesh_setup *setup)
 	if (!mbss)
 		return NULL;
 
+	if (mesh_rmc_init(mbss)) {
+		kfree(mbss);
+		return NULL;
+	}
+
 	INIT_LIST_HEAD(&mbss->list);
 	INIT_LIST_HEAD(&mbss->if_list);
 
@@ -127,6 +132,7 @@ static void mesh_bss_remove(struct ieee80211_sub_if_data *sdata)
 	/* free when no more devs have this mbss */
 	if (list_empty(&mbss->if_list)) {
 		list_del(&mbss->list);
+		mesh_rmc_free(mbss);
 		kfree(mbss);
 	}
 	mutex_unlock(&mesh_bss_mtx);
@@ -364,26 +370,31 @@ void mesh_sta_cleanup(struct sta_info *sta)
 	}
 }
 
-int mesh_rmc_init(struct ieee80211_sub_if_data *sdata)
+int mesh_rmc_init(struct mesh_local_bss *mbss)
 {
+	struct mesh_rmc *rmc;
 	int i;
 
-	sdata->u.mesh.rmc = kmalloc(sizeof(struct mesh_rmc), GFP_KERNEL);
-	if (!sdata->u.mesh.rmc)
+	rmc = kmalloc(sizeof(struct mesh_rmc), GFP_KERNEL);
+	if (!rmc)
 		return -ENOMEM;
-	sdata->u.mesh.rmc->idx_mask = RMC_BUCKETS - 1;
-	for (i = 0; i < RMC_BUCKETS; i++)
-		INIT_LIST_HEAD(&sdata->u.mesh.rmc->bucket[i]);
+	rmc->idx_mask = RMC_BUCKETS - 1;
+	for (i = 0; i < RMC_BUCKETS; i++) {
+		INIT_LIST_HEAD(&rmc->bucket[i]);
+		rwlock_init(&rmc->bucket_lock[i]);
+	}
+
+	mbss->rmc = rmc;
 	return 0;
 }
 
-void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
+void mesh_rmc_free(struct mesh_local_bss *mbss)
 {
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	struct mesh_rmc *rmc = mbss->rmc;
 	struct rmc_entry *p, *n;
 	int i;
 
-	if (!sdata->u.mesh.rmc)
+	if (!rmc)
 		return;
 
 	for (i = 0; i < RMC_BUCKETS; i++) {
@@ -394,13 +405,12 @@ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
 	}
 
 	kfree(rmc);
-	sdata->u.mesh.rmc = NULL;
+	mbss->rmc = NULL;
 }
 
 /**
  * mesh_rmc_check - Check frame in recent multicast cache and add if absent.
  *
- * @sdata:	interface
  * @sa:		source address
  * @mesh_hdr:	mesh_header
  *
@@ -410,18 +420,20 @@ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata)
  * received this frame lately. If the frame is not in the cache, it is added to
  * it.
  */
-int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
+int mesh_rmc_check(struct mesh_local_bss *mbss,
 		   const u8 *sa, struct ieee80211s_hdr *mesh_hdr)
 {
-	struct mesh_rmc *rmc = sdata->u.mesh.rmc;
+	struct mesh_rmc *rmc = mbss->rmc;
 	u32 seqnum = 0;
-	int entries = 0;
+	int entries = 0, ret = 0;
 	u8 idx;
 	struct rmc_entry *p, *n;
 
 	/* Don't care about endianness since only match matters */
 	memcpy(&seqnum, &mesh_hdr->seqnum, sizeof(mesh_hdr->seqnum));
 	idx = le32_to_cpu(mesh_hdr->seqnum) & rmc->idx_mask;
+
+	read_lock(&rmc->bucket_lock[idx]);
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx], list) {
 		++entries;
 		if (time_after(jiffies, p->exp_time) ||
@@ -429,19 +441,28 @@ int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
 			list_del(&p->list);
 			kmem_cache_free(rm_cache, p);
 			--entries;
-		} else if ((seqnum == p->seqnum) && ether_addr_equal(sa, p->sa))
-			return -1;
+		} else if ((seqnum == p->seqnum) &&
+			    ether_addr_equal(sa, p->sa)) {
+			ret = -1;
+			break;
+		}
 	}
+	read_unlock(&rmc->bucket_lock[idx]);
+
+	if (ret)
+		return ret;
 
 	p = kmem_cache_alloc(rm_cache, GFP_ATOMIC);
 	if (!p)
 		return 0;
 
+	write_lock(&rmc->bucket_lock[idx]);
 	p->seqnum = seqnum;
 	p->exp_time = jiffies + RMC_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
 	list_add(&p->list, &rmc->bucket[idx]);
-	return 0;
+	write_unlock(&rmc->bucket_lock[idx]);
+	return ret;
 }
 
 int mesh_add_meshconf_ie(struct ieee80211_sub_if_data *sdata,
@@ -1242,7 +1263,6 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 	ifmsh->sn = 0;
 	ifmsh->num_gates = 0;
 	atomic_set(&ifmsh->mpaths, 0);
-	mesh_rmc_init(sdata);
 	ifmsh->last_preq = jiffies;
 	ifmsh->next_perr = jiffies;
 	/* Allocate all mesh structures when creating the first mesh interface. */
