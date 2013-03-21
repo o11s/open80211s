@@ -1173,6 +1173,7 @@ int mesh_nexthop_resolve(struct ieee80211_sub_if_data *sdata,
 			 struct sk_buff *skb)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	struct ieee80211_sub_if_data *dest_sdata;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct mesh_local_bss *mbss = mbss(sdata);
 	struct mesh_path *mpath;
@@ -1186,8 +1187,17 @@ int mesh_nexthop_resolve(struct ieee80211_sub_if_data *sdata,
 
 	rcu_read_lock();
 	err = mesh_nexthop_lookup(mbss, skb);
-	if (!err)
+	if (!err) {
+		dest_sdata = vif_to_sdata(info->control.vif);
+		/* requeue if mesh path uses a different interface */
+		if (dest_sdata != sdata) {
+			info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+			ieee80211_set_qos_hdr(dest_sdata, skb);
+			ieee80211_add_pending_skb(dest_sdata->local, skb);
+			err = -EAGAIN;
+		}
 		goto endlookup;
+	}
 
 	/* no nexthop found, start resolving */
 	mpath = mesh_path_lookup(mbss, target_addr);
