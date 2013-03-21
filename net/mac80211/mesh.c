@@ -308,7 +308,7 @@ void mesh_sta_cleanup(struct sta_info *sta)
 		ieee80211_mbss_info_change_notify(sdata, changed);
 }
 
-int mesh_rmc_init()
+int mesh_rmc_init(void)
 {
 	struct mesh_rmc *rmc;
 	int i;
@@ -326,7 +326,7 @@ int mesh_rmc_init()
 	return 0;
 }
 
-void mesh_rmc_free()
+void mesh_rmc_free(void)
 {
 	struct mesh_rmc *rmc = mesh_rmc;
 	struct rmc_entry *p, *n;
