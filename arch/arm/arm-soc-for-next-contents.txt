@@ -35,6 +35,18 @@ next/dt
 	at91/dt
 		  git://github.com/at91linux/linux-at91.git tags/at91-dt
 
+next/soc
+	prima2/soc
+		patches <1363590279-5656-1-git-send-email-Barry.Song@csr.com>
+	ux500/defconfig
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-defconfig-v3.10
+	ux500/core
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-v3.10
+	renesas/defconfig
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-defconfig-for-v3.10
+	renesas/soc
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc-for-v3.10
+
 next/drivers
 	samsung/timer
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/timer-samsung
@@ -46,13 +58,6 @@ next/drivers
 	at91/lcdfb
 		git://github.com/at91linux/linux-at91.git tags/at91-driversLCD
 
-next/soc
-	prima2/soc
-		patches <1363590279-5656-1-git-send-email-Barry.Song@csr.com>
-	ux500/defconfig
-		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-defconfig-v3.10
-	ux500/core
-		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-v3.10
 
 next/renesas-pinctrl
 	renesas/pinctrl
