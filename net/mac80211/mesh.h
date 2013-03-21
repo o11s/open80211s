@@ -185,7 +185,7 @@ struct rmc_entry {
 
 struct mesh_rmc {
 	struct list_head bucket[RMC_BUCKETS];
-	struct mutex list_lock[RMC_BUCKETS];
+	rwlock_t bucket_lock[RMC_BUCKETS];
 	u32 idx_mask;
 };
 

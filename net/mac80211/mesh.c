@@ -319,7 +319,7 @@ int mesh_rmc_init()
 	rmc->idx_mask = RMC_BUCKETS - 1;
 	for (i = 0; i < RMC_BUCKETS; i++) {
 		INIT_LIST_HEAD(&rmc->bucket[i]);
-		mutex_init(&rmc->list_lock[i]);
+		rwlock_init(&rmc->bucket_lock[i]);
 	}
 
 	mesh_rmc = rmc;
@@ -371,7 +371,7 @@ int mesh_rmc_check(const u8 *sa, struct ieee80211s_hdr *mesh_hdr)
 	memcpy(&seqnum, &mesh_hdr->seqnum, sizeof(mesh_hdr->seqnum));
 	idx = le32_to_cpu(mesh_hdr->seqnum) & rmc->idx_mask;
 
-	mutex_lock(&rmc->list_lock[idx]);
+	read_lock(&rmc->bucket_lock[idx]);
 	list_for_each_entry_safe(p, n, &rmc->bucket[idx], list) {
 		++entries;
 		if (time_after(jiffies, p->exp_time) ||
@@ -382,20 +382,24 @@ int mesh_rmc_check(const u8 *sa, struct ieee80211s_hdr *mesh_hdr)
 		} else if ((seqnum == p->seqnum) &&
 			    ether_addr_equal(sa, p->sa)) {
 			ret = -1;
-			goto out;
+			break;
 		}
 	}
+	read_unlock(&rmc->bucket_lock[idx]);
+
+	if (ret)
+		return ret;
 
 	p = kmem_cache_alloc(rm_cache, GFP_ATOMIC);
 	if (!p)
-		goto out;
+		return 0;
 
+	write_lock(&rmc->bucket_lock[idx]);
 	p->seqnum = seqnum;
 	p->exp_time = jiffies + RMC_TIMEOUT;
 	memcpy(p->sa, sa, ETH_ALEN);
 	list_add(&p->list, &rmc->bucket[idx]);
-out:
-	mutex_unlock(&rmc->list_lock[idx]);
+	write_unlock(&rmc->bucket_lock[idx]);
 	return ret;
 }
 
