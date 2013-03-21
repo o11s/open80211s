@@ -32,6 +32,8 @@ next/multiplatform
 next/dt
 	mvebu/dt
 		git://git.infradead.org/users/jcooper/linux.git tags/mvebu_dt_for_v3.10
+	at91/dt
+		  git://github.com/at91linux/linux-at91.git tags/at91-dt
 
 next/drivers
 	samsung/timer
