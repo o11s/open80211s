@@ -57,6 +57,9 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/pinctrl-exynos
 	at91/lcdfb
 		git://github.com/at91linux/linux-at91.git tags/at91-driversLCD
+	renesas/intc-external-irq
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-intc-external-irq-for-v3.10
+		depends on renesas/soc
 
 
 next/renesas-pinctrl
