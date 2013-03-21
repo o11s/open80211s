@@ -1656,8 +1656,9 @@ static int ieee80211_get_mpath(struct wiphy *wiphy, struct net_device *dev,
 }
 
 static int ieee80211_dump_mpath(struct wiphy *wiphy, struct net_device *dev,
-				 int idx, u8 *dst, u8 *next_hop,
-				 struct mpath_info *pinfo)
+				int idx, struct net_device **pathdev,
+				u8 *dst, u8 *next_hop,
+				struct mpath_info *pinfo, bool mbss)
 {
 	struct ieee80211_sub_if_data *sdata;
 	struct mesh_path *mpath;
@@ -1665,13 +1666,14 @@ static int ieee80211_dump_mpath(struct wiphy *wiphy, struct net_device *dev,
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
 	rcu_read_lock();
-	mpath = mesh_path_lookup_by_idx(sdata, idx);
+	mpath = mesh_path_lookup_by_idx(sdata, idx, mbss);
 	if (!mpath) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
 	memcpy(dst, mpath->dst, ETH_ALEN);
 	mpath_set_pinfo(mpath, next_hop, pinfo);
+	*pathdev = mpath->sdata->wdev.netdev;
 	rcu_read_unlock();
 	return 0;
 }

@@ -400,13 +400,15 @@ mpp_path_lookup(struct mesh_local_bss *mbss, const u8 *dst)
  * mesh_path_lookup_by_idx - look up a path in the mesh path table by its index
  * @idx: index
  * @sdata: local subif, or NULL for all entries
+ * @mbss: match @idx against all mpaths in sdata's MBSS
  *
  * Returns: pointer to the mesh path structure, or NULL if not found.
  *
  * Locking: must be called within a read rcu section.
  */
 struct mesh_path *
-mesh_path_lookup_by_idx(struct ieee80211_sub_if_data *sdata, int idx)
+mesh_path_lookup_by_idx(struct ieee80211_sub_if_data *sdata,
+			int idx, bool mbss)
 {
 	struct mesh_table *tbl = rcu_dereference(mesh_paths);
 	struct mpath_node *node;
@@ -415,7 +417,9 @@ mesh_path_lookup_by_idx(struct ieee80211_sub_if_data *sdata, int idx)
 	int j = 0;
 
 	for_each_mesh_entry(tbl, p, node, i) {
-		if (sdata && node->mpath->sdata != sdata)
+		if (mbss && mbss(sdata) != mbss(node->mpath->sdata))
+			continue;
+		if (!mbss && sdata && sdata != node->mpath->sdata)
 			continue;
 		if (j++ == idx) {
 			if (mpath_expired(node->mpath)) {
