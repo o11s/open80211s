@@ -205,8 +205,9 @@
  *	by %NL80211_ATTR_IFINDEX.
  *
  * @NL80211_CMD_GET_MPATH: Get mesh path attributes for mesh path to
- * 	destination %NL80211_ATTR_MAC on the interface identified by
- * 	%NL80211_ATTR_IFINDEX.
+ *	destination %NL80211_ATTR_MAC on the interface identified by
+ *	%NL80211_ATTR_IFINDEX. If %NL80211_ATTR_MPATH_MBSS is set, get all
+ *	mpaths in mbss, not just ones matched by %NL80211_ATTR_IFINDEX.
  * @NL80211_CMD_SET_MPATH:  Set mesh path attributes for mesh path to
  * 	destination %NL80211_ATTR_MAC on the interface identified by
  * 	%NL80211_ATTR_IFINDEX.
@@ -1728,6 +1729,8 @@ enum nl80211_attrs {
 
 	NL80211_ATTR_CRIT_PROT_ID,
 	NL80211_ATTR_MAX_CRIT_PROT_DURATION,
+
+	NL80211_ATTR_MPATH_DUMP_MBSS,
 
 	/* add attributes here, update the policy in nl80211.c */
 

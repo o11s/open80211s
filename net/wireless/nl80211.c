@@ -270,6 +270,7 @@ static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 	[NL80211_ATTR_MESH_ID] = { .type = NLA_BINARY,
 				   .len = IEEE80211_MAX_MESH_ID_LEN },
 	[NL80211_ATTR_MPATH_NEXT_HOP] = { .type = NLA_U32 },
+	[NL80211_ATTR_MPATH_DUMP_MBSS] = { .type = NLA_FLAG },
 
 	[NL80211_ATTR_REG_ALPHA2] = { .type = NLA_STRING, .len = 2 },
 	[NL80211_ATTR_REG_RULES] = { .type = NLA_NESTED },
@@ -4222,9 +4223,12 @@ static int nl80211_dump_mpath(struct sk_buff *skb,
 	struct mpath_info pinfo;
 	struct cfg80211_registered_device *dev;
 	struct wireless_dev *wdev;
+	struct net_device *pathdev;
 	u8 dst[ETH_ALEN];
 	u8 next_hop[ETH_ALEN];
 	int path_idx = cb->args[2];
+	struct nlattr **tb = nl80211_fam.attrbuf;
+	bool mbss = false;
 	int err;
 
 	err = nl80211_prepare_wdev_dump(skb, cb, &dev, &wdev);
@@ -4241,9 +4245,17 @@ static int nl80211_dump_mpath(struct sk_buff *skb,
 		goto out_err;
 	}
 
+	err = nlmsg_parse(cb->nlh, GENL_HDRLEN + nl80211_fam.hdrsize,
+			  tb, nl80211_fam.maxattr, nl80211_policy);
+	if (err)
+		return err;
+
+	mbss = nla_get_flag(tb[NL80211_ATTR_MPATH_DUMP_MBSS]);
+
 	while (1) {
-		err = rdev_dump_mpath(dev, wdev->netdev, path_idx, dst,
-				      next_hop, &pinfo);
+		err = rdev_dump_mpath(dev, wdev->netdev, path_idx,
+				      &pathdev, dst, next_hop,
+				      &pinfo, mbss);
 		if (err == -ENOENT)
 			break;
 		if (err)
@@ -4251,7 +4263,7 @@ static int nl80211_dump_mpath(struct sk_buff *skb,
 
 		if (nl80211_send_mpath(skb, NETLINK_CB(cb->skb).portid,
 				       cb->nlh->nlmsg_seq, NLM_F_MULTI,
-				       wdev->netdev, dst, next_hop,
+				       pathdev, dst, next_hop,
 				       &pinfo) < 0)
 			goto out;
 
