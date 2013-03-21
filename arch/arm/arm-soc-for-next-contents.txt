@@ -49,3 +49,8 @@ next/drivers
 next/soc
 	prima2/soc
 		patches <1363590279-5656-1-git-send-email-Barry.Song@csr.com>
+	ux500/defconfig
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-defconfig-v3.10
+	ux500/core
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-v3.10
+
