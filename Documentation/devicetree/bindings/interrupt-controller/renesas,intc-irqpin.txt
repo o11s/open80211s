@@ -1,0 +1,13 @@
+DT bindings for the R-/SH-Mobile irqpin controller
+
+Required properties:
+
+- compatible: has to be "renesas,intc-irqpin"
+- #interrupt-cells: has to be <2>
+
+Optional properties:
+
+- any properties, listed in interrupts.txt in this directory, and any standard
+  resource allocation properties
+- control-parent: disable and enable interrupts on the parent interrupt
+  controller, needed for some broken implementations
