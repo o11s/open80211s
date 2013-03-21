@@ -1,5 +1,5 @@
 /*
- * Copyright 2011 Freescale Semiconductor, Inc.
+ * Copyright 2011-2013 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
  *
  * The code contained herein is licensed under the GNU General Public
@@ -14,6 +14,7 @@
 #include <linux/types.h>
 #include <linux/clk.h>
 #include <linux/clkdev.h>
+#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/of.h>
@@ -22,6 +23,11 @@
 
 #include "clk.h"
 #include "common.h"
+
+#define CCR				0x0
+#define BM_CCR_WB_COUNT			(0x7 << 16)
+#define BM_CCR_RBC_BYPASS_COUNT		(0x3f << 21)
+#define BM_CCR_RBC_EN			(0x1 << 27)
 
 #define CCGR0				0x68
 #define CCGR1				0x6c
@@ -67,6 +73,67 @@ void imx6q_set_chicken_bit(void)
 	writel_relaxed(val, ccm_base + CGPR);
 }
 
+static void imx6q_enable_rbc(bool enable)
+{
+	u32 val;
+	static bool last_rbc_mode;
+
+	if (last_rbc_mode == enable)
+		return;
+	/*
+	 * need to mask all interrupts in GPC before
+	 * operating RBC configurations
+	 */
+	imx_gpc_mask_all();
+
+	/* configure RBC enable bit */
+	val = readl_relaxed(ccm_base + CCR);
+	val &= ~BM_CCR_RBC_EN;
+	val |= enable ? BM_CCR_RBC_EN : 0;
+	writel_relaxed(val, ccm_base + CCR);
+
+	/* configure RBC count */
+	val = readl_relaxed(ccm_base + CCR);
+	val &= ~BM_CCR_RBC_BYPASS_COUNT;
+	val |= enable ? BM_CCR_RBC_BYPASS_COUNT : 0;
+	writel(val, ccm_base + CCR);
+
+	/*
+	 * need to delay at least 2 cycles of CKIL(32K)
+	 * due to hardware design requirement, which is
+	 * ~61us, here we use 65us for safe
+	 */
+	udelay(65);
+
+	/* restore GPC interrupt mask settings */
+	imx_gpc_restore_all();
+
+	last_rbc_mode = enable;
+}
+
+static void imx6q_enable_wb(bool enable)
+{
+	u32 val;
+	static bool last_wb_mode;
+
+	if (last_wb_mode == enable)
+		return;
+
+	/* configure well bias enable bit */
+	val = readl_relaxed(ccm_base + CLPCR);
+	val &= ~BM_CLPCR_WB_PER_AT_LPM;
+	val |= enable ? BM_CLPCR_WB_PER_AT_LPM : 0;
+	writel_relaxed(val, ccm_base + CLPCR);
+
+	/* configure well bias count */
+	val = readl_relaxed(ccm_base + CCR);
+	val &= ~BM_CCR_WB_COUNT;
+	val |= enable ? BM_CCR_WB_COUNT : 0;
+	writel_relaxed(val, ccm_base + CCR);
+
+	last_wb_mode = enable;
+}
+
 int imx6q_set_lpm(enum mxc_cpu_pwr_mode mode)
 {
 	u32 val = readl_relaxed(ccm_base + CLPCR);
@@ -74,6 +141,8 @@ int imx6q_set_lpm(enum mxc_cpu_pwr_mode mode)
 	val &= ~BM_CLPCR_LPM;
 	switch (mode) {
 	case WAIT_CLOCKED:
+		imx6q_enable_wb(false);
+		imx6q_enable_rbc(false);
 		break;
 	case WAIT_UNCLOCKED:
 		val |= 0x1 << BP_CLPCR_LPM;
@@ -92,6 +161,8 @@ int imx6q_set_lpm(enum mxc_cpu_pwr_mode mode)
 		val |= 0x3 << BP_CLPCR_STBY_COUNT;
 		val |= BM_CLPCR_VSTBY;
 		val |= BM_CLPCR_SBYOS;
+		imx6q_enable_wb(true);
+		imx6q_enable_rbc(true);
 		break;
 	default:
 		return -EINVAL;

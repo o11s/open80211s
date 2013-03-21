@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Freescale Semiconductor, Inc.
+ * Copyright 2012 Sascha Hauer, Pengutronix
  *
  * The code contained herein is licensed under the GNU General Public
  * License. You may obtain a copy of the GNU General Public License
@@ -10,27 +10,22 @@
  */
 
 /dts-v1/;
-/include/ "imx25.dtsi"
+#include "imx27.dtsip"
 
 / {
-	model = "Freescale i.MX25 Product Development Kit";
-	compatible = "fsl,imx25-pdk", "fsl,imx25";
+	model = "Freescale i.MX27 Product Development Kit";
+	compatible = "fsl,imx27-pdk", "fsl,imx27";
 
 	memory {
-		reg = <0x80000000 0x4000000>;
+		reg = <0x0 0x0>;
 	};
 };
 
 &uart1 {
+	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
 &fec {
-	phy-mode = "rmii";
-	status = "okay";
-};
-
-&nfc {
-	nand-on-flash-bbt;
 	status = "okay";
 };
