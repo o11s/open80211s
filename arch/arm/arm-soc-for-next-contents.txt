@@ -54,3 +54,6 @@ next/soc
 	ux500/core
 		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-v3.10
 
+next/renesas-pinctrl
+	renesas/pinctrl
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux-for-v3.10
