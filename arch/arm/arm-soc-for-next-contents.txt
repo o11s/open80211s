@@ -60,6 +60,8 @@ next/drivers
 	renesas/intc-external-irq
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-intc-external-irq-for-v3.10
 		depends on renesas/soc
+	renesas/clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-clocksource-for-v3.10
 
 next/renesas-pinctrl
 	renesas/pinctrl
