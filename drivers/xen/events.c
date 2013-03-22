@@ -403,11 +403,13 @@ static void unmask_evtchn(int port)
 
 	if (unlikely((cpu != cpu_from_evtchn(port))))
 		do_hypercall = 1;
-	else
+	else {
+		sync_clear_bit(port, BM(&s->evtchn_mask[0]));
 		evtchn_pending = sync_test_bit(port, BM(&s->evtchn_pending[0]));
 
-	if (unlikely(evtchn_pending && xen_hvm_domain()))
-		do_hypercall = 1;
+		if (unlikely(evtchn_pending && xen_hvm_domain()))
+			do_hypercall = 1;
+	}
 
 	/* Slow path (hypercall) if this is a non-local port or if this is
 	 * an hvm domain and an event is pending (hvm domains don't have
@@ -417,8 +419,6 @@ static void unmask_evtchn(int port)
 		(void)HYPERVISOR_event_channel_op(EVTCHNOP_unmask, &unmask);
 	} else {
 		struct vcpu_info *vcpu_info = __this_cpu_read(xen_vcpu);
-
-		sync_clear_bit(port, BM(&s->evtchn_mask[0]));
 
 		/*
 		 * The following is basically the equivalent of
