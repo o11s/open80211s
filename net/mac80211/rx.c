@@ -1998,6 +1998,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	__le16 reason = cpu_to_le16(WLAN_REASON_MESH_PATH_NOFORWARD);
 	u16 q, hdrlen;
+	unsigned long qreason;
 
 	hdr = (struct ieee80211_hdr *) skb->data;
 	hdrlen = ieee80211_hdrlen(hdr->frame_control);
@@ -2107,7 +2108,9 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	 * statistics), while local is sending HW */
 	q = ieee80211_select_queue_80211(vif_to_sdata(info->control.vif),
 					 fwd_skb, fwd_hdr);
-	if (ieee80211_queue_stopped(&local->hw, q)) {
+	qreason = ieee80211_queue_stopped(&local->hw, q);
+	if (qreason & ~(IEEE80211_QUEUE_STOP_REASON_SKB_ADD |
+			IEEE80211_QUEUE_STOP_REASON_AGGREGATION)) {
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_congestion);
 		kfree_skb(fwd_skb);
 		return RX_DROP_MONITOR;
