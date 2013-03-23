@@ -192,6 +192,27 @@ int mesh_bss_add(struct ieee80211_sub_if_data *sdata,
 	return ret;
 }
 
+struct ieee80211_sub_if_data *
+mesh_bss_find_if(struct mesh_local_bss *mbss, const u8 *addr)
+{
+	struct ieee80211_sub_if_data *sdata;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list) {
+		if (ether_addr_equal(addr, sdata->vif.addr)) {
+			rcu_read_unlock();
+			return sdata;
+		}
+	}
+	rcu_read_unlock();
+	return NULL;
+}
+
+bool mesh_bss_matches_addr(struct mesh_local_bss *mbss, const u8 *addr)
+{
+	return mesh_bss_find_if(mbss, addr) != NULL;
+}
+
 /**
  * mesh_matches_local - check if the config of a mesh point matches ours
  *
