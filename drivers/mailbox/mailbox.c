@@ -83,7 +83,7 @@ int mailbox_msg_send(struct mailbox *mbox, struct mailbox_msg *msg)
 
 	mutex_lock(&mq->mlock);
 
-	if (kfifo_avail(&mq->fifo) < (sizeof(msg) + msg->size)) {
+	if (kfifo_avail(&mq->fifo) < (sizeof(*msg) + msg->size)) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -93,8 +93,8 @@ int mailbox_msg_send(struct mailbox *mbox, struct mailbox_msg *msg)
 		goto out;
 	}
 
-	len = kfifo_in(&mq->fifo, (unsigned char *)msg, sizeof(msg));
-	WARN_ON(len != sizeof(msg));
+	len = kfifo_in(&mq->fifo, (unsigned char *)msg, sizeof(*msg));
+	WARN_ON(len != sizeof(*msg));
 
 	if (msg->size && msg->pdata) {
 		len = kfifo_in(&mq->fifo, (unsigned char *)msg->pdata,
