@@ -185,6 +185,7 @@ struct rmc_entry {
 
 struct mesh_rmc {
 	struct list_head bucket[RMC_BUCKETS];
+	rwlock_t bucket_lock[RMC_BUCKETS];
 	u32 idx_mask;
 };
 
@@ -209,8 +210,7 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 int ieee80211_new_mesh_header(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211s_hdr *meshhdr,
 			      const char *addr4or5, const char *addr6);
-int mesh_rmc_check(struct ieee80211_sub_if_data *sdata,
-		   const u8 *addr, struct ieee80211s_hdr *mesh_hdr);
+int mesh_rmc_check(const u8 *addr, struct ieee80211s_hdr *mesh_hdr);
 bool mesh_matches_local(struct ieee80211_sub_if_data *sdata,
 			struct ieee802_11_elems *ie);
 void mesh_ids_set_default(struct ieee80211_if_mesh *mesh);
@@ -228,8 +228,8 @@ int mesh_add_ht_cap_ie(struct ieee80211_sub_if_data *sdata,
 		       struct sk_buff *skb);
 int mesh_add_ht_oper_ie(struct ieee80211_sub_if_data *sdata,
 			struct sk_buff *skb);
-void mesh_rmc_free(struct ieee80211_sub_if_data *sdata);
-int mesh_rmc_init(struct ieee80211_sub_if_data *sdata);
+void mesh_rmc_free(void);
+int mesh_rmc_init(void);
 void ieee80211s_init(void);
 void ieee80211s_update_metric(struct ieee80211_local *local,
 			      struct sta_info *sta, struct sk_buff *skb);
@@ -258,24 +258,26 @@ void ieee80211_mps_frame_release(struct sta_info *sta,
 				 struct ieee802_11_elems *elems);
 
 /* Mesh paths */
-int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
+int mesh_nexthop_lookup(struct mesh_local_bss *mbss,
 			struct sk_buff *skb);
 int mesh_nexthop_resolve(struct ieee80211_sub_if_data *sdata,
 			 struct sk_buff *skb);
 void mesh_path_start_discovery(struct ieee80211_sub_if_data *sdata);
-struct mesh_path *mesh_path_lookup(struct ieee80211_sub_if_data *sdata,
+struct mesh_path *mesh_path_lookup(struct mesh_local_bss *mbss,
 				   const u8 *dst);
-struct mesh_path *mpp_path_lookup(struct ieee80211_sub_if_data *sdata,
+struct mesh_path *mpp_path_lookup(struct mesh_local_bss *mbss,
 				  const u8 *dst);
 int mpp_path_add(struct ieee80211_sub_if_data *sdata,
 		 const u8 *dst, const u8 *mpp);
 struct mesh_path *
-mesh_path_lookup_by_idx(struct ieee80211_sub_if_data *sdata, int idx);
+mesh_path_lookup_by_idx(struct ieee80211_sub_if_data *sdata,
+			int idx, bool mbss);
 void mesh_path_fix_nexthop(struct mesh_path *mpath, struct sta_info *next_hop);
 void mesh_path_expire(struct ieee80211_sub_if_data *sdata);
 void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 			    struct ieee80211_mgmt *mgmt, size_t len);
-int mesh_path_add(struct ieee80211_sub_if_data *sdata, const u8 *dst);
+struct mesh_path *
+mesh_path_add(struct ieee80211_sub_if_data *sdata, const u8 *dst);
 
 int mesh_path_add_gate(struct mesh_path *mpath);
 int mesh_path_send_to_gates(struct mesh_path *mpath);
@@ -368,6 +370,7 @@ void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata);
 void ieee80211s_stop(void);
 void mesh_local_bss_forward(struct ieee80211_sub_if_data *sdata,
 			    struct sk_buff *skb);
+#define mbss(sdata) sdata->u.mesh.mesh_bss
 #else
 static inline void
 ieee80211_mesh_notify_scan_completed(struct ieee80211_local *local) {}

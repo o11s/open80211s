@@ -263,14 +263,16 @@ static inline int rdev_get_mpath(struct cfg80211_registered_device *rdev,
 }
 
 static inline int rdev_dump_mpath(struct cfg80211_registered_device *rdev,
-				  struct net_device *dev, int idx, u8 *dst,
-				  u8 *next_hop, struct mpath_info *pinfo)
+				  struct net_device *dev, int idx,
+				  struct net_device **pathdev,
+				  u8 *dst, u8 *next_hop,
+				  struct mpath_info *pinfo, bool mbss)
 
 {
 	int ret;
 	trace_rdev_dump_mpath(&rdev->wiphy, dev, idx, dst, next_hop);
-	ret = rdev->ops->dump_mpath(&rdev->wiphy, dev, idx, dst, next_hop,
-				     pinfo);
+	ret = rdev->ops->dump_mpath(&rdev->wiphy, dev, idx, pathdev,
+				    dst, next_hop, pinfo, mbss);
 	trace_rdev_return_int_mpath_info(&rdev->wiphy, ret, pinfo);
 	return ret;
 }

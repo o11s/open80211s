@@ -864,7 +864,8 @@ static void ieee80211_rx_reorder_ampdu(struct ieee80211_rx_data *rx,
 	u16 sc;
 	u8 tid, ack_policy;
 
-	if (!ieee80211_is_data_qos(hdr->frame_control))
+	if (!ieee80211_is_data_qos(hdr->frame_control) ||
+	    is_multicast_ether_addr(hdr->addr1))
 		goto dont_reorder;
 
 	/*
@@ -1992,10 +1993,12 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	struct sk_buff *skb = rx->skb, *fwd_skb;
 	struct ieee80211_local *local = rx->local;
 	struct ieee80211_sub_if_data *sdata = rx->sdata;
+	struct mesh_local_bss *mbss = mbss(sdata);
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	__le16 reason = cpu_to_le16(WLAN_REASON_MESH_PATH_NOFORWARD);
 	u16 q, hdrlen;
+	unsigned long qreason;
 
 	hdr = (struct ieee80211_hdr *) skb->data;
 	hdrlen = ieee80211_hdrlen(hdr->frame_control);
@@ -2018,7 +2021,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	/* frame is in RMC, don't forward */
 	if (ieee80211_is_data(hdr->frame_control) &&
 	    is_multicast_ether_addr(hdr->addr1) &&
-	    mesh_rmc_check(rx->sdata, hdr->addr3, mesh_hdr))
+	    mesh_rmc_check(hdr->addr3, mesh_hdr))
 		return RX_DROP_MONITOR;
 
 	if (!ieee80211_is_data(hdr->frame_control) ||
@@ -2045,7 +2048,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 		}
 
 		rcu_read_lock();
-		mppath = mpp_path_lookup(sdata, proxied_addr);
+		mppath = mpp_path_lookup(mbss, proxied_addr);
 		if (!mppath) {
 			mpp_path_add(sdata, proxied_addr, mpp_addr);
 		} else {
@@ -2078,6 +2081,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	}
 
 	fwd_hdr =  (struct ieee80211_hdr *) fwd_skb->data;
+	fwd_hdr->frame_control &= ~cpu_to_le16(IEEE80211_FCTL_RETRY);
 	info = IEEE80211_SKB_CB(fwd_skb);
 	memset(info, 0, sizeof(*info));
 	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
@@ -2086,7 +2090,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 	/* unicast frame may go out on a different HW, so resolve now */
 	if (!is_multicast_ether_addr(fwd_hdr->addr1)) {
-		if (!mesh_nexthop_lookup(sdata, fwd_skb))
+		if (!mesh_nexthop_lookup(mbss, fwd_skb))
 			local = vif_to_sdata(info->control.vif)->local;
 		else {
 			/* unable to resolve next hop */
@@ -2104,7 +2108,9 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	 * statistics), while local is sending HW */
 	q = ieee80211_select_queue_80211(vif_to_sdata(info->control.vif),
 					 fwd_skb, fwd_hdr);
-	if (ieee80211_queue_stopped(&local->hw, q)) {
+	qreason = ieee80211_queue_stopped(&local->hw, q);
+	if (qreason & ~(IEEE80211_QUEUE_STOP_REASON_SKB_ADD |
+			IEEE80211_QUEUE_STOP_REASON_AGGREGATION)) {
 		IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, dropped_frames_congestion);
 		kfree_skb(fwd_skb);
 		return RX_DROP_MONITOR;

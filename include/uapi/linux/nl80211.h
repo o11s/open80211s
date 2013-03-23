@@ -204,7 +204,8 @@
  *
  * @NL80211_CMD_GET_MPATH: Get mesh path attributes for mesh path to
  * 	destination %NL80211_ATTR_MAC on the interface identified by
- * 	%NL80211_ATTR_IFINDEX.
+ * 	%NL80211_ATTR_IFINDEX. If %NL80211_ATTR_MPATH_MBSS is set, get all
+ * 	mpaths in mbss, not just ones matched by %NL80211_ATTR_IFINDEX.
  * @NL80211_CMD_SET_MPATH:  Set mesh path attributes for mesh path to
  * 	destination %NL80211_ATTR_MAC on the interface identified by
  * 	%NL80211_ATTR_IFINDEX.
@@ -1685,6 +1686,8 @@ enum nl80211_attrs {
 	NL80211_ATTR_PROTOCOL_FEATURES,
 	NL80211_ATTR_SPLIT_WIPHY_DUMP,
 
+	NL80211_ATTR_MPATH_DUMP_MBSS,
+
 	/* add attributes here, update the policy in nl80211.c */
 
 	__NL80211_ATTR_AFTER_LAST,
@@ -2592,7 +2595,7 @@ enum nl80211_meshconf_params {
  *
  * @NL80211_MESH_SETUP_CAN_SHARE: Enable this option to allow sharing an MBSS
  *	profile and frame forwarding across multiple virtual interfaces with the
- *	same profile. Defaults to off.
+ *	same profile. Defaults to on.
  *
  * @NL80211_MESH_SETUP_ATTR_MAX: highest possible mesh setup attribute number
  *

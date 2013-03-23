@@ -2037,8 +2037,9 @@ struct cfg80211_ops {
 			       u8 *dst, u8 *next_hop,
 			       struct mpath_info *pinfo);
 	int	(*dump_mpath)(struct wiphy *wiphy, struct net_device *dev,
-			       int idx, u8 *dst, u8 *next_hop,
-			       struct mpath_info *pinfo);
+			      int idx, struct net_device **pathdev,
+			      u8 *dst, u8 *next_hop,
+			      struct mpath_info *pinfo, bool mbss);
 	int	(*get_mesh_config)(struct wiphy *wiphy,
 				struct net_device *dev,
 				struct mesh_config *conf);

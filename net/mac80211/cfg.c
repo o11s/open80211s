@@ -1528,7 +1528,6 @@ static int ieee80211_add_mpath(struct wiphy *wiphy, struct net_device *dev,
 	struct ieee80211_sub_if_data *sdata;
 	struct mesh_path *mpath;
 	struct sta_info *sta;
-	int err;
 
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
@@ -1539,17 +1538,12 @@ static int ieee80211_add_mpath(struct wiphy *wiphy, struct net_device *dev,
 		return -ENOENT;
 	}
 
-	err = mesh_path_add(sdata, dst);
-	if (err) {
+	mpath = mesh_path_add(sdata, dst);
+	if (IS_ERR(mpath)) {
 		rcu_read_unlock();
-		return err;
+		return PTR_ERR(mpath);
 	}
 
-	mpath = mesh_path_lookup(sdata, dst);
-	if (!mpath) {
-		rcu_read_unlock();
-		return -ENXIO;
-	}
 	mesh_path_fix_nexthop(mpath, sta);
 
 	rcu_read_unlock();
@@ -1586,8 +1580,8 @@ static int ieee80211_change_mpath(struct wiphy *wiphy,
 		return -ENOENT;
 	}
 
-	mpath = mesh_path_lookup(sdata, dst);
-	if (!mpath) {
+	mpath = mesh_path_lookup(mbss(sdata), dst);
+	if (!mpath || mpath->sdata != sdata) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
@@ -1650,8 +1644,8 @@ static int ieee80211_get_mpath(struct wiphy *wiphy, struct net_device *dev,
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
 	rcu_read_lock();
-	mpath = mesh_path_lookup(sdata, dst);
-	if (!mpath) {
+	mpath = mesh_path_lookup(mbss(sdata), dst);
+	if (!mpath || mpath->sdata != sdata) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
@@ -1662,8 +1656,9 @@ static int ieee80211_get_mpath(struct wiphy *wiphy, struct net_device *dev,
 }
 
 static int ieee80211_dump_mpath(struct wiphy *wiphy, struct net_device *dev,
-				 int idx, u8 *dst, u8 *next_hop,
-				 struct mpath_info *pinfo)
+				int idx, struct net_device **pathdev,
+				u8 *dst, u8 *next_hop,
+				struct mpath_info *pinfo, bool mbss)
 {
 	struct ieee80211_sub_if_data *sdata;
 	struct mesh_path *mpath;
@@ -1671,13 +1666,14 @@ static int ieee80211_dump_mpath(struct wiphy *wiphy, struct net_device *dev,
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
 	rcu_read_lock();
-	mpath = mesh_path_lookup_by_idx(sdata, idx);
+	mpath = mesh_path_lookup_by_idx(sdata, idx, mbss);
 	if (!mpath) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
 	memcpy(dst, mpath->dst, ETH_ALEN);
 	mpath_set_pinfo(mpath, next_hop, pinfo);
+	*pathdev = mpath->sdata->wdev.netdev;
 	rcu_read_unlock();
 	return 0;
 }

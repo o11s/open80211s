@@ -1501,7 +1501,7 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
 		}
 		if (is_multicast_ether_addr(hdr->addr1) &&
-		    !ieee80211_is_probe_req(hdr->frame_control))
+		    ieee80211_is_data(hdr->frame_control))
 			mesh_local_bss_forward(sdata, skb);
 	}
 
@@ -1850,7 +1850,7 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			struct sta_info *next_hop;
 			bool mpp_lookup = true;
 
-			mpath = mesh_path_lookup(sdata, skb->data);
+			mpath = mesh_path_lookup(mbss(sdata), skb->data);
 			if (mpath) {
 				mpp_lookup = false;
 				next_hop = rcu_dereference(mpath->next_hop);
@@ -1861,7 +1861,7 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			}
 
 			if (mpp_lookup)
-				mppath = mpp_path_lookup(sdata, skb->data);
+				mppath = mpp_path_lookup(mbss(sdata), skb->data);
 
 			if (mppath && mpath)
 				mesh_path_del(mpath->sdata, mpath->dst);
