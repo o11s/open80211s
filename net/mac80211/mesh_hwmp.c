@@ -235,24 +235,6 @@ static int mesh_path_sel_frame_tx(enum mpath_frame_type action, u8 flags,
 	return ret;
 }
 
-static inline bool matches_local_if(struct mesh_local_bss *mbss,
-				    const u8 *addr)
-{
-	struct ieee80211_sub_if_data *sdata;
-	bool found = false;
-
-	rcu_read_lock();
-	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list) {
-		if (ether_addr_equal(addr, sdata->vif.addr)) {
-			found = true;
-			break;
-		}
-	}
-	rcu_read_unlock();
-	return found;
-}
-
-
 
 /*  Headroom is not adjusted.  Caller should ensure that skb has sufficient
  *  headroom in case the frame is encrypted. */
@@ -512,7 +494,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 		new_metric = MAX_METRIC;
 	exp_time = TU_TO_EXP_TIME(orig_lifetime);
 
-	if (matches_local_if(mbss, orig_addr)) {
+	if (mesh_bss_matches_addr(mbss, orig_addr)) {
 		/* This MP is the originator, we are not interested in this
 		 * frame, except for updating transmitter's path info.
 		 */
@@ -627,7 +609,7 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 
 	mhwmp_dbg(sdata, "received PREQ from %pM\n", orig_addr);
 
-	if (matches_local_if(mbss, target_addr)) {
+	if (mesh_bss_matches_addr(mbss, target_addr)) {
 		mhwmp_dbg(sdata, "PREQ is for us\n");
 		forward = false;
 		reply = true;
@@ -756,7 +738,7 @@ static void hwmp_prep_frame_process(struct ieee80211_sub_if_data *sdata,
 		  PREP_IE_ORIG_ADDR(prep_elem));
 
 	orig_addr = PREP_IE_ORIG_ADDR(prep_elem);
-	if (matches_local_if(mbss, orig_addr))
+	if (mesh_bss_matches_addr(mbss, orig_addr))
 		/* destination, no forwarding required */
 		return;
 
@@ -879,7 +861,7 @@ static void hwmp_rann_frame_process(struct ieee80211_sub_if_data *sdata,
 	metric = le32_to_cpu(rann->rann_metric);
 
 	/*  Ignore our own RANNs */
-	if (matches_local_if(mbss, orig_addr))
+	if (mesh_bss_matches_addr(mbss, orig_addr))
 		return;
 
 	mhwmp_dbg(sdata,

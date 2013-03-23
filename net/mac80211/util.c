@@ -474,17 +474,17 @@ void ieee80211_stop_queues(struct ieee80211_hw *hw)
 }
 EXPORT_SYMBOL(ieee80211_stop_queues);
 
-int ieee80211_queue_stopped(struct ieee80211_hw *hw, int queue)
+unsigned long ieee80211_queue_stopped(struct ieee80211_hw *hw, int queue)
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 	unsigned long flags;
-	int ret;
+	unsigned long ret;
 
 	if (WARN_ON(queue >= hw->queues))
-		return true;
+		return -1UL;
 
 	spin_lock_irqsave(&local->queue_stop_reason_lock, flags);
-	ret = !!local->queue_stop_reasons[queue];
+	ret = local->queue_stop_reasons[queue];
 	spin_unlock_irqrestore(&local->queue_stop_reason_lock, flags);
 	return ret;
 }

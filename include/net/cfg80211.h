@@ -3516,19 +3516,6 @@ void cfg80211_notify_new_peer_candidate(struct net_device *dev,
 		const u8 *macaddr, const u8 *ie, u8 ie_len, gfp_t gfp);
 
 /**
- * cfg80211_mesh_joined - Notify cfg80211 that device joined a mesh
- *
- * @dev: network device
- * @setup: mesh setup parameters
- * @conf: mesh config parameters
- *
- * This function notifies cfg80211 that the device joined a mesh
- * using the specified parameters.
- */
-int cfg80211_mesh_joined(struct net_device *dev,
-			 struct mesh_setup *setup,
-			 const struct mesh_config *conf);
-/**
  * DOC: RFkill integration
  *
  * RFkill integration in cfg80211 is almost invisible to drivers,
