@@ -89,7 +89,8 @@ void drbd_md_io_complete(struct bio *bio, int error)
 	md_io->done = 1;
 	wake_up(&mdev->misc_wait);
 	bio_put(bio);
-	put_ldev(mdev);
+	if (mdev->ldev) /* special case: drbd_md_read() during drbd_adm_attach() */
+		put_ldev(mdev);
 }
 
 /* reads on behalf of the partner,
@@ -1410,7 +1411,7 @@ int w_restart_disk_io(struct drbd_work *w, int cancel)
 	struct drbd_conf *mdev = w->mdev;
 
 	if (bio_data_dir(req->master_bio) == WRITE && req->rq_state & RQ_IN_ACT_LOG)
-		drbd_al_begin_io(mdev, &req->i);
+		drbd_al_begin_io(mdev, &req->i, false);
 
 	drbd_req_make_private_bio(req, req->master_bio);
 	req->private_bio->bi_bdev = mdev->ldev->backing_bdev;
