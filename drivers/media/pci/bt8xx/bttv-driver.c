@@ -989,24 +989,20 @@ static char *audio_modes[] = {
 	"audio: intern", "audio: mute"
 };
 
-static int
-audio_mux(struct bttv *btv, int input, int mute)
+static void
+audio_mux_gpio(struct bttv *btv, int input, int mute)
 {
-	int gpio_val, signal;
-	struct v4l2_ctrl *ctrl;
+	int gpio_val, signal, mute_gpio;
 
 	gpio_inout(bttv_tvcards[btv->c.type].gpiomask,
 		   bttv_tvcards[btv->c.type].gpiomask);
 	signal = btread(BT848_DSTATUS) & BT848_DSTATUS_HLOC;
 
-	btv->mute = mute;
-	btv->audio = input;
-
 	/* automute */
-	mute = mute || (btv->opt_automute && (!signal || !btv->users)
+	mute_gpio = mute || (btv->opt_automute && (!signal || !btv->users)
 				&& !btv->has_radio_tuner);
 
-	if (mute)
+	if (mute_gpio)
 		gpio_val = bttv_tvcards[btv->c.type].gpiomute;
 	else
 		gpio_val = bttv_tvcards[btv->c.type].gpiomux[input];
@@ -1022,16 +1018,41 @@ audio_mux(struct bttv *btv, int input, int mute)
 	}
 
 	if (bttv_gpio)
-		bttv_gpio_tracking(btv, audio_modes[mute ? 4 : input]);
-	if (in_interrupt())
-		return 0;
+		bttv_gpio_tracking(btv, audio_modes[mute_gpio ? 4 : input]);
+}
+
+static int
+audio_mute(struct bttv *btv, int mute)
+{
+	struct v4l2_ctrl *ctrl;
+
+	audio_mux_gpio(btv, btv->audio_input, mute);
+
+	if (btv->sd_msp34xx) {
+		ctrl = v4l2_ctrl_find(btv->sd_msp34xx->ctrl_handler, V4L2_CID_AUDIO_MUTE);
+		if (ctrl)
+			v4l2_ctrl_s_ctrl(ctrl, mute);
+	}
+	if (btv->sd_tvaudio) {
+		ctrl = v4l2_ctrl_find(btv->sd_tvaudio->ctrl_handler, V4L2_CID_AUDIO_MUTE);
+		if (ctrl)
+			v4l2_ctrl_s_ctrl(ctrl, mute);
+	}
+	if (btv->sd_tda7432) {
+		ctrl = v4l2_ctrl_find(btv->sd_tda7432->ctrl_handler, V4L2_CID_AUDIO_MUTE);
+		if (ctrl)
+			v4l2_ctrl_s_ctrl(ctrl, mute);
+	}
+	return 0;
+}
+
+static int
+audio_input(struct bttv *btv, int input)
+{
+	audio_mux_gpio(btv, input, btv->mute);
 
 	if (btv->sd_msp34xx) {
 		u32 in;
-
-		ctrl = v4l2_ctrl_find(btv->sd_msp34xx->ctrl_handler, V4L2_CID_AUDIO_MUTE);
-		if (ctrl)
-			v4l2_ctrl_s_ctrl(ctrl, btv->mute);
 
 		/* Note: the inputs tuner/radio/extern/intern are translated
 		   to msp routings. This assumes common behavior for all msp3400
@@ -1077,32 +1098,10 @@ audio_mux(struct bttv *btv, int input, int mute)
 			       in, MSP_OUTPUT_DEFAULT, 0);
 	}
 	if (btv->sd_tvaudio) {
-		ctrl = v4l2_ctrl_find(btv->sd_tvaudio->ctrl_handler, V4L2_CID_AUDIO_MUTE);
-
-		if (ctrl)
-			v4l2_ctrl_s_ctrl(ctrl, btv->mute);
 		v4l2_subdev_call(btv->sd_tvaudio, audio, s_routing,
-				input, 0, 0);
-	}
-	if (btv->sd_tda7432) {
-		ctrl = v4l2_ctrl_find(btv->sd_tda7432->ctrl_handler, V4L2_CID_AUDIO_MUTE);
-
-		if (ctrl)
-			v4l2_ctrl_s_ctrl(ctrl, btv->mute);
+				 input, 0, 0);
 	}
 	return 0;
-}
-
-static inline int
-audio_mute(struct bttv *btv, int mute)
-{
-	return audio_mux(btv, btv->audio, mute);
-}
-
-static inline int
-audio_input(struct bttv *btv, int input)
-{
-	return audio_mux(btv, input, btv->mute);
 }
 
 static void
@@ -1198,8 +1197,9 @@ set_input(struct bttv *btv, unsigned int input, unsigned int norm)
 	} else {
 		video_mux(btv,input);
 	}
-	audio_input(btv, (btv->tuner_type != TUNER_ABSENT && input == 0) ?
-			 TVAUDIO_INPUT_TUNER : TVAUDIO_INPUT_EXTERN);
+	btv->audio_input = (btv->tuner_type != TUNER_ABSENT && input == 0) ?
+				TVAUDIO_INPUT_TUNER : TVAUDIO_INPUT_EXTERN;
+	audio_input(btv, btv->audio_input);
 	set_tvnorm(btv, norm);
 }
 
@@ -1300,6 +1300,7 @@ static int bttv_s_ctrl(struct v4l2_ctrl *c)
 		break;
 	case V4L2_CID_AUDIO_MUTE:
 		audio_mute(btv, c->val);
+		btv->mute = c->val;
 		break;
 	case V4L2_CID_AUDIO_VOLUME:
 		btv->volume_gpio(btv, c->val);
@@ -1707,11 +1708,12 @@ static void radio_enable(struct bttv *btv)
 	if (!btv->has_radio_tuner) {
 		btv->has_radio_tuner = 1;
 		bttv_call_all(btv, tuner, s_radio);
-		audio_input(btv, TVAUDIO_INPUT_RADIO);
+		btv->audio_input = TVAUDIO_INPUT_RADIO;
+		audio_input(btv, btv->audio_input);
 	}
 }
 
-static int bttv_s_std(struct file *file, void *priv, v4l2_std_id *id)
+static int bttv_s_std(struct file *file, void *priv, v4l2_std_id id)
 {
 	struct bttv_fh *fh  = priv;
 	struct bttv *btv = fh->btv;
@@ -1719,14 +1721,14 @@ static int bttv_s_std(struct file *file, void *priv, v4l2_std_id *id)
 	int err = 0;
 
 	for (i = 0; i < BTTV_TVNORMS; i++)
-		if (*id & bttv_tvnorms[i].v4l2_id)
+		if (id & bttv_tvnorms[i].v4l2_id)
 			break;
 	if (i == BTTV_TVNORMS) {
 		err = -EINVAL;
 		goto err;
 	}
 
-	btv->std = *id;
+	btv->std = id;
 	set_tvnorm(btv, i);
 
 err:
@@ -1818,7 +1820,7 @@ static int bttv_s_input(struct file *file, void *priv, unsigned int i)
 }
 
 static int bttv_s_tuner(struct file *file, void *priv,
-					struct v4l2_tuner *t)
+					const struct v4l2_tuner *t)
 {
 	struct bttv_fh *fh  = priv;
 	struct bttv *btv = fh->btv;
@@ -1828,8 +1830,11 @@ static int bttv_s_tuner(struct file *file, void *priv,
 
 	bttv_call_all(btv, tuner, s_tuner, t);
 
-	if (btv->audio_mode_gpio)
-		btv->audio_mode_gpio(btv, t, 1);
+	if (btv->audio_mode_gpio) {
+		struct v4l2_tuner copy = *t;
+
+		btv->audio_mode_gpio(btv, &copy, 1);
+	}
 	return 0;
 }
 
@@ -1850,24 +1855,26 @@ static int bttv_g_frequency(struct file *file, void *priv,
 	return 0;
 }
 
-static void bttv_set_frequency(struct bttv *btv, struct v4l2_frequency *f)
+static void bttv_set_frequency(struct bttv *btv, const struct v4l2_frequency *f)
 {
+	struct v4l2_frequency new_freq = *f;
+
 	bttv_call_all(btv, tuner, s_frequency, f);
 	/* s_frequency may clamp the frequency, so get the actual
 	   frequency before assigning radio/tv_freq. */
-	bttv_call_all(btv, tuner, g_frequency, f);
-	if (f->type == V4L2_TUNER_RADIO) {
+	bttv_call_all(btv, tuner, g_frequency, &new_freq);
+	if (new_freq.type == V4L2_TUNER_RADIO) {
 		radio_enable(btv);
-		btv->radio_freq = f->frequency;
+		btv->radio_freq = new_freq.frequency;
 		if (btv->has_matchbox)
 			tea5757_set_freq(btv, btv->radio_freq);
 	} else {
-		btv->tv_freq = f->frequency;
+		btv->tv_freq = new_freq.frequency;
 	}
 }
 
 static int bttv_s_frequency(struct file *file, void *priv,
-					struct v4l2_frequency *f)
+					const struct v4l2_frequency *f)
 {
 	struct bttv_fh *fh  = priv;
 	struct bttv *btv = fh->btv;
@@ -1938,7 +1945,7 @@ static int bttv_g_register(struct file *file, void *f,
 }
 
 static int bttv_s_register(struct file *file, void *f,
-					struct v4l2_dbg_register *reg)
+					const struct v4l2_dbg_register *reg)
 {
 	struct bttv_fh *fh = f;
 	struct bttv *btv = fh->btv;
@@ -1954,8 +1961,7 @@ static int bttv_s_register(struct file *file, void *f,
 	}
 
 	/* bt848 has a 12-bit register space */
-	reg->reg &= 0xfff;
-	btwrite(reg->val, reg->reg);
+	btwrite(reg->val, reg->reg & 0xfff);
 
 	return 0;
 }
@@ -3063,7 +3069,7 @@ static int bttv_open(struct file *file)
 			    fh, &btv->lock);
 	set_tvnorm(btv,btv->tvnorm);
 	set_input(btv, btv->input, btv->tvnorm);
-
+	audio_mute(btv, btv->mute);
 
 	/* The V4L2 spec requires one global set of cropping parameters
 	   which only change on request. These are stored in btv->crop[1].
@@ -3228,6 +3234,7 @@ static int radio_open(struct file *file)
 	v4l2_fh_init(&fh->fh, vdev);
 
 	btv->radio_user++;
+	audio_mute(btv, btv->mute);
 
 	v4l2_fh_add(&fh->fh);
 
@@ -3274,7 +3281,7 @@ static int radio_g_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
 }
 
 static int radio_s_tuner(struct file *file, void *priv,
-					struct v4l2_tuner *t)
+					const struct v4l2_tuner *t)
 {
 	struct bttv_fh *fh = priv;
 	struct bttv *btv = fh->btv;
@@ -3846,7 +3853,8 @@ static irqreturn_t bttv_irq(int irq, void *dev_id)
 			bttv_irq_switch_video(btv);
 
 		if ((astat & BT848_INT_HLOCK)  &&  btv->opt_automute)
-			audio_mute(btv, btv->mute);  /* trigger automute */
+			/* trigger automute */
+			audio_mux_gpio(btv, btv->audio_input, btv->mute);
 
 		if (astat & (BT848_INT_SCERR|BT848_INT_OCERR)) {
 			pr_info("%d: %s%s @ %08x,",
@@ -4209,11 +4217,13 @@ static int bttv_probe(struct pci_dev *dev, const struct pci_device_id *pci_id)
 	btv->std = V4L2_STD_PAL;
 	init_irqreg(btv);
 	v4l2_ctrl_handler_setup(hdl);
-
 	if (hdl->error) {
 		result = hdl->error;
 		goto fail2;
 	}
+	/* mute device */
+	audio_mute(btv, 1);
+
 	/* register video4linux + input */
 	if (!bttv_tvcards[btv->c.type].no_video) {
 		v4l2_ctrl_add_handler(&btv->radio_ctrl_handler, hdl,

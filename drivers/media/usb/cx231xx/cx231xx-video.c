@@ -987,7 +987,7 @@ static int vidioc_g_std(struct file *file, void *priv, v4l2_std_id *id)
 	return 0;
 }
 
-static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id *norm)
+static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id norm)
 {
 	struct cx231xx_fh *fh = priv;
 	struct cx231xx *dev = fh->dev;
@@ -998,13 +998,13 @@ static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id *norm)
 	if (rc < 0)
 		return rc;
 
-	if (dev->norm == *norm)
+	if (dev->norm == norm)
 		return 0;
 
 	if (videobuf_queue_is_busy(&fh->vb_vidq))
 		return -EBUSY;
 
-	dev->norm = *norm;
+	dev->norm = norm;
 
 	/* Adjusts width/height, if needed */
 	dev->width = 720;
@@ -1139,7 +1139,7 @@ int cx231xx_g_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
 	return 0;
 }
 
-int cx231xx_s_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
+int cx231xx_s_tuner(struct file *file, void *priv, const struct v4l2_tuner *t)
 {
 	struct cx231xx_fh *fh = priv;
 	struct cx231xx *dev = fh->dev;
@@ -1172,10 +1172,11 @@ int cx231xx_g_frequency(struct file *file, void *priv,
 }
 
 int cx231xx_s_frequency(struct file *file, void *priv,
-			      struct v4l2_frequency *f)
+			      const struct v4l2_frequency *f)
 {
 	struct cx231xx_fh *fh = priv;
 	struct cx231xx *dev = fh->dev;
+	struct v4l2_frequency new_freq = *f;
 	int rc;
 	u32 if_frequency = 5400000;
 
@@ -1194,8 +1195,8 @@ int cx231xx_s_frequency(struct file *file, void *priv,
 	rc = cx231xx_tuner_pre_channel_change(dev);
 
 	call_all(dev, tuner, s_frequency, f);
-	call_all(dev, tuner, g_frequency, f);
-	dev->ctl_freq = f->frequency;
+	call_all(dev, tuner, g_frequency, &new_freq);
+	dev->ctl_freq = new_freq.frequency;
 
 	/* set post channel change settings in DIF first */
 	rc = cx231xx_tuner_post_channel_change(dev);
@@ -1403,7 +1404,7 @@ int cx231xx_g_register(struct file *file, void *priv,
 }
 
 int cx231xx_s_register(struct file *file, void *priv,
-			     struct v4l2_dbg_register *reg)
+			     const struct v4l2_dbg_register *reg)
 {
 	struct cx231xx_fh *fh = priv;
 	struct cx231xx *dev = fh->dev;
@@ -1807,7 +1808,7 @@ static int radio_g_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
 
 	return 0;
 }
-static int radio_s_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
+static int radio_s_tuner(struct file *file, void *priv, const struct v4l2_tuner *t)
 {
 	struct cx231xx *dev = ((struct cx231xx_fh *)priv)->dev;
 

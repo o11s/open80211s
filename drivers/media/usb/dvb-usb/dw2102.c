@@ -29,7 +29,6 @@
 #include "stb6100.h"
 #include "stb6100_proc.h"
 #include "m88rs2000.h"
-#include "ts2020.h"
 
 #ifndef USB_PID_DW2102
 #define USB_PID_DW2102 0x2102
@@ -77,6 +76,10 @@
 
 #ifndef USB_PID_TEVII_S632
 #define USB_PID_TEVII_S632 0xd632
+#endif
+
+#ifndef USB_PID_GOTVIEW_SAT_HD
+#define USB_PID_GOTVIEW_SAT_HD 0x5456
 #endif
 
 #define DW210X_READ_MSG 0
@@ -1549,6 +1552,7 @@ enum dw2102_table_entry {
 	TEVII_S421,
 	TEVII_S632,
 	TERRATEC_CINERGY_S2_R2,
+	GOTVIEW_SAT_HD,
 };
 
 static struct usb_device_id dw2102_table[] = {
@@ -1570,6 +1574,7 @@ static struct usb_device_id dw2102_table[] = {
 	[TEVII_S421] = {USB_DEVICE(0x9022, USB_PID_TEVII_S421)},
 	[TEVII_S632] = {USB_DEVICE(0x9022, USB_PID_TEVII_S632)},
 	[TERRATEC_CINERGY_S2_R2] = {USB_DEVICE(USB_VID_TERRATEC, 0x00b0)},
+	[GOTVIEW_SAT_HD] = {USB_DEVICE(0x1FE1, USB_PID_GOTVIEW_SAT_HD)},
 	{ }
 };
 
@@ -1970,7 +1975,7 @@ static struct dvb_usb_device_properties su3000_properties = {
 		}},
 		}
 	},
-	.num_device_descs = 4,
+	.num_device_descs = 5,
 	.devices = {
 		{ "SU3000HD DVB-S USB2.0",
 			{ &dw2102_table[GENIATECH_SU3000], NULL },
@@ -1986,6 +1991,10 @@ static struct dvb_usb_device_properties su3000_properties = {
 		},
 		{ "Terratec Cinergy S2 USB HD Rev.2",
 			{ &dw2102_table[TERRATEC_CINERGY_S2_R2], NULL },
+			{ NULL },
+		},
+		{ "GOTVIEW Satellite HD",
+			{ &dw2102_table[GOTVIEW_SAT_HD], NULL },
 			{ NULL },
 		},
 	}

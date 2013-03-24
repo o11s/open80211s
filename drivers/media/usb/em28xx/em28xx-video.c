@@ -996,23 +996,23 @@ static int vidioc_querystd(struct file *file, void *priv, v4l2_std_id *norm)
 	return 0;
 }
 
-static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id *norm)
+static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id norm)
 {
 	struct em28xx_fh   *fh  = priv;
 	struct em28xx      *dev = fh->dev;
 	struct v4l2_format f;
 
-	if (*norm == dev->norm)
+	if (norm == dev->norm)
 		return 0;
 
 	if (dev->streaming_users > 0)
 		return -EBUSY;
 
-	dev->norm = *norm;
+	dev->norm = norm;
 
 	/* Adjusts width/height, if needed */
 	f.fmt.pix.width = 720;
-	f.fmt.pix.height = (*norm & V4L2_STD_525_60) ? 480 : 576;
+	f.fmt.pix.height = (norm & V4L2_STD_525_60) ? 480 : 576;
 	vidioc_try_fmt_vid_cap(file, priv, &f);
 
 	/* set new image size */
@@ -1195,7 +1195,7 @@ static int vidioc_g_tuner(struct file *file, void *priv,
 }
 
 static int vidioc_s_tuner(struct file *file, void *priv,
-				struct v4l2_tuner *t)
+				const struct v4l2_tuner *t)
 {
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
@@ -1221,8 +1221,9 @@ static int vidioc_g_frequency(struct file *file, void *priv,
 }
 
 static int vidioc_s_frequency(struct file *file, void *priv,
-				struct v4l2_frequency *f)
+				const struct v4l2_frequency *f)
 {
+	struct v4l2_frequency new_freq = *f;
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
 
@@ -1230,8 +1231,8 @@ static int vidioc_s_frequency(struct file *file, void *priv,
 		return -EINVAL;
 
 	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, s_frequency, f);
-	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, g_frequency, f);
-	dev->ctl_freq = f->frequency;
+	v4l2_device_call_all(&dev->v4l2_dev, 0, tuner, g_frequency, &new_freq);
+	dev->ctl_freq = new_freq.frequency;
 
 	return 0;
 }
@@ -1322,7 +1323,7 @@ static int vidioc_g_register(struct file *file, void *priv,
 }
 
 static int vidioc_s_register(struct file *file, void *priv,
-			     struct v4l2_dbg_register *reg)
+			     const struct v4l2_dbg_register *reg)
 {
 	struct em28xx_fh      *fh  = priv;
 	struct em28xx         *dev = fh->dev;
@@ -1492,7 +1493,7 @@ static int radio_g_tuner(struct file *file, void *priv,
 }
 
 static int radio_s_tuner(struct file *file, void *priv,
-			 struct v4l2_tuner *t)
+			 const struct v4l2_tuner *t)
 {
 	struct em28xx *dev = ((struct em28xx_fh *)priv)->dev;
 

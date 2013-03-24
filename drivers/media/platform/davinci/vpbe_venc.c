@@ -51,6 +51,9 @@ static struct platform_device_id vpbe_venc_devtype[] = {
 		.name = DM355_VPBE_VENC_SUBDEV_NAME,
 		.driver_data = VPBE_VERSION_3,
 	},
+	{
+		/* sentinel */
+	}
 };
 
 MODULE_DEVICE_TABLE(platform, vpbe_venc_devtype);
@@ -313,7 +316,7 @@ static int venc_set_480p59_94(struct v4l2_subdev *sd)
 		return -EINVAL;
 
 	/* Setup clock at VPSS & VENC for SD */
-	if (pdata->setup_clock(VPBE_ENC_CUSTOM_TIMINGS, 27000000) < 0)
+	if (pdata->setup_clock(VPBE_ENC_DV_TIMINGS, 27000000) < 0)
 		return -EINVAL;
 
 	venc_enabledigitaloutput(sd, 0);
@@ -360,7 +363,7 @@ static int venc_set_576p50(struct v4l2_subdev *sd)
 	    venc->venc_type != VPBE_VERSION_2)
 		return -EINVAL;
 	/* Setup clock at VPSS & VENC for SD */
-	if (pdata->setup_clock(VPBE_ENC_CUSTOM_TIMINGS, 27000000) < 0)
+	if (pdata->setup_clock(VPBE_ENC_DV_TIMINGS, 27000000) < 0)
 		return -EINVAL;
 
 	venc_enabledigitaloutput(sd, 0);
@@ -400,7 +403,7 @@ static int venc_set_720p60_internal(struct v4l2_subdev *sd)
 	struct venc_state *venc = to_state(sd);
 	struct venc_platform_data *pdata = venc->pdata;
 
-	if (pdata->setup_clock(VPBE_ENC_CUSTOM_TIMINGS, 74250000) < 0)
+	if (pdata->setup_clock(VPBE_ENC_DV_TIMINGS, 74250000) < 0)
 		return -EINVAL;
 
 	venc_enabledigitaloutput(sd, 0);
@@ -428,7 +431,7 @@ static int venc_set_1080i30_internal(struct v4l2_subdev *sd)
 	struct venc_state *venc = to_state(sd);
 	struct venc_platform_data *pdata = venc->pdata;
 
-	if (pdata->setup_clock(VPBE_ENC_CUSTOM_TIMINGS, 74250000) < 0)
+	if (pdata->setup_clock(VPBE_ENC_DV_TIMINGS, 74250000) < 0)
 		return -EINVAL;
 
 	venc_enabledigitaloutput(sd, 0);

@@ -1320,7 +1320,7 @@ out:
 	return rc;
 }
 
-static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id * norm)
+static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id norm)
 {
 	struct au0828_fh *fh = priv;
 	struct au0828_dev *dev = fh->dev;
@@ -1332,7 +1332,7 @@ static int vidioc_s_std(struct file *file, void *priv, v4l2_std_id * norm)
 	   have to make the au0828 bridge adjust the size of its capture
 	   buffer, which is currently hardcoded at 720x480 */
 
-	v4l2_device_call_all(&dev->v4l2_dev, 0, core, s_std, *norm);
+	v4l2_device_call_all(&dev->v4l2_dev, 0, core, s_std, norm);
 	dev->std_set_in_tuner_core = 1;
 
 	if (dev->dvb.frontend && dev->dvb.frontend->ops.analog_ops.i2c_gate_ctrl)
@@ -1508,15 +1508,13 @@ static int vidioc_g_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
 }
 
 static int vidioc_s_tuner(struct file *file, void *priv,
-				struct v4l2_tuner *t)
+				const struct v4l2_tuner *t)
 {
 	struct au0828_fh *fh = priv;
 	struct au0828_dev *dev = fh->dev;
 
 	if (t->index != 0)
 		return -EINVAL;
-
-	t->type = V4L2_TUNER_ANALOG_TV;
 
 	if (dev->dvb.frontend && dev->dvb.frontend->ops.analog_ops.i2c_gate_ctrl)
 		dev->dvb.frontend->ops.analog_ops.i2c_gate_ctrl(dev->dvb.frontend, 1);
@@ -1545,7 +1543,7 @@ static int vidioc_g_frequency(struct file *file, void *priv,
 }
 
 static int vidioc_s_frequency(struct file *file, void *priv,
-				struct v4l2_frequency *freq)
+				const struct v4l2_frequency *freq)
 {
 	struct au0828_fh *fh = priv;
 	struct au0828_dev *dev = fh->dev;
@@ -1756,7 +1754,7 @@ static int vidioc_g_register(struct file *file, void *priv,
 }
 
 static int vidioc_s_register(struct file *file, void *priv,
-			     struct v4l2_dbg_register *reg)
+			     const struct v4l2_dbg_register *reg)
 {
 	struct au0828_fh *fh = priv;
 	struct au0828_dev *dev = fh->dev;

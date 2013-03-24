@@ -64,8 +64,7 @@ struct saa7134_go7007 {
 	dma_addr_t bottom_dma;
 };
 
-static struct go7007_board_info board_voyager = {
-	.firmware	 = "go7007tv.bin",
+static const struct go7007_board_info board_voyager = {
 	.flags		 = 0,
 	.sensor_flags	 = GO7007_SENSOR_656 |
 				GO7007_SENSOR_VALID_ENABLE |
@@ -236,7 +235,7 @@ static void saa7134_go7007_irq_ts_done(struct saa7134_dev *dev,
 	struct go7007 *go = video_get_drvdata(dev->empress_dev);
 	struct saa7134_go7007 *saa = go->hpi_context;
 
-	if (!go->streaming)
+	if (!vb2_is_streaming(&go->vidq))
 		return;
 	if (0 != (status & 0x000f0000))
 		printk(KERN_DEBUG "saa7134-go7007: irq: lost %ld\n",
@@ -261,12 +260,12 @@ static int saa7134_go7007_stream_start(struct go7007 *go)
 
 	saa->top_dma = dma_map_page(&dev->pci->dev, virt_to_page(saa->top),
 			0, PAGE_SIZE, DMA_FROM_DEVICE);
-	if (!saa->top_dma)
+	if (dma_mapping_error(&dev->pci->dev, saa->top_dma))
 		return -ENOMEM;
 	saa->bottom_dma = dma_map_page(&dev->pci->dev,
 			virt_to_page(saa->bottom),
 			0, PAGE_SIZE, DMA_FROM_DEVICE);
-	if (!saa->bottom_dma) {
+	if (dma_mapping_error(&dev->pci->dev, saa->bottom_dma)) {
 		dma_unmap_page(&dev->pci->dev, saa->top_dma, PAGE_SIZE,
 				DMA_FROM_DEVICE);
 		return -ENOMEM;
@@ -430,6 +429,7 @@ static struct go7007_hpi_ops saa7134_go7007_hpi_ops = {
 	.send_firmware		= saa7134_go7007_send_firmware,
 	.send_command		= saa7134_go7007_send_command,
 };
+MODULE_FIRMWARE("go7007/go7007tv.bin");
 
 /********************* Add/remove functions *********************/
 
@@ -456,6 +456,7 @@ static int saa7134_go7007_init(struct saa7134_dev *dev)
 	if (go == NULL)
 		goto allocfail;
 	go->board_id = GO7007_BOARDID_PCI_VOYAGER;
+	snprintf(go->bus_info, sizeof(go->bus_info), "PCI:%s", pci_name(dev->pci));
 	strncpy(go->name, saa7134_boards[dev->board].name, sizeof(go->name));
 	go->hpi_ops = &saa7134_go7007_hpi_ops;
 	go->hpi_context = saa;
@@ -468,9 +469,9 @@ static int saa7134_go7007_init(struct saa7134_dev *dev)
 
 	/* Do any final GO7007 initialization, then register the
 	 * V4L2 and ALSA interfaces */
-	if (go7007_register_encoder(go) < 0)
+	if (go7007_register_encoder(go, go->board_info->num_i2c_devs) < 0)
 		goto initfail;
-	dev->empress_dev = go->video_dev;
+	dev->empress_dev = &go->vdev;
 	video_set_drvdata(dev->empress_dev, go);
 
 	go->status = STATUS_ONLINE;
@@ -498,12 +499,17 @@ static int saa7134_go7007_fini(struct saa7134_dev *dev)
 		return 0;
 
 	go = video_get_drvdata(dev->empress_dev);
+	if (go->audio_enabled)
+		go7007_snd_remove(go);
+
 	saa = go->hpi_context;
 	go->status = STATUS_SHUTDOWN;
 	free_page((unsigned long)saa->top);
 	free_page((unsigned long)saa->bottom);
 	kfree(saa);
-	go7007_remove(go);
+	video_unregister_device(&go->vdev);
+
+	v4l2_device_put(&go->v4l2_dev);
 	dev->empress_dev = NULL;
 
 	return 0;

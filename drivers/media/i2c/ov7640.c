@@ -15,21 +15,18 @@
  * Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
  */
 
-#include <linux/module.h>
 #include <linux/init.h>
+#include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/videodev2.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-chip-ident.h>
+#include <linux/slab.h>
 
-#include "wis-i2c.h"
+MODULE_DESCRIPTION("OmniVision ov7640 sensor driver");
+MODULE_LICENSE("GPL v2");
 
-struct wis_ov7640 {
-	int brightness;
-	int contrast;
-	int saturation;
-	int hue;
-};
-
-static u8 initial_registers[] = {
+static const u8 initial_registers[] = {
 	0x12, 0x80,
 	0x12, 0x54,
 	0x14, 0x24,
@@ -39,7 +36,7 @@ static u8 initial_registers[] = {
 	0xFF, 0xFF, /* Terminator (reg 0xFF is unused) */
 };
 
-static int write_regs(struct i2c_client *client, u8 *regs)
+static int write_regs(struct i2c_client *client, const u8 *regs)
 {
 	int i;
 
@@ -49,48 +46,61 @@ static int write_regs(struct i2c_client *client, u8 *regs)
 	return 0;
 }
 
-static int wis_ov7640_probe(struct i2c_client *client,
-			    const struct i2c_device_id *id)
+/* ----------------------------------------------------------------------- */
+
+static const struct v4l2_subdev_ops ov7640_ops;
+
+static int ov7640_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = client->adapter;
+	struct v4l2_subdev *sd;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA))
 		return -ENODEV;
 
+	sd = kzalloc(sizeof(struct v4l2_subdev), GFP_KERNEL);
+	if (sd == NULL)
+		return -ENOMEM;
+	v4l2_i2c_subdev_init(sd, client, &ov7640_ops);
+
 	client->flags = I2C_CLIENT_SCCB;
 
-	dev_dbg(&client->dev,
-		"wis-ov7640: initializing OV7640 at address %d on %s\n",
-		client->addr, adapter->name);
+	v4l_info(client, "chip found @ 0x%02x (%s)\n",
+			client->addr << 1, client->adapter->name);
 
 	if (write_regs(client, initial_registers) < 0) {
-		dev_err(&client->dev, "wis-ov7640: error initializing OV7640\n");
+		v4l_err(client, "error initializing OV7640\n");
+		kfree(sd);
 		return -ENODEV;
 	}
 
 	return 0;
 }
 
-static int wis_ov7640_remove(struct i2c_client *client)
+
+static int ov7640_remove(struct i2c_client *client)
 {
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+
+	v4l2_device_unregister_subdev(sd);
+	kfree(sd);
 	return 0;
 }
 
-static const struct i2c_device_id wis_ov7640_id[] = {
-	{ "wis_ov7640", 0 },
+static const struct i2c_device_id ov7640_id[] = {
+	{ "ov7640", 0 },
 	{ }
 };
-MODULE_DEVICE_TABLE(i2c, wis_ov7640_id);
+MODULE_DEVICE_TABLE(i2c, ov7640_id);
 
-static struct i2c_driver wis_ov7640_driver = {
+static struct i2c_driver ov7640_driver = {
 	.driver = {
-		.name	= "WIS OV7640 I2C driver",
+		.owner	= THIS_MODULE,
+		.name	= "ov7640",
 	},
-	.probe		= wis_ov7640_probe,
-	.remove		= wis_ov7640_remove,
-	.id_table	= wis_ov7640_id,
+	.probe = ov7640_probe,
+	.remove = ov7640_remove,
+	.id_table = ov7640_id,
 };
-
-module_i2c_driver(wis_ov7640_driver);
-
-MODULE_LICENSE("GPL v2");
+module_i2c_driver(ov7640_driver);

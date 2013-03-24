@@ -567,11 +567,10 @@ static void destroy_urbs(struct gspca_dev *gspca_dev)
 
 		gspca_dev->urb[i] = NULL;
 		usb_kill_urb(urb);
-		if (urb->transfer_buffer != NULL)
-			usb_free_coherent(gspca_dev->dev,
-					  urb->transfer_buffer_length,
-					  urb->transfer_buffer,
-					  urb->transfer_dma);
+		usb_free_coherent(gspca_dev->dev,
+				  urb->transfer_buffer_length,
+				  urb->transfer_buffer,
+				  urb->transfer_dma);
 		usb_free_urb(urb);
 	}
 }
@@ -1040,7 +1039,7 @@ static int vidioc_g_register(struct file *file, void *priv,
 }
 
 static int vidioc_s_register(struct file *file, void *priv,
-			struct v4l2_dbg_register *reg)
+			const struct v4l2_dbg_register *reg)
 {
 	struct gspca_dev *gspca_dev = video_drvdata(file);
 

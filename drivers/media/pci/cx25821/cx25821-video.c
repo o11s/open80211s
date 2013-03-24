@@ -1203,7 +1203,7 @@ int cx25821_vidioc_s_priority(struct file *file, void *f,
 }
 
 #ifdef TUNER_FLAG
-int cx25821_vidioc_s_std(struct file *file, void *priv, v4l2_std_id * tvnorms)
+int cx25821_vidioc_s_std(struct file *file, void *priv, v4l2_std_id tvnorms)
 {
 	struct cx25821_fh *fh = priv;
 	struct cx25821_dev *dev = ((struct cx25821_fh *)priv)->dev;
@@ -1218,11 +1218,11 @@ int cx25821_vidioc_s_std(struct file *file, void *priv, v4l2_std_id * tvnorms)
 			return err;
 	}
 
-	if (dev->tvnorm == *tvnorms)
+	if (dev->tvnorm == tvnorms)
 		return 0;
 
 	mutex_lock(&dev->lock);
-	cx25821_set_tvnorm(dev, *tvnorms);
+	cx25821_set_tvnorm(dev, tvnorms);
 	mutex_unlock(&dev->lock);
 
 	medusa_set_videostandard(dev);
@@ -1312,7 +1312,7 @@ int cx25821_vidioc_g_frequency(struct file *file, void *priv,
 	return 0;
 }
 
-int cx25821_set_freq(struct cx25821_dev *dev, struct v4l2_frequency *f)
+int cx25821_set_freq(struct cx25821_dev *dev, const struct v4l2_frequency *f)
 {
 	mutex_lock(&dev->lock);
 	dev->freq = f->frequency;
@@ -1328,7 +1328,7 @@ int cx25821_set_freq(struct cx25821_dev *dev, struct v4l2_frequency *f)
 }
 
 int cx25821_vidioc_s_frequency(struct file *file, void *priv,
-			       struct v4l2_frequency *f)
+			       const struct v4l2_frequency *f)
 {
 	struct cx25821_fh *fh = priv;
 	struct cx25821_dev *dev;
@@ -1364,7 +1364,7 @@ int cx25821_vidioc_g_register(struct file *file, void *fh,
 }
 
 int cx25821_vidioc_s_register(struct file *file, void *fh,
-		      struct v4l2_dbg_register *reg)
+		      const struct v4l2_dbg_register *reg)
 {
 	struct cx25821_dev *dev = ((struct cx25821_fh *)fh)->dev;
 
@@ -1397,7 +1397,7 @@ int cx25821_vidioc_g_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
 	return 0;
 }
 
-int cx25821_vidioc_s_tuner(struct file *file, void *priv, struct v4l2_tuner *t)
+int cx25821_vidioc_s_tuner(struct file *file, void *priv, const struct v4l2_tuner *t)
 {
 	struct cx25821_dev *dev = ((struct cx25821_fh *)priv)->dev;
 	struct cx25821_fh *fh = priv;

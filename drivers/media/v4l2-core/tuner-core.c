@@ -1134,7 +1134,7 @@ static int tuner_s_std(struct v4l2_subdev *sd, v4l2_std_id std)
 	return 0;
 }
 
-static int tuner_s_frequency(struct v4l2_subdev *sd, struct v4l2_frequency *f)
+static int tuner_s_frequency(struct v4l2_subdev *sd, const struct v4l2_frequency *f)
 {
 	struct tuner *t = to_tuner(sd);
 
@@ -1233,7 +1233,7 @@ static int tuner_g_tuner(struct v4l2_subdev *sd, struct v4l2_tuner *vt)
  * Note: vt->type should be initialized before calling it.
  * This is done by either video_ioctl2 or by the bridge driver.
  */
-static int tuner_s_tuner(struct v4l2_subdev *sd, struct v4l2_tuner *vt)
+static int tuner_s_tuner(struct v4l2_subdev *sd, const struct v4l2_tuner *vt)
 {
 	struct tuner *t = to_tuner(sd);
 

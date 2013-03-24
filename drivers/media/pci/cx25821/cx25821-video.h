@@ -135,7 +135,7 @@ extern int cx25821_vidioc_querybuf(struct file *file, void *priv,
 extern int cx25821_vidioc_qbuf(struct file *file, void *priv,
 			       struct v4l2_buffer *p);
 extern int cx25821_vidioc_s_std(struct file *file, void *priv,
-				v4l2_std_id *tvnorms);
+				v4l2_std_id tvnorms);
 extern int cx25821_enum_input(struct cx25821_dev *dev, struct v4l2_input *i);
 extern int cx25821_vidioc_enum_input(struct file *file, void *priv,
 				     struct v4l2_input *i);
@@ -149,17 +149,17 @@ extern int cx25821_vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 					struct v4l2_format *f);
 extern int cx25821_vidioc_g_frequency(struct file *file, void *priv,
 				      struct v4l2_frequency *f);
-extern int cx25821_set_freq(struct cx25821_dev *dev, struct v4l2_frequency *f);
+extern int cx25821_set_freq(struct cx25821_dev *dev, const struct v4l2_frequency *f);
 extern int cx25821_vidioc_s_frequency(struct file *file, void *priv,
-				      struct v4l2_frequency *f);
+				      const struct v4l2_frequency *f);
 extern int cx25821_vidioc_g_register(struct file *file, void *fh,
 				     struct v4l2_dbg_register *reg);
 extern int cx25821_vidioc_s_register(struct file *file, void *fh,
-				     struct v4l2_dbg_register *reg);
+				     const struct v4l2_dbg_register *reg);
 extern int cx25821_vidioc_g_tuner(struct file *file, void *priv,
 				  struct v4l2_tuner *t);
 extern int cx25821_vidioc_s_tuner(struct file *file, void *priv,
-				  struct v4l2_tuner *t);
+				  const struct v4l2_tuner *t);
 
 extern int cx25821_is_valid_width(u32 width, v4l2_std_id tvnorm);
 extern int cx25821_is_valid_height(u32 height, v4l2_std_id tvnorm);

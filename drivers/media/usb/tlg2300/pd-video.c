@@ -801,7 +801,7 @@ static int vidioc_g_fmt_vbi(struct file *file, void *fh,
 	return 0;
 }
 
-static int set_std(struct poseidon *pd, v4l2_std_id *norm)
+static int set_std(struct poseidon *pd, v4l2_std_id norm)
 {
 	struct video_data *video = &pd->video_data;
 	struct vbi_data *vbi	= &pd->vbi_data;
@@ -811,7 +811,7 @@ static int set_std(struct poseidon *pd, v4l2_std_id *norm)
 	int height;
 
 	for (i = 0; i < POSEIDON_TVNORMS; i++) {
-		if (*norm & poseidon_tvnorms[i].v4l2_id) {
+		if (norm & poseidon_tvnorms[i].v4l2_id) {
 			param = poseidon_tvnorms[i].tlg_tvnorm;
 			log("name : %s", poseidon_tvnorms[i].name);
 			goto found;
@@ -846,7 +846,7 @@ out:
 	return ret;
 }
 
-static int vidioc_s_std(struct file *file, void *fh, v4l2_std_id *norm)
+static int vidioc_s_std(struct file *file, void *fh, v4l2_std_id norm)
 {
 	struct front_face *front = fh;
 
@@ -1031,7 +1031,7 @@ static int pd_vidioc_s_tuner(struct poseidon *pd, int index)
 	return ret;
 }
 
-static int vidioc_s_tuner(struct file *file, void *fh, struct v4l2_tuner *a)
+static int vidioc_s_tuner(struct file *file, void *fh, const struct v4l2_tuner *a)
 {
 	struct front_face *front	= fh;
 	struct poseidon *pd		= front->pd;
@@ -1079,10 +1079,11 @@ static int set_frequency(struct poseidon *pd, u32 *frequency)
 }
 
 static int vidioc_s_frequency(struct file *file, void *fh,
-				struct v4l2_frequency *freq)
+				const struct v4l2_frequency *freq)
 {
 	struct front_face *front = fh;
 	struct poseidon *pd = front->pd;
+	u32 frequency = freq->frequency;
 
 	if (freq->tuner)
 		return -EINVAL;
@@ -1090,7 +1091,7 @@ static int vidioc_s_frequency(struct file *file, void *fh,
 	pd->pm_suspend = pm_video_suspend;
 	pd->pm_resume = pm_video_resume;
 #endif
-	return set_frequency(pd, &freq->frequency);
+	return set_frequency(pd, &frequency);
 }
 
 static int vidioc_reqbufs(struct file *file, void *fh,
@@ -1269,7 +1270,7 @@ static int restore_v4l2_context(struct poseidon *pd,
 
 	pd_video_checkmode(pd);
 
-	set_std(pd, &context->tvnormid);
+	set_std(pd, context->tvnormid);
 	vidioc_s_input(NULL, front, context->sig_index);
 	pd_vidioc_s_tuner(pd, context->audio_idx);
 	pd_vidioc_s_fmt(pd, &context->pix);
