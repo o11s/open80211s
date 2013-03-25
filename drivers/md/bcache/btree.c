@@ -240,7 +240,7 @@ out:
 	closure_return(cl);
 err:
 	set_btree_node_io_error(b);
-	bch_cache_set_error(b->c, "%s at bucket %lu, block %zu, %u keys",
+	bch_cache_set_error(b->c, "%s at bucket %zu, block %zu, %u keys",
 			    err, PTR_BUCKET_NR(b->c, &b->key, 0),
 			    index(i, b), i->keys);
 	goto out;
@@ -1021,8 +1021,8 @@ retry:
 		goto err_free;
 
 	if (!b) {
-		cache_bug(c, "Tried to allocate bucket"
-			  " that was in btree cache");
+		cache_bug(c,
+			"Tried to allocate bucket that was in btree cache");
 		__bkey_put(c, &k.key);
 		goto retry;
 	}
