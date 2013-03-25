@@ -48,17 +48,20 @@ enum ab9540_regulator_id {
 /* AB8500 and AB9540 register initialization */
 struct ab8500_regulator_reg_init {
 	int id;
+	u8 mask;
 	u8 value;
 };
 
-#define INIT_REGULATOR_REGISTER(_id, _value)	\
-	{					\
-		.id = _id,			\
-		.value = _value,		\
+#define INIT_REGULATOR_REGISTER(_id, _mask, _value)	\
+	{						\
+		.id = _id,				\
+		.mask = _mask,				\
+		.value = _value,			\
 	}
 
 /* AB8500 registers */
 enum ab8500_regulator_reg {
+	AB8500_REGUREQUESTCTRL1,
 	AB8500_REGUREQUESTCTRL2,
 	AB8500_REGUREQUESTCTRL3,
 	AB8500_REGUREQUESTCTRL4,
@@ -75,18 +78,28 @@ enum ab8500_regulator_reg {
 	AB8500_REGUMISC1,
 	AB8500_VAUDIOSUPPLY,
 	AB8500_REGUCTRL1VAMIC,
+	AB8500_VSMPS1REGU,
+	AB8500_VSMPS2REGU,
+	AB8500_VSMPS3REGU, /* NOTE! PRCMU register */
 	AB8500_VPLLVANAREGU,
 	AB8500_VREFDDR,
 	AB8500_EXTSUPPLYREGU,
 	AB8500_VAUX12REGU,
 	AB8500_VRF1VAUX3REGU,
+	AB8500_VSMPS1SEL1,
+	AB8500_VSMPS1SEL2,
+	AB8500_VSMPS1SEL3,
+	AB8500_VSMPS2SEL1,
+	AB8500_VSMPS2SEL2,
+	AB8500_VSMPS2SEL3,
+	AB8500_VSMPS3SEL1, /* NOTE! PRCMU register */
+	AB8500_VSMPS3SEL2, /* NOTE! PRCMU register */
 	AB8500_VAUX1SEL,
 	AB8500_VAUX2SEL,
 	AB8500_VRF1VAUX3SEL,
 	AB8500_REGUCTRL2SPARE,
 	AB8500_REGUCTRLDISCH,
 	AB8500_REGUCTRLDISCH2,
-	AB8500_VSMPS1SEL1,
 	AB8500_NUM_REGULATOR_REGISTERS,
 };
 
@@ -137,6 +150,13 @@ enum ab9540_regulator_reg {
 	AB9540_REGUCTRLDISCH2,
 	AB9540_REGUCTRLDISCH3,
 	AB9540_NUM_REGULATOR_REGISTERS,
+};
+
+struct ab8500_regulator_platform_data {
+	int num_reg_init;
+	struct ab8500_regulator_reg_init *reg_init;
+	int num_regulator;
+	struct regulator_init_data *regulator;
 };
 
 #endif
