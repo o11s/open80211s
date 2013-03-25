@@ -68,8 +68,8 @@ static int em2800_i2c_send_bytes(struct em28xx *dev, u8 addr, u8 *buf, u16 len)
 	/* trigger write */
 	ret = dev->em28xx_write_regs(dev, 4 - len, &b2[4 - len], 2 + len);
 	if (ret != 2 + len) {
-		em28xx_warn("failed to trigger write to i2c address 0x%x "
-			    "(error=%i)\n", addr, ret);
+		em28xx_warn("failed to trigger write to i2c address 0x%x (error=%i)\n",
+			    addr, ret);
 		return (ret < 0) ? ret : -EIO;
 	}
 	/* wait for completion */
@@ -81,8 +81,8 @@ static int em2800_i2c_send_bytes(struct em28xx *dev, u8 addr, u8 *buf, u16 len)
 		} else if (ret == 0x94 + len - 1) {
 			return -ENODEV;
 		} else if (ret < 0) {
-			em28xx_warn("failed to get i2c transfer status from "
-				    "bridge register (error=%i)\n", ret);
+			em28xx_warn("failed to get i2c transfer status from bridge register (error=%i)\n",
+				    ret);
 			return ret;
 		}
 		msleep(5);
@@ -110,8 +110,8 @@ static int em2800_i2c_recv_bytes(struct em28xx *dev, u8 addr, u8 *buf, u16 len)
 	buf2[0] = addr;
 	ret = dev->em28xx_write_regs(dev, 0x04, buf2, 2);
 	if (ret != 2) {
-		em28xx_warn("failed to trigger read from i2c address 0x%x "
-			    "(error=%i)\n", addr, ret);
+		em28xx_warn("failed to trigger read from i2c address 0x%x (error=%i)\n",
+			    addr, ret);
 		return (ret < 0) ? ret : -EIO;
 	}
 
@@ -124,8 +124,8 @@ static int em2800_i2c_recv_bytes(struct em28xx *dev, u8 addr, u8 *buf, u16 len)
 		} else if (ret == 0x94 + len - 1) {
 			return -ENODEV;
 		} else if (ret < 0) {
-			em28xx_warn("failed to get i2c transfer status from "
-				    "bridge register (error=%i)\n", ret);
+			em28xx_warn("failed to get i2c transfer status from bridge register (error=%i)\n",
+				    ret);
 			return ret;
 		}
 		msleep(5);
@@ -136,9 +136,8 @@ static int em2800_i2c_recv_bytes(struct em28xx *dev, u8 addr, u8 *buf, u16 len)
 	/* get the received message */
 	ret = dev->em28xx_read_reg_req_len(dev, 0x00, 4-len, buf2, len);
 	if (ret != len) {
-		em28xx_warn("reading from i2c device at 0x%x failed: "
-			    "couldn't get the received message from the bridge "
-			    "(error=%i)\n", addr, ret);
+		em28xx_warn("reading from i2c device at 0x%x failed: couldn't get the received message from the bridge (error=%i)\n",
+			    addr, ret);
 		return (ret < 0) ? ret : -EIO;
 	}
 	for (i = 0; i < len; i++)
@@ -172,19 +171,20 @@ static int em28xx_i2c_send_bytes(struct em28xx *dev, u16 addr, u8 *buf,
 
 	if (len < 1 || len > 64)
 		return -EOPNOTSUPP;
-	/* NOTE: limited by the USB ctrl message constraints
-	 * Zero length reads always succeed, even if no device is connected */
+	/*
+	 * NOTE: limited by the USB ctrl message constraints
+	 * Zero length reads always succeed, even if no device is connected
+	 */
 
 	/* Write to i2c device */
 	ret = dev->em28xx_write_regs_req(dev, stop ? 2 : 3, addr, buf, len);
 	if (ret != len) {
 		if (ret < 0) {
-			em28xx_warn("writing to i2c device at 0x%x failed "
-				    "(error=%i)\n", addr, ret);
+			em28xx_warn("writing to i2c device at 0x%x failed (error=%i)\n",
+				    addr, ret);
 			return ret;
 		} else {
-			em28xx_warn("%i bytes write to i2c device at 0x%x "
-				    "requested, but %i bytes written\n",
+			em28xx_warn("%i bytes write to i2c device at 0x%x requested, but %i bytes written\n",
 				    len, addr, ret);
 			return -EIO;
 		}
@@ -199,14 +199,16 @@ static int em28xx_i2c_send_bytes(struct em28xx *dev, u16 addr, u8 *buf,
 		} else if (ret == 0x10) {
 			return -ENODEV;
 		} else if (ret < 0) {
-			em28xx_warn("failed to read i2c transfer status from "
-				    "bridge (error=%i)\n", ret);
+			em28xx_warn("failed to read i2c transfer status from bridge (error=%i)\n",
+				    ret);
 			return ret;
 		}
 		msleep(5);
-		/* NOTE: do we really have to wait for success ?
-		   Never seen anything else than 0x00 or 0x10
-		   (even with high payload) ...			*/
+		/*
+		 * NOTE: do we really have to wait for success ?
+		 * Never seen anything else than 0x00 or 0x10
+		 * (even with high payload) ...
+		 */
 	}
 	em28xx_warn("write to i2c device at 0x%x timed out\n", addr);
 	return -EIO;
@@ -222,8 +224,10 @@ static int em28xx_i2c_recv_bytes(struct em28xx *dev, u16 addr, u8 *buf, u16 len)
 
 	if (len < 1 || len > 64)
 		return -EOPNOTSUPP;
-	/* NOTE: limited by the USB ctrl message constraints
-	 * Zero length reads always succeed, even if no device is connected */
+	/*
+	 * NOTE: limited by the USB ctrl message constraints
+	 * Zero length reads always succeed, even if no device is connected
+	 */
 
 	/* Read data from i2c device */
 	ret = dev->em28xx_read_reg_req_len(dev, 2, addr, buf, len);
@@ -232,7 +236,8 @@ static int em28xx_i2c_recv_bytes(struct em28xx *dev, u16 addr, u8 *buf, u16 len)
 			    addr, ret);
 		return ret;
 	}
-	/* NOTE: some devices with two i2c busses have the bad habit to return 0
+	/*
+	 * NOTE: some devices with two i2c busses have the bad habit to return 0
 	 * bytes if we are on bus B AND there was no write attempt to the
 	 * specified slave address before AND no device is present at the
 	 * requested slave address.
@@ -243,8 +248,8 @@ static int em28xx_i2c_recv_bytes(struct em28xx *dev, u16 addr, u8 *buf, u16 len)
 	/* Check success of the i2c operation */
 	ret = dev->em28xx_read_reg(dev, 0x05);
 	if (ret < 0) {
-		em28xx_warn("failed to read i2c transfer status from "
-			    "bridge (error=%i)\n", ret);
+		em28xx_warn("failed to read i2c transfer status from bridge (error=%i)\n",
+			    ret);
 		return ret;
 	}
 	if (ret > 0) {
@@ -368,9 +373,10 @@ static int em28xx_i2c_xfer(struct i2c_adapter *i2c_adap,
 	return num;
 }
 
-/* based on linux/sunrpc/svcauth.h and linux/hash.h
+/*
+ * based on linux/sunrpc/svcauth.h and linux/hash.h
  * The original hash function returns a different value, if arch is x86_64
- *  or i386.
+ * or i386.
  */
 static inline unsigned long em28xx_hash_mem(char *buf, int length, int bits)
 {
@@ -393,8 +399,10 @@ static inline unsigned long em28xx_hash_mem(char *buf, int length, int bits)
 	return (hash >> (32 - bits)) & 0xffffffffUL;
 }
 
-/* Helper function to read data blocks from i2c clients with 8 or 16 bit
- * address width, 8 bit register width and auto incrementation been activated */
+/*
+ * Helper function to read data blocks from i2c clients with 8 or 16 bit
+ * address width, 8 bit register width and auto incrementation been activated
+ */
 static int em28xx_i2c_read_block(struct em28xx *dev, unsigned bus, u16 addr,
 				 bool addr_w16, u16 len, u8 *data)
 {
@@ -436,9 +444,11 @@ static int em28xx_i2c_eeprom(struct em28xx *dev, unsigned bus,
 			     u8 **eedata, u16 *eedata_len)
 {
 	const u16 len = 256;
-	/* FIXME common length/size for bytes to read, to display, hash
+	/*
+	 * FIXME common length/size for bytes to read, to display, hash
 	 * calculation and returned device dataset. Simplifies the code a lot,
-	 * but we might have to deal with multiple sizes in the future !      */
+	 * but we might have to deal with multiple sizes in the future !
+	 */
 	int i, err;
 	struct em28xx_eeprom *dev_config;
 	u8 buf, *data;
@@ -494,14 +504,13 @@ static int em28xx_i2c_eeprom(struct em28xx *dev, unsigned bus,
 		dev->hash = em28xx_hash_mem(data, len, 32);
 		mc_start = (data[1] << 8) + 4;	/* usually 0x0004 */
 
-		em28xx_info("EEPROM ID = %02x %02x %02x %02x, "
-			    "EEPROM hash = 0x%08lx\n",
+		em28xx_info("EEPROM ID = %02x %02x %02x %02x, EEPROM hash = 0x%08lx\n",
 			    data[0], data[1], data[2], data[3], dev->hash);
 		em28xx_info("EEPROM info:\n");
-		em28xx_info("\tmicrocode start address = 0x%04x, "
-			    "boot configuration = 0x%02x\n",
+		em28xx_info("\tmicrocode start address = 0x%04x, boot configuration = 0x%02x\n",
 			    mc_start, data[2]);
-		/* boot configuration (address 0x0002):
+		/*
+		 * boot configuration (address 0x0002):
 		 * [0]   microcode download speed: 1 = 400 kHz; 0 = 100 kHz
 		 * [1]   always selects 12 kb RAM
 		 * [2]   USB device speed: 1 = force Full Speed; 0 = auto detect
@@ -510,8 +519,10 @@ static int em28xx_i2c_eeprom(struct em28xx *dev, unsigned bus,
 		 *       characterization
 		 */
 
-		/* Read hardware config dataset offset from address
-		 * (microcode start + 46)			    */
+		/*
+		 * Read hardware config dataset offset from address
+		 * (microcode start + 46)
+		 */
 		err = em28xx_i2c_read_block(dev, bus, mc_start + 46, 1, 2,
 					    data);
 		if (err != 2) {
@@ -524,7 +535,8 @@ static int em28xx_i2c_eeprom(struct em28xx *dev, unsigned bus,
 		hwconf_offset = mc_start + data[0] + (data[1] << 8);
 
 		/* Read hardware config dataset */
-		/* NOTE: the microcode copy can be multiple pages long, but
+		/*
+		 * NOTE: the microcode copy can be multiple pages long, but
 		 * we assume the hardware config dataset is the same as in
 		 * the old eeprom and not longer than 256 bytes.
 		 * tveeprom is currently also limited to 256 bytes.
@@ -552,8 +564,7 @@ static int em28xx_i2c_eeprom(struct em28xx *dev, unsigned bus,
 		   data[0] == 0x1a && data[1] == 0xeb &&
 		   data[2] == 0x67 && data[3] == 0x95) {
 		dev->hash = em28xx_hash_mem(data, len, 32);
-		em28xx_info("EEPROM ID = %02x %02x %02x %02x, "
-			    "EEPROM hash = 0x%08lx\n",
+		em28xx_info("EEPROM ID = %02x %02x %02x %02x, EEPROM hash = 0x%08lx\n",
 			    data[0], data[1], data[2], data[3], dev->hash);
 		em28xx_info("EEPROM info:\n");
 	} else {
