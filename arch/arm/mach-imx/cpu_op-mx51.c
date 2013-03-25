@@ -16,6 +16,7 @@
 #include <linux/kernel.h>
 
 #include "hardware.h"
+#include "cpu_op-mx51.h"
 
 static struct cpu_op mx51_cpu_op[] = {
 	{
