@@ -212,7 +212,8 @@ int percpu_ref_kill(struct percpu_ref *ref)
 		synchronize_rcu();
 
 		for_each_possible_cpu(cpu)
-			count += *per_cpu_ptr((unsigned __percpu *) pcpu_count, cpu);
+			count += *per_cpu_ptr((unsigned __percpu *)pcpu_count,
+					      cpu);
 
 		pr_debug("global %lli pcpu %i",
 			 atomic64_read(&ref->count) & PCPU_COUNT_MASK,
