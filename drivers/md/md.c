@@ -379,7 +379,8 @@ EXPORT_SYMBOL(mddev_congested);
  * Generic flush handling for md
  */
 
-static void md_end_flush(struct bio *bio, int err)
+static void md_end_flush(struct bio *bio, int err,
+			 struct batch_complete *batch)
 {
 	struct md_rdev *rdev = bio->bi_private;
 	struct mddev *mddev = rdev->mddev;
@@ -756,7 +757,8 @@ void md_rdev_clear(struct md_rdev *rdev)
 }
 EXPORT_SYMBOL_GPL(md_rdev_clear);
 
-static void super_written(struct bio *bio, int error)
+static void super_written(struct bio *bio, int error,
+			  struct batch_complete *batch)
 {
 	struct md_rdev *rdev = bio->bi_private;
 	struct mddev *mddev = rdev->mddev;
@@ -807,7 +809,8 @@ void md_super_wait(struct mddev *mddev)
 	finish_wait(&mddev->sb_wait, &wq);
 }
 
-static void bi_complete(struct bio *bio, int error)
+static void bi_complete(struct bio *bio, int error,
+			struct batch_complete *batch)
 {
 	complete((struct completion*)bio->bi_private);
 }

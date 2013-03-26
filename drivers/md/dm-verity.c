@@ -413,7 +413,8 @@ static void verity_work(struct work_struct *w)
 	verity_finish_io(io, verity_verify_io(io));
 }
 
-static void verity_end_io(struct bio *bio, int error)
+static void verity_end_io(struct bio *bio, int error,
+			  struct batch_complete *batch)
 {
 	struct dm_verity_io *io = bio->bi_private;
 

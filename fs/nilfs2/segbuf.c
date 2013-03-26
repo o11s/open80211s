@@ -338,7 +338,8 @@ void nilfs_add_checksums_on_logs(struct list_head *logs, u32 seed)
 /*
  * BIO operations
  */
-static void nilfs_end_bio_write(struct bio *bio, int err)
+static void nilfs_end_bio_write(struct bio *bio, int err,
+				struct batch_complete *batch)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct nilfs_segment_buffer *segbuf = bio->bi_private;

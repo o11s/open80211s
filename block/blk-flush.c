@@ -384,7 +384,8 @@ void blk_abort_flushes(struct request_queue *q)
 	}
 }
 
-static void bio_end_flush(struct bio *bio, int err)
+static void bio_end_flush(struct bio *bio, int err,
+			  struct batch_complete *batch)
 {
 	if (err)
 		clear_bit(BIO_UPTODATE, &bio->bi_flags);

@@ -1485,7 +1485,8 @@ static void start_copy(struct dm_snap_pending_exception *pe)
 	dm_kcopyd_copy(s->kcopyd_client, &src, 1, &dest, 0, copy_callback, pe);
 }
 
-static void full_bio_end_io(struct bio *bio, int error)
+static void full_bio_end_io(struct bio *bio, int error,
+			    struct batch_complete *batch)
 {
 	void *callback_data = bio->bi_private;
 

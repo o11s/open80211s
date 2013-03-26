@@ -472,7 +472,7 @@ static void dmio_complete(unsigned long error, void *context)
 {
 	struct dm_buffer *b = context;
 
-	b->bio.bi_end_io(&b->bio, error ? -EIO : 0);
+	b->bio.bi_end_io(&b->bio, error ? -EIO : 0, NULL);
 }
 
 static void use_dmio(struct dm_buffer *b, int rw, sector_t block,
@@ -503,7 +503,7 @@ static void use_dmio(struct dm_buffer *b, int rw, sector_t block,
 
 	r = dm_io(&io_req, 1, &region, NULL);
 	if (r)
-		end_io(&b->bio, r);
+		end_io(&b->bio, r, NULL);
 }
 
 static void use_inline_bio(struct dm_buffer *b, int rw, sector_t block,
@@ -570,7 +570,8 @@ static void submit_io(struct dm_buffer *b, int rw, sector_t block,
  * Set the error, clear B_WRITING bit and wake anyone who was waiting on
  * it.
  */
-static void write_endio(struct bio *bio, int error)
+static void write_endio(struct bio *bio, int error,
+			struct batch_complete *batch)
 {
 	struct dm_buffer *b = container_of(bio, struct dm_buffer, bio);
 
@@ -943,7 +944,7 @@ found_buffer:
  * The endio routine for reading: set the error, clear the bit and wake up
  * anyone waiting on the buffer.
  */
-static void read_endio(struct bio *bio, int error)
+static void read_endio(struct bio *bio, int error, struct batch_complete *batch)
 {
 	struct dm_buffer *b = container_of(bio, struct dm_buffer, bio);
 

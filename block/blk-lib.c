@@ -15,7 +15,8 @@ struct bio_batch {
 	struct completion	*wait;
 };
 
-static void bio_batch_end_io(struct bio *bio, int err)
+static void bio_batch_end_io(struct bio *bio, int err,
+			     struct batch_complete *batch)
 {
 	struct bio_batch *bb = bio->bi_private;
 

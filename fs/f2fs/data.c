@@ -313,7 +313,7 @@ struct page *get_new_data_page(struct inode *inode, pgoff_t index,
 	return page;
 }
 
-static void read_end_io(struct bio *bio, int err)
+static void read_end_io(struct bio *bio, int err, struct batch_complete *batch)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;

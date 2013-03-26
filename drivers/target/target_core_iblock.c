@@ -271,7 +271,8 @@ static void iblock_complete_cmd(struct se_cmd *cmd)
 	kfree(ibr);
 }
 
-static void iblock_bio_done(struct bio *bio, int err)
+static void iblock_bio_done(struct bio *bio, int err,
+			    struct batch_complete *batch)
 {
 	struct se_cmd *cmd = bio->bi_private;
 	struct iblock_req *ibr = cmd->priv;
@@ -335,7 +336,8 @@ static void iblock_submit_bios(struct bio_list *list, int rw)
 	blk_finish_plug(&plug);
 }
 
-static void iblock_end_io_flush(struct bio *bio, int err)
+static void iblock_end_io_flush(struct bio *bio, int err,
+				struct batch_complete *batch)
 {
 	struct se_cmd *cmd = bio->bi_private;
 

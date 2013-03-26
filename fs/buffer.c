@@ -2884,7 +2884,8 @@ sector_t generic_block_bmap(struct address_space *mapping, sector_t block,
 }
 EXPORT_SYMBOL(generic_block_bmap);
 
-static void end_bio_bh_io_sync(struct bio *bio, int err)
+static void end_bio_bh_io_sync(struct bio *bio, int err,
+			       struct batch_complete *batch)
 {
 	struct buffer_head *bh = bio->bi_private;
 

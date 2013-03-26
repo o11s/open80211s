@@ -741,7 +741,8 @@ static void __end_block_io_op(struct pending_req *pending_req, int error)
 /*
  * bio callback.
  */
-static void end_block_io_op(struct bio *bio, int error)
+static void end_block_io_op(struct bio *bio, int error,
+			    struct batch_complete *batch)
 {
 	__end_block_io_op(bio->bi_private, error);
 	bio_put(bio);

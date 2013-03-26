@@ -5018,7 +5018,7 @@ static unsigned int extract_stripe_index_from_bio_private(void *bi_private)
 	return (unsigned int)((uintptr_t)bi_private) & 3;
 }
 
-static void btrfs_end_bio(struct bio *bio, int err)
+static void btrfs_end_bio(struct bio *bio, int err, struct batch_complete *batch)
 {
 	struct btrfs_bio *bbio = extract_bbio_from_bio_private(bio->bi_private);
 	int is_orig_bio = 0;
@@ -5075,7 +5075,7 @@ static void btrfs_end_bio(struct bio *bio, int err)
 		}
 		kfree(bbio);
 
-		bio_endio(bio, err);
+		bio_endio_batch(bio, err, batch);
 	} else if (!is_orig_bio) {
 		bio_put(bio);
 	}

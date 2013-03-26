@@ -380,7 +380,8 @@ xfs_imap_valid(
 STATIC void
 xfs_end_bio(
 	struct bio		*bio,
-	int			error)
+	int			error,
+	struct batch_complete *batch)
 {
 	xfs_ioend_t		*ioend = bio->bi_private;
 

@@ -147,12 +147,14 @@ static void bounce_end_io(struct bio *bio, mempool_t *pool, int err)
 	bio_put(bio);
 }
 
-static void bounce_end_io_write(struct bio *bio, int err)
+static void bounce_end_io_write(struct bio *bio, int err,
+				struct batch_complete *batch)
 {
 	bounce_end_io(bio, page_pool, err);
 }
 
-static void bounce_end_io_write_isa(struct bio *bio, int err)
+static void bounce_end_io_write_isa(struct bio *bio, int err,
+				    struct batch_complete *batch)
 {
 
 	bounce_end_io(bio, isa_page_pool, err);
@@ -168,12 +170,14 @@ static void __bounce_end_io_read(struct bio *bio, mempool_t *pool, int err)
 	bounce_end_io(bio, pool, err);
 }
 
-static void bounce_end_io_read(struct bio *bio, int err)
+static void bounce_end_io_read(struct bio *bio, int err,
+			       struct batch_complete *batch)
 {
 	__bounce_end_io_read(bio, page_pool, err);
 }
 
-static void bounce_end_io_read_isa(struct bio *bio, int err)
+static void bounce_end_io_read_isa(struct bio *bio, int err,
+				   struct batch_complete *batch)
 {
 	__bounce_end_io_read(bio, isa_page_pool, err);
 }
