@@ -1115,6 +1115,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 				err = -EIDRM;
 				goto out_free;
 			}
+			sem_unlock(sma, -1);
 		}
 
 		sem_lock(sma, NULL, -1);
