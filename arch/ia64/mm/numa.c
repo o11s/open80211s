@@ -78,7 +78,7 @@ int __meminit __early_pfn_to_nid(unsigned long pfn)
 		if (section >= ssec && section < esec) {
 			last_ssec = ssec;
 			last_esec = esec;
-			last_nid = node_memblk[i].nid
+			last_nid = node_memblk[i].nid;
 			return node_memblk[i].nid;
 		}
 	}
