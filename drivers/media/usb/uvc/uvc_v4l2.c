@@ -315,7 +315,7 @@ static int uvc_v4l2_set_format(struct uvc_streaming *stream,
 		goto done;
 	}
 
-	memcpy(&stream->ctrl, &probe, sizeof probe);
+	stream->ctrl = probe;
 	stream->cur_format = format;
 	stream->cur_frame = frame;
 
@@ -387,7 +387,7 @@ static int uvc_v4l2_set_streamparm(struct uvc_streaming *stream,
 		return -EBUSY;
 	}
 
-	memcpy(&probe, &stream->ctrl, sizeof probe);
+	probe = stream->ctrl;
 	probe.dwFrameInterval =
 		uvc_try_frame_interval(stream->cur_frame, interval);
 
@@ -398,7 +398,7 @@ static int uvc_v4l2_set_streamparm(struct uvc_streaming *stream,
 		return ret;
 	}
 
-	memcpy(&stream->ctrl, &probe, sizeof probe);
+	stream->ctrl = probe;
 	mutex_unlock(&stream->mutex);
 
 	/* Return the actual frame period. */
@@ -501,8 +501,8 @@ static int uvc_v4l2_open(struct file *file)
 	if (atomic_inc_return(&stream->dev->users) == 1) {
 		ret = uvc_status_start(stream->dev);
 		if (ret < 0) {
-			usb_autopm_put_interface(stream->dev->intf);
 			atomic_dec(&stream->dev->users);
+			usb_autopm_put_interface(stream->dev->intf);
 			kfree(handle);
 			return ret;
 		}
@@ -607,10 +607,8 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 
 		ret = uvc_ctrl_get(chain, &xctrl);
 		uvc_ctrl_rollback(handle);
-		if (ret < 0)
-			return ret == -ENOENT ? -EINVAL : ret;
-
-		ctrl->value = xctrl.value;
+		if (ret >= 0)
+			ctrl->value = xctrl.value;
 		break;
 	}
 
@@ -634,7 +632,7 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		ret = uvc_ctrl_set(chain, &xctrl);
 		if (ret < 0) {
 			uvc_ctrl_rollback(handle);
-			return ret == -ENOENT ? -EINVAL : ret;
+			return ret;
 		}
 		ret = uvc_ctrl_commit(handle, &xctrl, 1);
 		if (ret == 0)
@@ -659,9 +657,8 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			ret = uvc_ctrl_get(chain, ctrl);
 			if (ret < 0) {
 				uvc_ctrl_rollback(handle);
-				ctrls->error_idx = ret == -ENOENT
-						 ? ctrls->count : i;
-				return ret == -ENOENT ? -EINVAL : ret;
+				ctrls->error_idx = i;
+				return ret;
 			}
 		}
 		ctrls->error_idx = 0;
@@ -688,10 +685,9 @@ static long uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			ret = uvc_ctrl_set(chain, ctrl);
 			if (ret < 0) {
 				uvc_ctrl_rollback(handle);
-				ctrls->error_idx = (ret == -ENOENT &&
-						    cmd == VIDIOC_S_EXT_CTRLS)
+				ctrls->error_idx = cmd == VIDIOC_S_EXT_CTRLS
 						 ? ctrls->count : i;
-				return ret == -ENOENT ? -EINVAL : ret;
+				return ret;
 			}
 		}
 

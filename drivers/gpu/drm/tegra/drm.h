@@ -18,16 +18,6 @@
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fixed.h>
 
-struct tegra_framebuffer {
-	struct drm_framebuffer base;
-	struct drm_gem_cma_object *obj;
-};
-
-static inline struct tegra_framebuffer *to_tegra_fb(struct drm_framebuffer *fb)
-{
-	return container_of(fb, struct tegra_framebuffer, base);
-}
-
 struct host1x {
 	struct drm_device *drm;
 	struct device *dev;
@@ -44,7 +34,6 @@ struct host1x {
 	struct list_head clients;
 
 	struct drm_fbdev_cma *fbdev;
-	struct tegra_framebuffer fb;
 };
 
 struct host1x_client;
@@ -75,6 +64,7 @@ struct tegra_output;
 
 struct tegra_dc {
 	struct host1x_client client;
+	spinlock_t lock;
 
 	struct host1x *host1x;
 	struct device *dev;
@@ -94,6 +84,9 @@ struct tegra_dc {
 	struct drm_info_list *debugfs_files;
 	struct drm_minor *minor;
 	struct dentry *debugfs;
+
+	/* page-flip handling */
+	struct drm_pending_vblank_event *event;
 };
 
 static inline struct tegra_dc *host1x_client_to_dc(struct host1x_client *client)
@@ -117,6 +110,34 @@ static inline unsigned long tegra_dc_readl(struct tegra_dc *dc,
 {
 	return readl(dc->regs + (reg << 2));
 }
+
+struct tegra_dc_window {
+	struct {
+		unsigned int x;
+		unsigned int y;
+		unsigned int w;
+		unsigned int h;
+	} src;
+	struct {
+		unsigned int x;
+		unsigned int y;
+		unsigned int w;
+		unsigned int h;
+	} dst;
+	unsigned int bits_per_pixel;
+	unsigned int format;
+	unsigned int stride[2];
+	unsigned long base[3];
+};
+
+/* from dc.c */
+extern unsigned int tegra_dc_format(uint32_t format);
+extern int tegra_dc_setup_window(struct tegra_dc *dc, unsigned int index,
+				 const struct tegra_dc_window *window);
+extern void tegra_dc_enable_vblank(struct tegra_dc *dc);
+extern void tegra_dc_disable_vblank(struct tegra_dc *dc);
+extern void tegra_dc_cancel_page_flip(struct drm_crtc *crtc,
+				      struct drm_file *file);
 
 struct tegra_output_ops {
 	int (*enable)(struct tegra_output *output);
@@ -203,24 +224,6 @@ extern int tegra_dc_rgb_exit(struct tegra_dc *dc);
 extern int tegra_output_parse_dt(struct tegra_output *output);
 extern int tegra_output_init(struct drm_device *drm, struct tegra_output *output);
 extern int tegra_output_exit(struct tegra_output *output);
-
-/* from gem.c */
-extern struct tegra_gem_object *tegra_gem_alloc(struct drm_device *drm,
-						size_t size);
-extern int tegra_gem_handle_create(struct drm_device *drm,
-				   struct drm_file *file, size_t size,
-				   unsigned long flags, uint32_t *handle);
-extern int tegra_gem_dumb_create(struct drm_file *file, struct drm_device *drm,
-				 struct drm_mode_create_dumb *args);
-extern int tegra_gem_dumb_map_offset(struct drm_file *file,
-				     struct drm_device *drm, uint32_t handle,
-				     uint64_t *offset);
-extern int tegra_gem_dumb_destroy(struct drm_file *file,
-				  struct drm_device *drm, uint32_t handle);
-extern int tegra_drm_gem_mmap(struct file *filp, struct vm_area_struct *vma);
-extern int tegra_gem_init_object(struct drm_gem_object *obj);
-extern void tegra_gem_free_object(struct drm_gem_object *obj);
-extern struct vm_operations_struct tegra_gem_vm_ops;
 
 /* from fb.c */
 extern int tegra_drm_fb_init(struct drm_device *drm);

@@ -82,7 +82,6 @@ static struct posix_acl *f2fs_acl_from_disk(const char *value, size_t size)
 		case ACL_GROUP_OBJ:
 		case ACL_MASK:
 		case ACL_OTHER:
-			acl->a_entries[i].e_id = ACL_UNDEFINED_ID;
 			entry = (struct f2fs_acl_entry *)((char *)entry +
 					sizeof(struct f2fs_acl_entry_short));
 			break;
@@ -192,15 +191,14 @@ struct posix_acl *f2fs_get_acl(struct inode *inode, int type)
 		retval = f2fs_getxattr(inode, name_index, "", value, retval);
 	}
 
-	if (retval < 0) {
-		if (retval == -ENODATA)
-			acl = NULL;
-		else
-			acl = ERR_PTR(retval);
-	} else {
+	if (retval > 0)
 		acl = f2fs_acl_from_disk(value, retval);
-	}
+	else if (retval == -ENODATA)
+		acl = NULL;
+	else
+		acl = ERR_PTR(retval);
 	kfree(value);
+
 	if (!IS_ERR(acl))
 		set_cached_acl(inode, type, acl);
 

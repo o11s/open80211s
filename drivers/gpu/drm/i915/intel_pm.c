@@ -44,6 +44,14 @@
  * i915.i915_enable_fbc parameter
  */
 
+static bool intel_crtc_active(struct drm_crtc *crtc)
+{
+	/* Be paranoid as we can arrive here with only partial
+	 * state retrieved from the hardware during setup.
+	 */
+	return to_intel_crtc(crtc)->active && crtc->fb && crtc->mode.clock;
+}
+
 static void i8xx_disable_fbc(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -405,9 +413,8 @@ void intel_update_fbc(struct drm_device *dev)
 	 *   - going to an unsupported config (interlace, pixel multiply, etc.)
 	 */
 	list_for_each_entry(tmp_crtc, &dev->mode_config.crtc_list, head) {
-		if (tmp_crtc->enabled &&
-		    !to_intel_crtc(tmp_crtc)->primary_disabled &&
-		    tmp_crtc->fb) {
+		if (intel_crtc_active(tmp_crtc) &&
+		    !to_intel_crtc(tmp_crtc)->primary_disabled) {
 			if (crtc) {
 				DRM_DEBUG_KMS("more than one pipe active, disabling compression\n");
 				dev_priv->no_fbc_reason = FBC_MULTIPLE_PIPES;
@@ -438,12 +445,6 @@ void intel_update_fbc(struct drm_device *dev)
 	if (!enable_fbc) {
 		DRM_DEBUG_KMS("fbc disabled per module param\n");
 		dev_priv->no_fbc_reason = FBC_MODULE_PARAM;
-		goto out_disable;
-	}
-	if (intel_fb->obj->base.size > dev_priv->cfb_size) {
-		DRM_DEBUG_KMS("framebuffer too large, disabling "
-			      "compression\n");
-		dev_priv->no_fbc_reason = FBC_STOLEN_TOO_SMALL;
 		goto out_disable;
 	}
 	if ((crtc->mode.flags & DRM_MODE_FLAG_INTERLACE) ||
@@ -478,6 +479,14 @@ void intel_update_fbc(struct drm_device *dev)
 	/* If the kernel debugger is active, always disable compression */
 	if (in_dbg_master())
 		goto out_disable;
+
+	if (i915_gem_stolen_setup_compression(dev, intel_fb->obj->base.size)) {
+		DRM_INFO("not enough stolen space for compressed buffer (need %zd bytes), disabling\n", intel_fb->obj->base.size);
+		DRM_INFO("hint: you may be able to increase stolen memory size in the BIOS to avoid this\n");
+		DRM_DEBUG_KMS("framebuffer too large, disabling compression\n");
+		dev_priv->no_fbc_reason = FBC_STOLEN_TOO_SMALL;
+		goto out_disable;
+	}
 
 	/* If the scanout has not changed, don't modify the FBC settings.
 	 * Note that we make the fundamental assumption that the fb->obj
@@ -526,6 +535,7 @@ out_disable:
 		DRM_DEBUG_KMS("unsupported config, disabling FBC\n");
 		intel_disable_fbc(dev);
 	}
+	i915_gem_stolen_cleanup_compression(dev);
 }
 
 static void i915_pineview_get_mem_freq(struct drm_device *dev)
@@ -992,7 +1002,7 @@ static struct drm_crtc *single_enabled_crtc(struct drm_device *dev)
 	struct drm_crtc *crtc, *enabled = NULL;
 
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (crtc->enabled && crtc->fb) {
+		if (intel_crtc_active(crtc)) {
 			if (enabled)
 				return NULL;
 			enabled = crtc;
@@ -1086,7 +1096,7 @@ static bool g4x_compute_wm0(struct drm_device *dev,
 	int entries, tlb_miss;
 
 	crtc = intel_get_crtc_for_plane(dev, plane);
-	if (crtc->fb == NULL || !crtc->enabled) {
+	if (!intel_crtc_active(crtc)) {
 		*cursor_wm = cursor->guard_size;
 		*plane_wm = display->guard_size;
 		return false;
@@ -1215,7 +1225,7 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 	int entries;
 
 	crtc = intel_get_crtc_for_plane(dev, plane);
-	if (crtc->fb == NULL || !crtc->enabled)
+	if (!intel_crtc_active(crtc))
 		return false;
 
 	clock = crtc->mode.clock;	/* VESA DOT Clock */
@@ -1286,6 +1296,7 @@ static void valleyview_update_wm(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int planea_wm, planeb_wm, cursora_wm, cursorb_wm;
 	int plane_sr, cursor_sr;
+	int ignore_plane_sr, ignore_cursor_sr;
 	unsigned int enabled = 0;
 
 	vlv_update_drain_latency(dev);
@@ -1302,17 +1313,23 @@ static void valleyview_update_wm(struct drm_device *dev)
 			    &planeb_wm, &cursorb_wm))
 		enabled |= 2;
 
-	plane_sr = cursor_sr = 0;
 	if (single_plane_enabled(enabled) &&
 	    g4x_compute_srwm(dev, ffs(enabled) - 1,
 			     sr_latency_ns,
 			     &valleyview_wm_info,
 			     &valleyview_cursor_wm_info,
-			     &plane_sr, &cursor_sr))
+			     &plane_sr, &ignore_cursor_sr) &&
+	    g4x_compute_srwm(dev, ffs(enabled) - 1,
+			     2*sr_latency_ns,
+			     &valleyview_wm_info,
+			     &valleyview_cursor_wm_info,
+			     &ignore_plane_sr, &cursor_sr)) {
 		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
-	else
+	} else {
 		I915_WRITE(FW_BLC_SELF_VLV,
 			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
+		plane_sr = cursor_sr = 0;
+	}
 
 	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
@@ -1352,17 +1369,18 @@ static void g4x_update_wm(struct drm_device *dev)
 			    &planeb_wm, &cursorb_wm))
 		enabled |= 2;
 
-	plane_sr = cursor_sr = 0;
 	if (single_plane_enabled(enabled) &&
 	    g4x_compute_srwm(dev, ffs(enabled) - 1,
 			     sr_latency_ns,
 			     &g4x_wm_info,
 			     &g4x_cursor_wm_info,
-			     &plane_sr, &cursor_sr))
+			     &plane_sr, &cursor_sr)) {
 		I915_WRITE(FW_BLC_SELF, FW_BLC_SELF_EN);
-	else
+	} else {
 		I915_WRITE(FW_BLC_SELF,
 			   I915_READ(FW_BLC_SELF) & ~FW_BLC_SELF_EN);
+		plane_sr = cursor_sr = 0;
+	}
 
 	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
@@ -1468,7 +1486,7 @@ static void i9xx_update_wm(struct drm_device *dev)
 
 	fifo_size = dev_priv->display.get_fifo_size(dev, 0);
 	crtc = intel_get_crtc_for_plane(dev, 0);
-	if (crtc->enabled && crtc->fb) {
+	if (intel_crtc_active(crtc)) {
 		int cpp = crtc->fb->bits_per_pixel / 8;
 		if (IS_GEN2(dev))
 			cpp = 4;
@@ -1482,7 +1500,7 @@ static void i9xx_update_wm(struct drm_device *dev)
 
 	fifo_size = dev_priv->display.get_fifo_size(dev, 1);
 	crtc = intel_get_crtc_for_plane(dev, 1);
-	if (crtc->enabled && crtc->fb) {
+	if (intel_crtc_active(crtc)) {
 		int cpp = crtc->fb->bits_per_pixel / 8;
 		if (IS_GEN2(dev))
 			cpp = 4;
@@ -1811,21 +1829,6 @@ static void sandybridge_update_wm(struct drm_device *dev)
 		enabled |= 2;
 	}
 
-	if ((dev_priv->num_pipe == 3) &&
-	    g4x_compute_wm0(dev, 2,
-			    &sandybridge_display_wm_info, latency,
-			    &sandybridge_cursor_wm_info, latency,
-			    &plane_wm, &cursor_wm)) {
-		val = I915_READ(WM0_PIPEC_IVB);
-		val &= ~(WM0_PIPE_PLANE_MASK | WM0_PIPE_CURSOR_MASK);
-		I915_WRITE(WM0_PIPEC_IVB, val |
-			   ((plane_wm << WM0_PIPE_PLANE_SHIFT) | cursor_wm));
-		DRM_DEBUG_KMS("FIFO watermarks For pipe C -"
-			      " plane %d, cursor: %d\n",
-			      plane_wm, cursor_wm);
-		enabled |= 3;
-	}
-
 	/*
 	 * Calculate and update the self-refresh watermark only when one
 	 * display plane is used.
@@ -1891,6 +1894,128 @@ static void sandybridge_update_wm(struct drm_device *dev)
 		   cursor_wm);
 }
 
+static void ivybridge_update_wm(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int latency = SNB_READ_WM0_LATENCY() * 100;	/* In unit 0.1us */
+	u32 val;
+	int fbc_wm, plane_wm, cursor_wm;
+	int ignore_fbc_wm, ignore_plane_wm, ignore_cursor_wm;
+	unsigned int enabled;
+
+	enabled = 0;
+	if (g4x_compute_wm0(dev, 0,
+			    &sandybridge_display_wm_info, latency,
+			    &sandybridge_cursor_wm_info, latency,
+			    &plane_wm, &cursor_wm)) {
+		val = I915_READ(WM0_PIPEA_ILK);
+		val &= ~(WM0_PIPE_PLANE_MASK | WM0_PIPE_CURSOR_MASK);
+		I915_WRITE(WM0_PIPEA_ILK, val |
+			   ((plane_wm << WM0_PIPE_PLANE_SHIFT) | cursor_wm));
+		DRM_DEBUG_KMS("FIFO watermarks For pipe A -"
+			      " plane %d, " "cursor: %d\n",
+			      plane_wm, cursor_wm);
+		enabled |= 1;
+	}
+
+	if (g4x_compute_wm0(dev, 1,
+			    &sandybridge_display_wm_info, latency,
+			    &sandybridge_cursor_wm_info, latency,
+			    &plane_wm, &cursor_wm)) {
+		val = I915_READ(WM0_PIPEB_ILK);
+		val &= ~(WM0_PIPE_PLANE_MASK | WM0_PIPE_CURSOR_MASK);
+		I915_WRITE(WM0_PIPEB_ILK, val |
+			   ((plane_wm << WM0_PIPE_PLANE_SHIFT) | cursor_wm));
+		DRM_DEBUG_KMS("FIFO watermarks For pipe B -"
+			      " plane %d, cursor: %d\n",
+			      plane_wm, cursor_wm);
+		enabled |= 2;
+	}
+
+	if (g4x_compute_wm0(dev, 2,
+			    &sandybridge_display_wm_info, latency,
+			    &sandybridge_cursor_wm_info, latency,
+			    &plane_wm, &cursor_wm)) {
+		val = I915_READ(WM0_PIPEC_IVB);
+		val &= ~(WM0_PIPE_PLANE_MASK | WM0_PIPE_CURSOR_MASK);
+		I915_WRITE(WM0_PIPEC_IVB, val |
+			   ((plane_wm << WM0_PIPE_PLANE_SHIFT) | cursor_wm));
+		DRM_DEBUG_KMS("FIFO watermarks For pipe C -"
+			      " plane %d, cursor: %d\n",
+			      plane_wm, cursor_wm);
+		enabled |= 3;
+	}
+
+	/*
+	 * Calculate and update the self-refresh watermark only when one
+	 * display plane is used.
+	 *
+	 * SNB support 3 levels of watermark.
+	 *
+	 * WM1/WM2/WM2 watermarks have to be enabled in the ascending order,
+	 * and disabled in the descending order
+	 *
+	 */
+	I915_WRITE(WM3_LP_ILK, 0);
+	I915_WRITE(WM2_LP_ILK, 0);
+	I915_WRITE(WM1_LP_ILK, 0);
+
+	if (!single_plane_enabled(enabled) ||
+	    dev_priv->sprite_scaling_enabled)
+		return;
+	enabled = ffs(enabled) - 1;
+
+	/* WM1 */
+	if (!ironlake_compute_srwm(dev, 1, enabled,
+				   SNB_READ_WM1_LATENCY() * 500,
+				   &sandybridge_display_srwm_info,
+				   &sandybridge_cursor_srwm_info,
+				   &fbc_wm, &plane_wm, &cursor_wm))
+		return;
+
+	I915_WRITE(WM1_LP_ILK,
+		   WM1_LP_SR_EN |
+		   (SNB_READ_WM1_LATENCY() << WM1_LP_LATENCY_SHIFT) |
+		   (fbc_wm << WM1_LP_FBC_SHIFT) |
+		   (plane_wm << WM1_LP_SR_SHIFT) |
+		   cursor_wm);
+
+	/* WM2 */
+	if (!ironlake_compute_srwm(dev, 2, enabled,
+				   SNB_READ_WM2_LATENCY() * 500,
+				   &sandybridge_display_srwm_info,
+				   &sandybridge_cursor_srwm_info,
+				   &fbc_wm, &plane_wm, &cursor_wm))
+		return;
+
+	I915_WRITE(WM2_LP_ILK,
+		   WM2_LP_EN |
+		   (SNB_READ_WM2_LATENCY() << WM1_LP_LATENCY_SHIFT) |
+		   (fbc_wm << WM1_LP_FBC_SHIFT) |
+		   (plane_wm << WM1_LP_SR_SHIFT) |
+		   cursor_wm);
+
+	/* WM3, note we have to correct the cursor latency */
+	if (!ironlake_compute_srwm(dev, 3, enabled,
+				   SNB_READ_WM3_LATENCY() * 500,
+				   &sandybridge_display_srwm_info,
+				   &sandybridge_cursor_srwm_info,
+				   &fbc_wm, &plane_wm, &ignore_cursor_wm) ||
+	    !ironlake_compute_srwm(dev, 3, enabled,
+				   2 * SNB_READ_WM3_LATENCY() * 500,
+				   &sandybridge_display_srwm_info,
+				   &sandybridge_cursor_srwm_info,
+				   &ignore_fbc_wm, &ignore_plane_wm, &cursor_wm))
+		return;
+
+	I915_WRITE(WM3_LP_ILK,
+		   WM3_LP_EN |
+		   (SNB_READ_WM3_LATENCY() << WM1_LP_LATENCY_SHIFT) |
+		   (fbc_wm << WM1_LP_FBC_SHIFT) |
+		   (plane_wm << WM1_LP_SR_SHIFT) |
+		   cursor_wm);
+}
+
 static void
 haswell_update_linetime_wm(struct drm_device *dev, int pipe,
 				 struct drm_display_mode *mode)
@@ -1929,7 +2054,7 @@ sandybridge_compute_sprite_wm(struct drm_device *dev, int plane,
 	int entries, tlb_miss;
 
 	crtc = intel_get_crtc_for_plane(dev, plane);
-	if (crtc->fb == NULL || !crtc->enabled) {
+	if (!intel_crtc_active(crtc)) {
 		*sprite_wm = display->guard_size;
 		return false;
 	}
@@ -2164,7 +2289,6 @@ err_unpin:
 	i915_gem_object_unpin(ctx);
 err_unref:
 	drm_gem_object_unreference(&ctx->base);
-	mutex_unlock(&dev->struct_mutex);
 	return NULL;
 }
 
@@ -3459,6 +3583,19 @@ static void cpt_init_clock_gating(struct drm_device *dev)
 	}
 }
 
+static void gen6_check_mch_setup(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t tmp;
+
+	tmp = I915_READ(MCH_SSKPD);
+	if ((tmp & MCH_SSKPD_WM0_MASK) != MCH_SSKPD_WM0_VAL) {
+		DRM_INFO("Wrong MCH_SSKPD value: 0x%08x\n", tmp);
+		DRM_INFO("This can cause pipe underruns and display issues.\n");
+		DRM_INFO("Please upgrade your BIOS to fix this.\n");
+	}
+}
+
 static void gen6_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3470,6 +3607,15 @@ static void gen6_init_clock_gating(struct drm_device *dev)
 	I915_WRITE(ILK_DISPLAY_CHICKEN2,
 		   I915_READ(ILK_DISPLAY_CHICKEN2) |
 		   ILK_ELPIN_409_SELECT);
+
+	/* WaDisableHiZPlanesWhenMSAAEnabled */
+	I915_WRITE(_3D_CHICKEN,
+		   _MASKED_BIT_ENABLE(_3D_CHICKEN_HIZ_PLANE_DISABLE_MSAA_4X_SNB));
+
+	/* WaSetupGtModeTdRowDispatch */
+	if (IS_SNB_GT1(dev))
+		I915_WRITE(GEN6_GT_MODE,
+			   _MASKED_BIT_ENABLE(GEN6_TD_FOUR_ROW_DISPATCH_DISABLE));
 
 	I915_WRITE(WM3_LP_ILK, 0);
 	I915_WRITE(WM2_LP_ILK, 0);
@@ -3542,6 +3688,8 @@ static void gen6_init_clock_gating(struct drm_device *dev)
 	I915_WRITE(GEN6_GT_MODE, _MASKED_BIT_ENABLE(GEN6_GT_MODE_HI));
 
 	cpt_init_clock_gating(dev);
+
+	gen6_check_mch_setup(dev);
 }
 
 static void gen7_setup_fixed_func_scheduler(struct drm_i915_private *dev_priv)
@@ -3552,6 +3700,10 @@ static void gen7_setup_fixed_func_scheduler(struct drm_i915_private *dev_priv)
 	reg |= GEN7_FF_TS_SCHED_HW;
 	reg |= GEN7_FF_VS_SCHED_HW;
 	reg |= GEN7_FF_DS_SCHED_HW;
+
+	/* WaVSRefCountFullforceMissDisable */
+	if (IS_HASWELL(dev_priv->dev))
+		reg &= ~GEN7_FF_VS_REF_CNT_FFME;
 
 	I915_WRITE(GEN7_FF_THREAD_MODE, reg);
 }
@@ -3723,6 +3875,8 @@ static void ivybridge_init_clock_gating(struct drm_device *dev)
 	I915_WRITE(GEN6_MBCUNIT_SNPCR, snpcr);
 
 	cpt_init_clock_gating(dev);
+
+	gen6_check_mch_setup(dev);
 }
 
 static void valleyview_init_clock_gating(struct drm_device *dev)
@@ -3916,35 +4070,57 @@ void intel_init_clock_gating(struct drm_device *dev)
 	dev_priv->display.init_clock_gating(dev);
 }
 
-/* Starting with Haswell, we have different power wells for
- * different parts of the GPU. This attempts to enable them all.
- */
-void intel_init_power_wells(struct drm_device *dev)
+void intel_set_power_well(struct drm_device *dev, bool enable)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	unsigned long power_wells[] = {
-		HSW_PWR_WELL_CTL1,
-		HSW_PWR_WELL_CTL2,
-		HSW_PWR_WELL_CTL4
-	};
-	int i;
+	bool is_enabled, enable_requested;
+	uint32_t tmp;
 
 	if (!IS_HASWELL(dev))
 		return;
 
-	mutex_lock(&dev->struct_mutex);
+	tmp = I915_READ(HSW_PWR_WELL_DRIVER);
+	is_enabled = tmp & HSW_PWR_WELL_STATE;
+	enable_requested = tmp & HSW_PWR_WELL_ENABLE;
 
-	for (i = 0; i < ARRAY_SIZE(power_wells); i++) {
-		int well = I915_READ(power_wells[i]);
+	if (enable) {
+		if (!enable_requested)
+			I915_WRITE(HSW_PWR_WELL_DRIVER, HSW_PWR_WELL_ENABLE);
 
-		if ((well & HSW_PWR_WELL_STATE) == 0) {
-			I915_WRITE(power_wells[i], well & HSW_PWR_WELL_ENABLE);
-			if (wait_for((I915_READ(power_wells[i]) & HSW_PWR_WELL_STATE), 20))
-				DRM_ERROR("Error enabling power well %lx\n", power_wells[i]);
+		if (!is_enabled) {
+			DRM_DEBUG_KMS("Enabling power well\n");
+			if (wait_for((I915_READ(HSW_PWR_WELL_DRIVER) &
+				      HSW_PWR_WELL_STATE), 20))
+				DRM_ERROR("Timeout enabling power well\n");
+		}
+	} else {
+		if (enable_requested) {
+			I915_WRITE(HSW_PWR_WELL_DRIVER, 0);
+			DRM_DEBUG_KMS("Requesting to disable the power well\n");
 		}
 	}
+}
 
-	mutex_unlock(&dev->struct_mutex);
+/*
+ * Starting with Haswell, we have a "Power Down Well" that can be turned off
+ * when not needed anymore. We have 4 registers that can request the power well
+ * to be enabled, and it will only be disabled if none of the registers is
+ * requesting it to be enabled.
+ */
+void intel_init_power_well(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!IS_HASWELL(dev))
+		return;
+
+	/* For now, we need the power well to be always enabled. */
+	intel_set_power_well(dev, true);
+
+	/* We're taking over the BIOS, so clear any requests made by it since
+	 * the driver is in charge now. */
+	if (I915_READ(HSW_PWR_WELL_BIOS) & HSW_PWR_WELL_ENABLE)
+		I915_WRITE(HSW_PWR_WELL_BIOS, 0);
 }
 
 /* Set up chip specific power management-related functions */
@@ -3999,7 +4175,7 @@ void intel_init_pm(struct drm_device *dev)
 		} else if (IS_IVYBRIDGE(dev)) {
 			/* FIXME: detect B0+ stepping and use auto training */
 			if (SNB_READ_WM0_LATENCY()) {
-				dev_priv->display.update_wm = sandybridge_update_wm;
+				dev_priv->display.update_wm = ivybridge_update_wm;
 				dev_priv->display.update_sprite_wm = sandybridge_update_sprite_wm;
 			} else {
 				DRM_DEBUG_KMS("Failed to read display plane latency. "
@@ -4119,7 +4295,8 @@ static void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 static void __gen6_gt_force_wake_mt_reset(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_DISABLE(0xffff));
-	POSTING_READ(ECOBUS); /* something from same cacheline, but !FORCEWAKE */
+	/* something from same cacheline, but !FORCEWAKE_MT */
+	POSTING_READ(ECOBUS);
 }
 
 static void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
@@ -4136,7 +4313,8 @@ static void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
 		DRM_ERROR("Timed out waiting for forcewake old ack to clear.\n");
 
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_ENABLE(FORCEWAKE_KERNEL));
-	POSTING_READ(ECOBUS); /* something from same cacheline, but !FORCEWAKE */
+	/* something from same cacheline, but !FORCEWAKE_MT */
+	POSTING_READ(ECOBUS);
 
 	if (wait_for_atomic((I915_READ_NOTRACE(forcewake_ack) & 1),
 			    FORCEWAKE_ACK_TIMEOUT_MS))
@@ -4173,14 +4351,16 @@ void gen6_gt_check_fifodbg(struct drm_i915_private *dev_priv)
 static void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE, 0);
-	/* gen6_gt_check_fifodbg doubles as the POSTING_READ */
+	/* something from same cacheline, but !FORCEWAKE */
+	POSTING_READ(ECOBUS);
 	gen6_gt_check_fifodbg(dev_priv);
 }
 
 static void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_DISABLE(FORCEWAKE_KERNEL));
-	/* gen6_gt_check_fifodbg doubles as the POSTING_READ */
+	/* something from same cacheline, but !FORCEWAKE_MT */
+	POSTING_READ(ECOBUS);
 	gen6_gt_check_fifodbg(dev_priv);
 }
 
@@ -4220,6 +4400,8 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 static void vlv_force_wake_reset(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_VLV, _MASKED_BIT_DISABLE(0xffff));
+	/* something from same cacheline, but !FORCEWAKE_VLV */
+	POSTING_READ(FORCEWAKE_ACK_VLV);
 }
 
 static void vlv_force_wake_get(struct drm_i915_private *dev_priv)
@@ -4240,7 +4422,8 @@ static void vlv_force_wake_get(struct drm_i915_private *dev_priv)
 static void vlv_force_wake_put(struct drm_i915_private *dev_priv)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_VLV, _MASKED_BIT_DISABLE(FORCEWAKE_KERNEL));
-	/* The below doubles as a POSTING_READ */
+	/* something from same cacheline, but !FORCEWAKE_VLV */
+	POSTING_READ(FORCEWAKE_ACK_VLV);
 	gen6_gt_check_fifodbg(dev_priv);
 }
 
