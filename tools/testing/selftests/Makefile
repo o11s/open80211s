@@ -1,4 +1,5 @@
 TARGETS = breakpoints
+TARGETS += epoll
 TARGETS += kcmp
 TARGETS += timers
 TARGETS += mqueue
