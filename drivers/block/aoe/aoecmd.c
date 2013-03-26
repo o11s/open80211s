@@ -919,8 +919,6 @@ bio_pagedec(struct bio *bio)
 static void
 bufinit(struct buf *buf, struct request *rq, struct bio *bio)
 {
-	struct bio_vec *bv;
-
 	memset(buf, 0, sizeof(*buf));
 	buf->rq = rq;
 	buf->bio = bio;
