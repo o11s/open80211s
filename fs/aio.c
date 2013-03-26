@@ -630,7 +630,7 @@ static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 	rcu_read_lock();
 
 	hlist_for_each_entry_rcu(ctx, &mm->ioctx_list, list) {
-		if (ctx->user_id == ctx_id){
+		if (ctx->user_id == ctx_id) {
 			atomic_inc(&ctx->users);
 			ret = ctx;
 			break;
