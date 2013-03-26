@@ -696,9 +696,8 @@ struct kern_ipc_perm *ipc_obtain_object(struct ipc_ids *ids, int id)
  *
  * Look for an id in the ipc ids idr and lock the associated ipc object.
  *
- * The ipc object is locked on exit.
+ * The ipc object is locked on successful exit.
  */
-
 struct kern_ipc_perm *ipc_lock(struct ipc_ids *ids, int id)
 {
 	struct kern_ipc_perm *out;
@@ -713,15 +712,14 @@ struct kern_ipc_perm *ipc_lock(struct ipc_ids *ids, int id)
 	/* ipc_rmid() may have already freed the ID while ipc_lock
 	 * was spinning: here verify that the structure is still valid
 	 */
-	if (out->deleted)
-		goto err0;
+	if (!out->deleted)
+		return out;
 
-	return out;
-err0:
 	spin_unlock(&out->lock);
+	out = ERR_PTR(-EINVAL);
 err1:
 	rcu_read_unlock();
-	return ERR_PTR(-EINVAL);
+	return out;
 }
 
 /**
