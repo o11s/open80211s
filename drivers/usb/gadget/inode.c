@@ -514,8 +514,8 @@ static long ep_ioctl(struct file *fd, unsigned code, unsigned long value)
 struct kiocb_priv {
 	struct usb_request	*req;
 	struct ep_data		*epdata;
-	struct kiocb 		*iocb;
-	struct mm_struct 	*mm;
+	struct kiocb		*iocb;
+	struct mm_struct	*mm;
 	struct work_struct	work;
 	void			*buf;
 	const struct iovec	*iv;
