@@ -2189,8 +2189,15 @@ ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 		struct ieee80211_sub_if_data *tmp_sdata;
 		struct sk_buff *skb = rx->skb, *fwd_skb;
 		u8 *dest = ((struct ethhdr *)rx->skb->data)->h_dest;
+		u8 *src = ((struct ethhdr *)rx->skb->data)->h_source;
 
 		if (is_multicast_ether_addr(dest)) {
+
+			/* drop if locally generated frame */
+			tmp_sdata = mesh_bss_find_if(mbss, src);
+			if (tmp_sdata)
+				return RX_DROP_UNUSABLE;
+
 			/* deliver mcast frames to all other interfaces */
 			list_for_each_entry_rcu(tmp_sdata, &mbss->if_list, u.mesh.if_list) {
 
