@@ -69,11 +69,13 @@ static void l4f00242t03_lcd_init(struct spi_device *spi)
 	ret = regulator_set_voltage(priv->core_reg, 2800000, 2800000);
 	if (ret) {
 		dev_err(&spi->dev, "failed to set the core regulator voltage.\n");
+		regulator_disable(priv->io_reg);
 		return;
 	}
 	ret = regulator_enable(priv->core_reg);
 	if (ret) {
 		dev_err(&spi->dev, "failed to enable the core regulator.\n");
+		regulator_disable(priv->io_reg);
 		return;
 	}
 
