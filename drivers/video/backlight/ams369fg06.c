@@ -533,7 +533,7 @@ static int ams369fg06_remove(struct spi_device *spi)
 	return 0;
 }
 
-#if defined(CONFIG_PM)
+#ifdef CONFIG_PM_SLEEP
 static int ams369fg06_suspend(struct device *dev)
 {
 	struct ams369fg06 *lcd = dev_get_drvdata(dev);
@@ -555,10 +555,10 @@ static int ams369fg06_resume(struct device *dev)
 
 	return ams369fg06_power(lcd, FB_BLANK_UNBLANK);
 }
+#endif
 
 static SIMPLE_DEV_PM_OPS(ams369fg06_pm_ops, ams369fg06_suspend,
 			ams369fg06_resume);
-#endif
 
 static void ams369fg06_shutdown(struct spi_device *spi)
 {
@@ -571,9 +571,7 @@ static struct spi_driver ams369fg06_driver = {
 	.driver = {
 		.name	= "ams369fg06",
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_PM
 		.pm	= &ams369fg06_pm_ops,
-#endif
 	},
 	.probe		= ams369fg06_probe,
 	.remove		= ams369fg06_remove,
