@@ -47,6 +47,7 @@ unsigned long pci_mem_start = 0xaeedbabe;
 #ifdef CONFIG_PCI
 EXPORT_SYMBOL(pci_mem_start);
 #endif
+static u64 mem_limit = ~0ULL;
 
 /*
  * This function checks if any part of the range <start,end> is mapped
@@ -108,7 +109,7 @@ int __init e820_all_mapped(u64 start, u64 end, unsigned type)
  * Add a memory region to the kernel e820 map.
  */
 static void __init __e820_add_region(struct e820map *e820x, u64 start, u64 size,
-					 int type)
+					 int type, bool limited)
 {
 	int x = e820x->nr_map;
 
@@ -119,6 +120,22 @@ static void __init __e820_add_region(struct e820map *e820x, u64 start, u64 size,
 		return;
 	}
 
+	if (limited) {
+		if (start >= mem_limit) {
+			printk(KERN_ERR "e820: ignoring [mem %#010llx-%#010llx]\n",
+			       (unsigned long long)start,
+			       (unsigned long long)(start + size - 1));
+			return;
+		}
+
+		if (mem_limit - start < size) {
+			printk(KERN_ERR "e820: ignoring [mem %#010llx-%#010llx]\n",
+			       (unsigned long long)mem_limit,
+			       (unsigned long long)(start + size - 1));
+			size = mem_limit - start;
+		}
+	}
+
 	e820x->map[x].addr = start;
 	e820x->map[x].size = size;
 	e820x->map[x].type = type;
@@ -127,7 +144,37 @@ static void __init __e820_add_region(struct e820map *e820x, u64 start, u64 size,
 
 void __init e820_add_region(u64 start, u64 size, int type)
 {
-	__e820_add_region(&e820, start, size, type);
+	__e820_add_region(&e820, start, size, type, false);
+}
+
+/*
+ * do_add_efi_memmap() calls this function().
+ *
+ * Note: BOOT_SERVICES_{CODE,DATA} regions on some efi machines are marked
+ * as E820_RAM, and they are needed to be mapped. Please use e820_add_region()
+ * to add BOOT_SERVICES_{CODE,DATA} regions.
+ */
+void __init e820_add_limit_region(u64 start, u64 size, int type)
+{
+	/*
+	 * efi_init() is called after finish_e820_parsing(), so we should
+	 * check whether [start, start + size) contains address above
+	 * mem_limit if the type is E820_RAM.
+	 */
+	__e820_add_region(&e820, start, size, type, type == E820_RAM);
+}
+
+void __init e820_adjust_region(u64 *start, u64 *size)
+{
+	if (*start >= mem_limit) {
+		*size = 0;
+		return;
+	}
+
+	if (mem_limit - *start < *size)
+		*size = mem_limit - *start;
+
+	return;
 }
 
 static void __init e820_print_type(u32 type)
@@ -455,8 +502,9 @@ static u64 __init __e820_update_range(struct e820map *e820x, u64 start,
 
 		/* new range is totally covered? */
 		if (ei->addr < start && ei_end > end) {
-			__e820_add_region(e820x, start, size, new_type);
-			__e820_add_region(e820x, end, ei_end - end, ei->type);
+			__e820_add_region(e820x, start, size, new_type, false);
+			__e820_add_region(e820x, end, ei_end - end, ei->type,
+					  false);
 			ei->size = start - ei->addr;
 			real_updated_size += size;
 			continue;
@@ -469,7 +517,7 @@ static u64 __init __e820_update_range(struct e820map *e820x, u64 start,
 			continue;
 
 		__e820_add_region(e820x, final_start, final_end - final_start,
-				  new_type);
+				  new_type, false);
 
 		real_updated_size += final_end - final_start;
 
@@ -809,7 +857,7 @@ static int userdef __initdata;
 /* "mem=nopentium" disables the 4MB page tables. */
 static int __init parse_memopt(char *p)
 {
-	u64 mem_size;
+	char *oldp;
 
 	if (!p)
 		return -EINVAL;
@@ -825,11 +873,11 @@ static int __init parse_memopt(char *p)
 	}
 
 	userdef = 1;
-	mem_size = memparse(p, &p);
+	oldp = p;
+	mem_limit = memparse(p, &p);
 	/* don't remove all of memory when handling "mem={invalid}" param */
-	if (mem_size == 0)
+	if (mem_limit == 0 || p == oldp)
 		return -EINVAL;
-	e820_remove_range(mem_size, ULLONG_MAX - mem_size, E820_RAM, 1);
 
 	return 0;
 }
@@ -895,6 +943,12 @@ early_param("memmap", parse_memmap_opt);
 
 void __init finish_e820_parsing(void)
 {
+	if (mem_limit != ~0ULL) {
+		userdef = 1;
+		e820_remove_range(mem_limit, ULLONG_MAX - mem_limit,
+				  E820_RAM, 1);
+	}
+
 	if (userdef) {
 		u32 nr = e820.nr_map;
 
