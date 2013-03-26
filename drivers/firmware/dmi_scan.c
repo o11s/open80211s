@@ -410,7 +410,7 @@ static void __init dmi_dump_ids(void)
 	printk(KERN_CONT "\n");
 }
 
-static int __init dmi_present(const char *buf)
+static int __init dmi_present(const u8 *buf)
 {
 	int smbios_ver;
 
