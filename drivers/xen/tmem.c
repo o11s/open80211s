@@ -382,6 +382,8 @@ static struct frontswap_ops tmem_frontswap_ops = {
 	.invalidate_area = tmem_frontswap_flush_area,
 	.init = tmem_frontswap_init
 };
+#else	/* CONFIG_FRONTSWAP */
+#define disable_frontswap_selfshrinking 1
 #endif
 
 static int xen_tmem_init(void)
