@@ -63,7 +63,7 @@ char **argv_split(gfp_t gfp, const char *str, int *argcp)
 	char **argv, **argv_ret;
 	int argc;
 
-	argv_str = kstrndup(str, KMALLOC_MAX_SIZE, gfp);
+	argv_str = kstrndup(str, KMALLOC_MAX_SIZE - 1, gfp);
 	if (!argv_str)
 		return NULL;
 
