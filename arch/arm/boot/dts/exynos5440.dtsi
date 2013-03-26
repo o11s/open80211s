@@ -16,6 +16,12 @@
 
 	interrupt-parent = <&gic>;
 
+	clock: clock-controller@0x160000 {
+		compatible = "samsung,exynos5440-clock";
+		reg = <0x160000 0x1000>;
+		#clock-cells = <1>;
+	};
+
 	gic:interrupt-controller@2E0000 {
 		compatible = "arm,cortex-a15-gic";
 		#interrupt-cells = <3>;
@@ -59,12 +65,16 @@
 		compatible = "samsung,exynos4210-uart";
 		reg = <0xB0000 0x1000>;
 		interrupts = <0 2 0>;
+		clocks = <&clock 21>, <&clock 21>;
+		clock-names = "uart", "clk_uart_baud0";
 	};
 
 	serial@C0000 {
 		compatible = "samsung,exynos4210-uart";
 		reg = <0xC0000 0x1000>;
 		interrupts = <0 3 0>;
+		clocks = <&clock 21>, <&clock 21>;
+		clock-names = "uart", "clk_uart_baud0";
 	};
 
 	spi {
@@ -75,6 +85,8 @@
 		rx-dma-channel = <&pdma0 4>; /* preliminary */
 		#address-cells = <1>;
 		#size-cells = <0>;
+		clocks = <&clock 21>, <&clock 16>;
+		clock-names = "spi", "spi_busclk0";
 	};
 
 	pinctrl {
@@ -107,6 +119,8 @@
 		interrupts = <0 5 0>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		clocks = <&clock 21>;
+		clock-names = "i2c";
 	};
 
 	i2c@100000 {
@@ -115,12 +129,16 @@
 		interrupts = <0 6 0>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		clocks = <&clock 21>;
+		clock-names = "i2c";
 	};
 
 	watchdog {
 		compatible = "samsung,s3c2410-wdt";
 		reg = <0x110000 0x1000>;
 		interrupts = <0 1 0>;
+		clocks = <&clock 21>;
+		clock-names = "watchdog";
 	};
 
 	amba {
@@ -134,6 +152,8 @@
 			compatible = "arm,pl330", "arm,primecell";
 			reg = <0x120000 0x1000>;
 			interrupts = <0 34 0>;
+			clocks = <&clock 21>;
+			clock-names = "apb_pclk";
 			#dma-cells = <1>;
 			#dma-channels = <8>;
 			#dma-requests = <32>;
@@ -143,6 +163,8 @@
 			compatible = "arm,pl330", "arm,primecell";
 			reg = <0x121000 0x1000>;
 			interrupts = <0 35 0>;
+			clocks = <&clock 21>;
+			clock-names = "apb_pclk";
 			#dma-cells = <1>;
 			#dma-channels = <8>;
 			#dma-requests = <32>;
@@ -153,5 +175,7 @@
 		compatible = "samsung,s3c6410-rtc";
 		reg = <0x130000 0x1000>;
 		interrupts = <0 17 0>, <0 16 0>;
+		clocks = <&clock 21>;
+		clock-names = "rtc";
 	};
 };
