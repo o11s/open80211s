@@ -807,7 +807,7 @@ static inline void free_copy(struct msg_msg *copy)
 }
 #endif
 
-struct msg_msg *find_msg(struct msg_queue *msq, long *msgtyp, int mode)
+static struct msg_msg *find_msg(struct msg_queue *msq, long *msgtyp, int mode)
 {
 	struct msg_msg *msg;
 	long count = 0;
