@@ -541,6 +541,7 @@ struct subprocess_info *call_usermodehelper_setup(char *path, char **argv,
   out:
 	return sub_info;
 }
+EXPORT_SYMBOL(call_usermodehelper_setup);
 
 /**
  * call_usermodehelper_exec - start a usermode application
