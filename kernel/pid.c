@@ -190,8 +190,8 @@ static int alloc_pidmap(struct pid_namespace *pid_ns)
 					return pid;
 				}
 				offset = find_next_offset(map, offset);
-				pid = mk_pid(pid_ns, map, offset);
-			} while (offset < BITS_PER_PAGE && pid < pid_max);
+			} while (offset < BITS_PER_PAGE &&
+				(pid = mk_pid(pid_ns, map, offset)) < pid_max);
 		}
 		if (map < &pid_ns->pidmap[(pid_max-1)/BITS_PER_PAGE]) {
 			++map;
