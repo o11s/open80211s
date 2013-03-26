@@ -314,7 +314,7 @@ static inline int lz4_encodesequence(const u8 **ip, u8 **op, const u8 **anchor,
 	return 0;
 }
 
-int lz4_compresshcctx(struct lz4hc_data *ctx,
+static int lz4_compresshcctx(struct lz4hc_data *ctx,
 		const char *source,
 		char *dest,
 		int isize)
