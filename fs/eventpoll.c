@@ -105,7 +105,7 @@
 struct epoll_filefd {
 	struct file *file;
 	int fd;
-} EPOLL_PACKED;
+} __packed;
 
 /*
  * Structure used to track possible nested calls, for too deep recursions
