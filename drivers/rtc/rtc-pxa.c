@@ -80,22 +80,29 @@
 #define RYAR1		0x1c
 #define RTCPICR		0x34
 #define PIAR		0x38
+#define PSBR_RTC	0x00
 
 #define rtc_readl(pxa_rtc, reg)	\
 	__raw_readl((pxa_rtc)->base + (reg))
 #define rtc_writel(pxa_rtc, reg, value)	\
 	__raw_writel((value), (pxa_rtc)->base + (reg))
+#define rtc_readl_psbr(pxa_rtc, reg)	\
+	__raw_readl((pxa_rtc)->base_psbr + (reg))
+#define rtc_writel_psbr(pxa_rtc, reg, value)	\
+	__raw_writel((value), (pxa_rtc)->base_psbr + (reg))
 
 struct pxa_rtc {
 	struct resource	*ress;
+	struct resource	*ress_psbr;
 	void __iomem		*base;
+	void __iomem		*base_psbr;
 	int			irq_1Hz;
 	int			irq_Alrm;
 	struct rtc_device	*rtc;
 	spinlock_t		lock;		/* Protects this structure */
 };
 
-
+static struct pxa_rtc *rtc_info;
 static u32 ryxr_calc(struct rtc_time *tm)
 {
 	return ((tm->tm_year + 1900) << RYxR_YEAR_S)
@@ -117,7 +124,7 @@ static void tm_calc(u32 rycr, u32 rdcr, struct rtc_time *tm)
 	tm->tm_year = ((rycr & RYxR_YEAR_MASK) >> RYxR_YEAR_S) - 1900;
 	tm->tm_mon = (((rycr & RYxR_MONTH_MASK) >> RYxR_MONTH_S)) - 1;
 	tm->tm_mday = (rycr & RYxR_DAY_MASK);
-	tm->tm_wday = ((rycr & RDxR_DOW_MASK) >> RDxR_DOW_S) - 1;
+	tm->tm_wday = ((rdcr & RDxR_DOW_MASK) >> RDxR_DOW_S) - 1;
 	tm->tm_hour = (rdcr & RDxR_HOUR_MASK) >> RDxR_HOUR_S;
 	tm->tm_min = (rdcr & RDxR_MIN_MASK) >> RDxR_MIN_S;
 	tm->tm_sec = rdcr & RDxR_SEC_MASK;
@@ -175,7 +182,6 @@ static irqreturn_t pxa_rtc_irq(int irq, void *dev_id)
 
 	/* enable back rtc interrupts */
 	rtc_writel(pxa_rtc, RTSR, rtsr & ~RTSR_TRIG_MASK);
-
 	spin_unlock(&pxa_rtc->lock);
 	return IRQ_HANDLED;
 }
@@ -250,12 +256,45 @@ static int pxa_rtc_read_time(struct device *dev, struct rtc_time *tm)
 static int pxa_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
 	struct pxa_rtc *pxa_rtc = dev_get_drvdata(dev);
-
+	/* sequence to wirte pxa rtc register RCNR RDCR RYCR is
+	*1. set PSBR[RWE] bit, take 2x32-khz to complete
+	*2. write to RTC register,take 2x32-khz to complete
+	*3. clear PSBR[RWE] bit,take 2x32-khz to complete
+	*/
+	if ((tm->tm_year < 70) || (tm->tm_year > 138))
+		return -EINVAL;
+	rtc_writel_psbr(rtc_info, PSBR_RTC, 0x01);
+	udelay(100);
 	rtc_writel(pxa_rtc, RYCR, ryxr_calc(tm));
 	rtc_writel(pxa_rtc, RDCR, rdxr_calc(tm));
-
+	udelay(100);
+	rtc_writel_psbr(rtc_info, PSBR_RTC, 0x00);
+	udelay(100);
+	pxa_rtc_read_time(dev, tm);
+	dev_info(dev, "tm.year = %d, tm.month = %d, tm.day = %d\n",
+			tm->tm_year + 1900, tm->tm_mon, tm->tm_mday);
 	return 0;
 }
+
+int pxa_rtc_sync_time(unsigned int ticks)
+{
+	/* sequence to wirte pxa rtc register RCNR RDCR RYCR is
+	*1. set PSBR[RWE] bit, take 2x32-khz to complete
+	*2. write to RTC register,take 2x32-khz to complete
+	*3. clear PSBR[RWE] bit,take 2x32-khz to complete
+	*/
+	struct rtc_time tm;
+	rtc_time_to_tm(ticks, &tm);
+	rtc_writel_psbr(rtc_info, PSBR_RTC, 0x01);
+	udelay(100);
+	rtc_writel(rtc_info, RYCR, ryxr_calc(&tm));
+	rtc_writel(rtc_info, RDCR, rdxr_calc(&tm));
+	udelay(100);
+	rtc_writel_psbr(rtc_info, PSBR_RTC, 0x00);
+	udelay(100);
+	return 0;
+}
+EXPORT_SYMBOL(pxa_rtc_sync_time);
 
 static int pxa_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 {
@@ -327,13 +366,18 @@ static int __init pxa_rtc_probe(struct platform_device *pdev)
 	pxa_rtc = kzalloc(sizeof(struct pxa_rtc), GFP_KERNEL);
 	if (!pxa_rtc)
 		return -ENOMEM;
-
+	rtc_info = pxa_rtc;
 	spin_lock_init(&pxa_rtc->lock);
 	platform_set_drvdata(pdev, pxa_rtc);
 
 	ret = -ENXIO;
 	pxa_rtc->ress = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!pxa_rtc->ress) {
+		dev_err(dev, "No I/O memory resource defined\n");
+		goto err_ress;
+	}
+	pxa_rtc->ress_psbr = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!pxa_rtc->ress_psbr) {
 		dev_err(dev, "No I/O memory resource defined\n");
 		goto err_ress;
 	}
@@ -348,7 +392,6 @@ static int __init pxa_rtc_probe(struct platform_device *pdev)
 		dev_err(dev, "No alarm IRQ resource defined\n");
 		goto err_ress;
 	}
-	pxa_rtc_open(dev);
 	ret = -ENOMEM;
 	pxa_rtc->base = ioremap(pxa_rtc->ress->start,
 				resource_size(pxa_rtc->ress));
@@ -357,6 +400,12 @@ static int __init pxa_rtc_probe(struct platform_device *pdev)
 		goto err_map;
 	}
 
+	pxa_rtc->base_psbr = ioremap(pxa_rtc->ress_psbr->start,
+				resource_size(pxa_rtc->ress_psbr));
+	if (!pxa_rtc->base_psbr) {
+		dev_err(&pdev->dev, "Unable to map pxa RTC PSBR I/O memory\n");
+		goto err_map;
+	}
 	/*
 	 * If the clock divider is uninitialized then reset it to the
 	 * default value to get the 1Hz clock.
@@ -379,7 +428,7 @@ static int __init pxa_rtc_probe(struct platform_device *pdev)
 	}
 
 	device_init_wakeup(dev, 1);
-
+	pxa_rtc_open(dev);
 	return 0;
 
 err_rtc_reg:
