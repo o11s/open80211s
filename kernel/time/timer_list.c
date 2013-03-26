@@ -244,7 +244,6 @@ static void timer_list_show_tickdevices_header(struct seq_file *m)
 #endif
 	SEQ_printf(m, "\n");
 #endif
-	SEQ_printf(m, "\n");
 }
 #endif
 
