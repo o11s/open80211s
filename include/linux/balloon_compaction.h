@@ -213,7 +213,14 @@ static inline bool balloon_compaction_check(void)
 	return true;
 }
 
+static inline void balloon_event_count(enum vm_event_item item)
+{
+	count_vm_event(item);
+}
 #else /* !CONFIG_BALLOON_COMPACTION */
+
+/* A macro, to avoid generating references to the undefined COMPACTBALLOON* */
+#define balloon_event_count(item) do { } while (0)
 
 static inline void *balloon_mapping_alloc(void *balloon_device,
 				const struct address_space_operations *a_ops)
