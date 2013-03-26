@@ -272,7 +272,7 @@ static int palmas_rtc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = request_threaded_irq(palmas_rtc->irq, NULL,
+	ret = devm_request_threaded_irq(&pdev->dev, palmas_rtc->irq, NULL,
 			palmas_rtc_interrupt,
 			IRQF_TRIGGER_LOW | IRQF_ONESHOT |
 			IRQF_EARLY_RESUME,
@@ -289,7 +289,6 @@ static int palmas_rtc_probe(struct platform_device *pdev)
 static int palmas_rtc_remove(struct platform_device *pdev)
 {
 	palmas_rtc_alarm_irq_enable(&pdev->dev, 0);
-	free_irq(palmas_rtc->irq, palmas_rtc);
 	return 0;
 }
 
