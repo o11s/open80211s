@@ -624,7 +624,7 @@ static int hvfb_getmem(struct fb_info *info)
 {
 	struct pci_dev *pdev;
 	ulong fb_phys;
-	void *fb_virt;
+	void __iomem *fb_virt;
 
 	pdev = pci_get_device(PCI_VENDOR_ID_MICROSOFT,
 			      PCI_DEVICE_ID_HYPERV_VIDEO, NULL);
