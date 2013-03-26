@@ -56,7 +56,8 @@ int hfs_find_1st_rec_by_cnid(struct hfs_bnode *bnode,
 				int *end,
 				int *cur_rec)
 {
-	__be32 cur_cnid, search_cnid;
+	__be32 cur_cnid = 0;
+	__be32 search_cnid = 0;
 
 	if (bnode->tree->cnid == HFSPLUS_EXT_CNID) {
 		cur_cnid = fd->key->ext.cnid;
