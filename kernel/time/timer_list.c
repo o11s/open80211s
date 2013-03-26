@@ -274,15 +274,15 @@ static int timer_list_show(struct seq_file *m, void *v)
 }
 
 /*
- * This itererator really needs some explanation since it is offset and has
+ * This iterator really needs some explanation since it is offset and has
  * two passes, one of which is controlled by a config option.
- * In a hotpluggable systems some cpus, including cpu 0 and the last cpu, may
+ * In hotpluggable systems some cpus, including cpu 0 and the last cpu, may
  * be missing so we have to use cpumask_* to iterate over the cpus.
  * For the first pass:
  * It returns 1 for the header position.
  * For cpu 0 it returns 2 and the final possible cpu would be nr_cpu_ids + 1.
  * On the second pass:
- * It returnes nr_cpu_ids + 1 for the second header position.
+ * It returns nr_cpu_ids + 1 for the second header position.
  * For cpu 0 it returns nr_cpu_ids + 2
  * The final possible cpu would be nr_cpu_ids + nr_cpu_ids + 2.
  * It is also important to remember that cpumask_next returns >= nr_cpu_ids if
