@@ -1238,7 +1238,7 @@ config SYSCTL
 config ANON_INODES
 	bool
 
-menuconfig EXPERT
+config EXPERT
 	bool "Configure standard kernel features (expert users)"
 	# Unhide debug options, to make the on-by-default options visible
 	select DEBUG_KERNEL
