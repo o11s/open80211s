@@ -948,7 +948,8 @@ static void bm_aio_ctx_destroy(struct kref *kref)
 }
 
 /* bv_page may be a copy, or may be the original */
-static void bm_async_io_complete(struct bio *bio, int error, struct batch_complete *batch)
+static void bm_async_io_complete(struct bio *bio, int error,
+				 struct batch_complete *batch)
 {
 	struct bm_aio_ctx *ctx = bio->bi_private;
 	struct drbd_conf *mdev = ctx->mdev;
