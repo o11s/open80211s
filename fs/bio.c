@@ -760,7 +760,8 @@ struct submit_bio_ret {
 	int error;
 };
 
-static void submit_bio_wait_endio(struct bio *bio, int error)
+static void submit_bio_wait_endio(struct bio *bio, int error,
+				  struct batch_complete *batch)
 {
 	struct submit_bio_ret *ret = bio->bi_private;
 
