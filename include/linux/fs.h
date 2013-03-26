@@ -1400,6 +1400,16 @@ static inline int sb_start_write_trylock(struct super_block *sb)
 	return __sb_start_write(sb, SB_FREEZE_WRITE, false);
 }
 
+/*
+ * sb_start_write() for writing into a file. When file has O_NONBLOCK set,
+ * we use trylock semantics, otherwise we block on frozen filesystem.
+ */
+static inline int sb_start_file_write(struct file *file)
+{
+	return __sb_start_write(file->f_mapping->host->i_sb, SB_FREEZE_WRITE,
+				!(file->f_flags & O_NONBLOCK));
+}
+
 /**
  * sb_start_pagefault - get write access to a superblock from a page fault
  * @sb: the super we write to
