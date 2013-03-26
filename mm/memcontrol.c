@@ -1132,16 +1132,16 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 			}
 
 			/*
-                         * If the dead_count mismatches, a destruction
-                         * has happened or is happening concurrently.
-                         * If the dead_count matches, a destruction
-                         * might still happen concurrently, but since
-                         * we checked under RCU, that destruction
-                         * won't free the object until we release the
-                         * RCU reader lock.  Thus, the dead_count
-                         * check verifies the pointer is still valid,
-                         * css_tryget() verifies the cgroup pointed to
-                         * is alive.
+			 * If the dead_count mismatches, a destruction
+			 * has happened or is happening concurrently.
+			 * If the dead_count matches, a destruction
+			 * might still happen concurrently, but since
+			 * we checked under RCU, that destruction
+			 * won't free the object until we release the
+			 * RCU reader lock.  Thus, the dead_count
+			 * check verifies the pointer is still valid,
+			 * css_tryget() verifies the cgroup pointed to
+			 * is alive.
 			 */
 			dead_count = atomic_read(&root->dead_count);
 			smp_rmb();
