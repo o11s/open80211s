@@ -129,46 +129,41 @@ static const struct super_operations proc_sops = {
 	.show_options	= proc_show_options,
 };
 
-static void __pde_users_dec(struct proc_dir_entry *pde)
-{
-	pde->pde_users--;
-	if (pde->pde_unload_completion && pde->pde_users == 0)
-		complete(pde->pde_unload_completion);
-}
-
 void pde_users_dec(struct proc_dir_entry *pde)
 {
-	spin_lock(&pde->pde_unload_lock);
-	__pde_users_dec(pde);
-	spin_unlock(&pde->pde_unload_lock);
+	if (atomic_dec_and_test(&pde->pde_users) && pde->pde_unload_completion)
+		complete(pde->pde_unload_completion);
 }
 
 static loff_t proc_reg_llseek(struct file *file, loff_t offset, int whence)
 {
+	const struct file_operations *fops;
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	loff_t rv = -EINVAL;
 	loff_t (*llseek)(struct file *, loff_t, int);
 
-	spin_lock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
 	/*
 	 * remove_proc_entry() is going to delete PDE (as part of module
 	 * cleanup sequence). No new callers into module allowed.
 	 */
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
 	/*
 	 * Bump refcount so that remove_proc_entry will wail for ->llseek to
 	 * complete.
 	 */
-	pde->pde_users++;
+	atomic_inc(&pde->pde_users);
+
 	/*
-	 * Save function pointer under lock, to protect against ->proc_fops
-	 * NULL'ifying right after ->pde_unload_lock is dropped.
+	 * Save function pointer under rcu lock, to protect against
+	 * ->proc_fops NULL'ifying by remove_proc_entry.
 	 */
-	llseek = pde->proc_fops->llseek;
-	spin_unlock(&pde->pde_unload_lock);
+	llseek = fops->llseek;
+	rcu_read_unlock();
 
 	if (!llseek)
 		llseek = default_llseek;
@@ -183,15 +178,17 @@ static ssize_t proc_reg_read(struct file *file, char __user *buf, size_t count, 
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	ssize_t rv = -EIO;
 	ssize_t (*read)(struct file *, char __user *, size_t, loff_t *);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
-	read = pde->proc_fops->read;
-	spin_unlock(&pde->pde_unload_lock);
+	atomic_inc(&pde->pde_users);
+	read = fops->read;
+	rcu_read_unlock();
 
 	if (read)
 		rv = read(file, buf, count, ppos);
@@ -205,15 +202,17 @@ static ssize_t proc_reg_write(struct file *file, const char __user *buf, size_t 
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	ssize_t rv = -EIO;
 	ssize_t (*write)(struct file *, const char __user *, size_t, loff_t *);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
-	write = pde->proc_fops->write;
-	spin_unlock(&pde->pde_unload_lock);
+	atomic_inc(&pde->pde_users);
+	write = fops->write;
+	rcu_read_unlock();
 
 	if (write)
 		rv = write(file, buf, count, ppos);
@@ -227,15 +226,17 @@ static unsigned int proc_reg_poll(struct file *file, struct poll_table_struct *p
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	unsigned int rv = DEFAULT_POLLMASK;
 	unsigned int (*poll)(struct file *, struct poll_table_struct *);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
-	poll = pde->proc_fops->poll;
-	spin_unlock(&pde->pde_unload_lock);
+	atomic_inc(&pde->pde_users);
+	poll = fops->poll;
+	rcu_read_unlock();
 
 	if (poll)
 		rv = poll(file, pts);
@@ -249,15 +250,17 @@ static long proc_reg_unlocked_ioctl(struct file *file, unsigned int cmd, unsigne
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	long rv = -ENOTTY;
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
-	ioctl = pde->proc_fops->unlocked_ioctl;
-	spin_unlock(&pde->pde_unload_lock);
+	atomic_inc(&pde->pde_users);
+	ioctl = fops->unlocked_ioctl;
+	rcu_read_unlock();
 
 	if (ioctl)
 		rv = ioctl(file, cmd, arg);
@@ -272,15 +275,17 @@ static long proc_reg_compat_ioctl(struct file *file, unsigned int cmd, unsigned 
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	long rv = -ENOTTY;
 	long (*compat_ioctl)(struct file *, unsigned int, unsigned long);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
+	atomic_inc(&pde->pde_users);
 	compat_ioctl = pde->proc_fops->compat_ioctl;
-	spin_unlock(&pde->pde_unload_lock);
+	rcu_read_unlock();
 
 	if (compat_ioctl)
 		rv = compat_ioctl(file, cmd, arg);
@@ -295,15 +300,17 @@ static int proc_reg_mmap(struct file *file, struct vm_area_struct *vma)
 	struct proc_dir_entry *pde = PDE(file_inode(file));
 	int rv = -EIO;
 	int (*mmap)(struct file *, struct vm_area_struct *);
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		return rv;
 	}
-	pde->pde_users++;
+	atomic_inc(&pde->pde_users);
 	mmap = pde->proc_fops->mmap;
-	spin_unlock(&pde->pde_unload_lock);
+	rcu_read_unlock();
 
 	if (mmap)
 		rv = mmap(file, vma);
@@ -319,6 +326,7 @@ static int proc_reg_open(struct inode *inode, struct file *file)
 	int (*open)(struct inode *, struct file *);
 	int (*release)(struct inode *, struct file *);
 	struct pde_opener *pdeo;
+	const struct file_operations *fops;
 
 	/*
 	 * What for, you ask? Well, we can have open, rmmod, remove_proc_entry
@@ -334,32 +342,33 @@ static int proc_reg_open(struct inode *inode, struct file *file)
 	if (!pdeo)
 		return -ENOMEM;
 
-	spin_lock(&pde->pde_unload_lock);
-	if (!pde->proc_fops) {
-		spin_unlock(&pde->pde_unload_lock);
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
+		rcu_read_unlock();
 		kfree(pdeo);
 		return -ENOENT;
 	}
-	pde->pde_users++;
-	open = pde->proc_fops->open;
-	release = pde->proc_fops->release;
-	spin_unlock(&pde->pde_unload_lock);
+	atomic_inc(&pde->pde_users);
+	open = fops->open;
+	release = fops->release;
+	rcu_read_lock();
 
 	if (open)
 		rv = open(inode, file);
 
-	spin_lock(&pde->pde_unload_lock);
 	if (rv == 0 && release) {
 		/* To know what to release. */
 		pdeo->inode = inode;
 		pdeo->file = file;
 		/* Strictly for "too late" ->release in proc_reg_release(). */
 		pdeo->release = release;
+		spin_lock(&pde->pde_openers_lock);
 		list_add(&pdeo->lh, &pde->pde_openers);
+		spin_unlock(&pde->pde_openers_lock);
 	} else
 		kfree(pdeo);
-	__pde_users_dec(pde);
-	spin_unlock(&pde->pde_unload_lock);
+	pde_users_dec(pde);
 	return rv;
 }
 
@@ -368,10 +377,14 @@ static struct pde_opener *find_pde_opener(struct proc_dir_entry *pde,
 {
 	struct pde_opener *pdeo;
 
+	spin_lock(&pde->pde_openers_lock);
 	list_for_each_entry(pdeo, &pde->pde_openers, lh) {
-		if (pdeo->inode == inode && pdeo->file == file)
+		if (pdeo->inode == inode && pdeo->file == file) {
+			spin_unlock(&pde->pde_openers_lock);
 			return pdeo;
+		}
 	}
+	spin_unlock(&pde->pde_openers_lock);
 	return NULL;
 }
 
@@ -381,10 +394,12 @@ static int proc_reg_release(struct inode *inode, struct file *file)
 	int rv = 0;
 	int (*release)(struct inode *, struct file *);
 	struct pde_opener *pdeo;
+	const struct file_operations *fops;
 
-	spin_lock(&pde->pde_unload_lock);
 	pdeo = find_pde_opener(pde, inode, file);
-	if (!pde->proc_fops) {
+	rcu_read_lock();
+	fops = rcu_dereference(pde->proc_fops);
+	if (!fops) {
 		/*
 		 * Can't simply exit, __fput() will think that everything is OK,
 		 * and move on to freeing struct file. remove_proc_entry() will
@@ -394,21 +409,23 @@ static int proc_reg_release(struct inode *inode, struct file *file)
 		 * But if opener is removed from list, who will ->release it?
 		 */
 		if (pdeo) {
+			spin_lock(&pde->pde_openers_lock);
 			list_del(&pdeo->lh);
-			spin_unlock(&pde->pde_unload_lock);
+			spin_unlock(&pde->pde_openers_lock);
 			rv = pdeo->release(inode, file);
 			kfree(pdeo);
-		} else
-			spin_unlock(&pde->pde_unload_lock);
+		}
 		return rv;
 	}
-	pde->pde_users++;
-	release = pde->proc_fops->release;
+	atomic_inc(&pde->pde_users);
+	release = fops->release;
+	rcu_read_unlock();
 	if (pdeo) {
+		spin_lock(&pde->pde_openers_lock);
 		list_del(&pdeo->lh);
-		kfree(pdeo);
+		spin_unlock(&pde->pde_openers_lock);
 	}
-	spin_unlock(&pde->pde_unload_lock);
+	kfree(pdeo);
 
 	if (release)
 		rv = release(inode, file);
