@@ -91,7 +91,7 @@ Descriptions of section entries:
 	   F:	*/net/*		all files in "any top level directory"/net
 	   One pattern per line.  Multiple F: lines acceptable.
 	N: Files and directories with regex patterns.
-	   N:	[^a-z]tegra	all files whose patch contains the word tegra
+	   N:	[^a-z]tegra	all files whose path contains the word tegra
 	   One pattern per line.  Multiple N: lines acceptable.
 	X: Files and directories that are NOT maintained, same rules as F:
 	   Files exclusions are tested before file matches.
