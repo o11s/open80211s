@@ -259,7 +259,7 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node)
 		}
 		address += PAGE_SIZE;
 	}
-	memset(start, 0, nr * sizeof(struct page));
+	memset((void *)start, 0, end - start);
 	ret = 0;
 out:
 	flush_tlb_kernel_range(start, end);
