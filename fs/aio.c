@@ -1163,7 +1163,8 @@ rw_common:
 		 * may be already running. Just fail this IO with EINTR.
 		 */
 		if (unlikely(ret == -ERESTARTSYS || ret == -ERESTARTNOINTR ||
-			     ret == -ERESTARTNOHAND || ret == -ERESTART_RESTARTBLOCK))
+			     ret == -ERESTARTNOHAND ||
+			     ret == -ERESTART_RESTARTBLOCK))
 			ret = -EINTR;
 		aio_complete(req, ret, 0);
 	}
