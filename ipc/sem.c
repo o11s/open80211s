@@ -197,26 +197,28 @@ void __init sem_init (void)
 static inline struct sem_array *sem_obtain_lock(struct ipc_namespace *ns, int id)
 {
 	struct kern_ipc_perm *ipcp;
+	struct sem_array *sma;
 
 	rcu_read_lock();
 	ipcp = ipc_obtain_object(&sem_ids(ns), id);
-	if (IS_ERR(ipcp))
-		goto err1;
+	if (IS_ERR(ipcp)) {
+		sma = ERR_CAST(ipcp);
+		goto err;
+	}
 
 	spin_lock(&ipcp->lock);
 
 	/* ipc_rmid() may have already freed the ID while sem_lock
 	 * was spinning: verify that the structure is still valid
 	 */
-	if (ipcp->deleted)
-		goto err0;
+	if (!ipcp->deleted)
+		return container_of(ipcp, struct sem_array, sem_perm);
 
-	return container_of(ipcp, struct sem_array, sem_perm);
-err0:
 	spin_unlock(&ipcp->lock);
-err1:
+	sma = ERR_PTR(-EINVAL);
+err:
 	rcu_read_unlock();
-	return ERR_PTR(-EINVAL);
+	return sma;
 }
 
 static inline struct sem_array *sem_obtain_object(struct ipc_namespace *ns, int id)
