@@ -7,6 +7,7 @@
  * Copyright (C) 2007 MIPS Technologies, Inc.
  *   written by Ralf Baechle (ralf@linux-mips.org)
  */
+#include <linux/kernel.h>
 #include <linux/console.h>
 #include <linux/printk.h>
 #include <linux/init.h>
