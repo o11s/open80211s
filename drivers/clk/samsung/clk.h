@@ -23,6 +23,25 @@
 #include <mach/map.h>
 
 /**
+ * struct samsung_clock_alias: information about mux clock
+ * @id: platform specific id of the clock.
+ * @dev_name: name of the device to which this clock belongs.
+ * @alias: optional clock alias name to be assigned to this clock.
+ */
+struct samsung_clock_alias {
+	unsigned int		id;
+	const char		*dev_name;
+	const char		*alias;
+};
+
+#define ALIAS(_id, dname, a)	\
+	{							\
+		.id		= _id,				\
+		.dev_name	= dname,			\
+		.alias		= a,				\
+	}
+
+/**
  * struct samsung_fixed_rate_clock: information about fixed-rate clock
  * @id: platform specific id of the clock.
  * @name: name of this fixed-rate clock.
@@ -150,9 +169,10 @@ struct samsung_div_clock {
 	u8			width;
 	u8			div_flags;
 	const char		*alias;
+	struct clk_div_table	*table;
 };
 
-#define __DIV(_id, dname, cname, pname, o, s, w, f, df, a)	\
+#define __DIV(_id, dname, cname, pname, o, s, w, f, df, a, t)	\
 	{							\
 		.id		= _id,				\
 		.dev_name	= dname,			\
@@ -164,16 +184,20 @@ struct samsung_div_clock {
 		.width		= w,				\
 		.div_flags	= df,				\
 		.alias		= a,				\
+		.table		= t,				\
 	}
 
 #define DIV(_id, cname, pname, o, s, w)				\
-	__DIV(_id, NULL, cname, pname, o, s, w, 0, 0, NULL)
+	__DIV(_id, NULL, cname, pname, o, s, w, 0, 0, NULL, NULL)
 
 #define DIV_A(_id, cname, pname, o, s, w, a)			\
-	__DIV(_id, NULL, cname, pname, o, s, w, 0, 0, a)
+	__DIV(_id, NULL, cname, pname, o, s, w, 0, 0, a, NULL)
 
 #define DIV_F(_id, cname, pname, o, s, w, f, df)		\
-	__DIV(_id, NULL, cname, pname, o, s, w, f, df, NULL)
+	__DIV(_id, NULL, cname, pname, o, s, w, f, df, NULL, NULL)
+
+#define DIV_T(_id, cname, pname, o, s, w, t)			\
+	__DIV(_id, NULL, cname, pname, o, s, w, 0, 0, NULL, t)
 
 /**
  * struct samsung_gate_clock: information about gate clock
@@ -246,6 +270,8 @@ extern void __init samsung_clk_of_register_fixed_ext(
 
 extern void samsung_clk_add_lookup(struct clk *clk, unsigned int id);
 
+extern void samsung_clk_register_alias(struct samsung_clock_alias *list,
+		unsigned int nr_clk);
 extern void __init samsung_clk_register_fixed_rate(
 		struct samsung_fixed_rate_clock *clk_list, unsigned int nr_clk);
 extern void __init samsung_clk_register_fixed_factor(
