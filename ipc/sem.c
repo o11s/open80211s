@@ -216,7 +216,7 @@ static inline int sem_lock(struct sem_array *sma, struct sembuf *sops,
 		 * we may need to look at things we did not lock here.
 		 */
 		if (unlikely(sma->complex_count)) {
-			spin_unlock(&sma->sem_perm.lock);
+			spin_unlock(&sem->lock);
 			goto lock_all;
 		}
 		locknum = sops->sem_num;
