@@ -284,7 +284,7 @@ static long proc_reg_compat_ioctl(struct file *file, unsigned int cmd, unsigned 
 		return rv;
 	}
 	atomic_inc(&pde->pde_users);
-	compat_ioctl = pde->proc_fops->compat_ioctl;
+	compat_ioctl = fops->compat_ioctl;
 	rcu_read_unlock();
 
 	if (compat_ioctl)
@@ -309,7 +309,7 @@ static int proc_reg_mmap(struct file *file, struct vm_area_struct *vma)
 		return rv;
 	}
 	atomic_inc(&pde->pde_users);
-	mmap = pde->proc_fops->mmap;
+	mmap = fops->mmap;
 	rcu_read_unlock();
 
 	if (mmap)
@@ -352,7 +352,7 @@ static int proc_reg_open(struct inode *inode, struct file *file)
 	atomic_inc(&pde->pde_users);
 	open = fops->open;
 	release = fops->release;
-	rcu_read_lock();
+	rcu_read_unlock();
 
 	if (open)
 		rv = open(inode, file);
@@ -400,6 +400,7 @@ static int proc_reg_release(struct inode *inode, struct file *file)
 	rcu_read_lock();
 	fops = rcu_dereference(pde->proc_fops);
 	if (!fops) {
+		rcu_read_unlock();
 		/*
 		 * Can't simply exit, __fput() will think that everything is OK,
 		 * and move on to freeing struct file. remove_proc_entry() will
@@ -464,6 +465,7 @@ static const struct file_operations proc_reg_file_ops_no_compat = {
 struct inode *proc_get_inode(struct super_block *sb, struct proc_dir_entry *de)
 {
 	struct inode *inode = new_inode_pseudo(sb);
+	const struct file_operations *fops;
 
 	if (inode) {
 		inode->i_ino = de->low_ino;
@@ -481,19 +483,22 @@ struct inode *proc_get_inode(struct super_block *sb, struct proc_dir_entry *de)
 			set_nlink(inode, de->nlink);
 		if (de->proc_iops)
 			inode->i_op = de->proc_iops;
-		if (de->proc_fops) {
+		rcu_read_lock();
+		fops = rcu_dereference(de->proc_fops);
+		if (fops) {
 			if (S_ISREG(inode->i_mode)) {
 #ifdef CONFIG_COMPAT
-				if (!de->proc_fops->compat_ioctl)
+				if (!fops->compat_ioctl)
 					inode->i_fop =
 						&proc_reg_file_ops_no_compat;
 				else
 #endif
 					inode->i_fop = &proc_reg_file_ops;
 			} else {
-				inode->i_fop = de->proc_fops;
+				inode->i_fop = fops;
 			}
 		}
+		rcu_read_unlock();
 	} else
 	       pde_put(de);
 	return inode;
