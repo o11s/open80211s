@@ -773,23 +773,25 @@ static long aio_read_events_ring(struct kioctx *ctx,
 		goto out;
 
 	while (ret < nr) {
-		long avail = (head <= info->tail ? info->tail : info->nr) - head;
+		long avail;
 		struct io_event *ev;
 		struct page *page;
 
+		avail = (head <= info->tail ? info->tail : info->nr) - head;
 		if (head == info->tail)
 			break;
 
 		avail = min(avail, nr - ret);
 		avail = min_t(long, avail, AIO_EVENTS_PER_PAGE -
-			      ((head + AIO_EVENTS_OFFSET) % AIO_EVENTS_PER_PAGE));
+			    ((head + AIO_EVENTS_OFFSET) % AIO_EVENTS_PER_PAGE));
 
 		pos = head + AIO_EVENTS_OFFSET;
 		page = info->ring_pages[pos / AIO_EVENTS_PER_PAGE];
 		pos %= AIO_EVENTS_PER_PAGE;
 
 		ev = kmap(page);
-		copy_ret = copy_to_user(event + ret, ev + pos, sizeof(*ev) * avail);
+		copy_ret = copy_to_user(event + ret, ev + pos,
+					sizeof(*ev) * avail);
 		kunmap(page);
 
 		if (unlikely(copy_ret)) {
