@@ -926,7 +926,7 @@ bufinit(struct buf *buf, struct request *rq, struct bio *bio)
 	buf->sector = bio->bi_sector;
 	bio_pageinc(bio);
 	buf->bv = bio_iovec(bio);
-	buf->bv_resid = bv->bv_len;
+	buf->bv_resid = buf->bv->bv_len;
 	WARN_ON(buf->bv_resid == 0);
 }
 
