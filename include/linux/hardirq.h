@@ -94,6 +94,11 @@
  */
 #define in_nmi()	(preempt_count() & NMI_MASK)
 
+/*
+ * Are we in nmi,irq context, or softirq context?
+ */
+#define in_serving_irq() (in_nmi() || in_irq() || in_serving_softirq())
+
 #if defined(CONFIG_PREEMPT_COUNT)
 # define PREEMPT_CHECK_OFFSET 1
 #else
