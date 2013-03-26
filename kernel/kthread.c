@@ -324,12 +324,6 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	return p;
 }
 
-static struct kthread *task_get_live_kthread(struct task_struct *k)
-{
-	get_task_struct(k);
-	return to_live_kthread(k);
-}
-
 /**
  * kthread_unpark - unpark a thread created by kthread_create().
  * @k:		thread created by kthread_create().
@@ -340,7 +334,7 @@ static struct kthread *task_get_live_kthread(struct task_struct *k)
  */
 void kthread_unpark(struct task_struct *k)
 {
-	struct kthread *kthread = task_get_live_kthread(k);
+	struct kthread *kthread = to_live_kthread(k);
 
 	if (kthread) {
 		clear_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
@@ -356,7 +350,6 @@ void kthread_unpark(struct task_struct *k)
 			wake_up_process(k);
 		}
 	}
-	put_task_struct(k);
 }
 
 /**
@@ -373,7 +366,7 @@ void kthread_unpark(struct task_struct *k)
  */
 int kthread_park(struct task_struct *k)
 {
-	struct kthread *kthread = task_get_live_kthread(k);
+	struct kthread *kthread = to_live_kthread(k);
 	int ret = -ENOSYS;
 
 	if (kthread) {
@@ -386,7 +379,6 @@ int kthread_park(struct task_struct *k)
 		}
 		ret = 0;
 	}
-	put_task_struct(k);
 	return ret;
 }
 
@@ -407,10 +399,13 @@ int kthread_park(struct task_struct *k)
  */
 int kthread_stop(struct task_struct *k)
 {
-	struct kthread *kthread = task_get_live_kthread(k);
+	struct kthread *kthread;
 	int ret;
 
 	trace_sched_kthread_stop(k);
+
+	get_task_struct(k);
+	kthread = to_live_kthread(k);
 	if (kthread) {
 		set_bit(KTHREAD_SHOULD_STOP, &kthread->flags);
 		clear_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
@@ -418,10 +413,9 @@ int kthread_stop(struct task_struct *k)
 		wait_for_completion(&kthread->exited);
 	}
 	ret = k->exit_code;
-
 	put_task_struct(k);
-	trace_sched_kthread_stop_ret(ret);
 
+	trace_sched_kthread_stop_ret(ret);
 	return ret;
 }
 EXPORT_SYMBOL(kthread_stop);
