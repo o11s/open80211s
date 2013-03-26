@@ -199,8 +199,8 @@ int main(int argc, char **argv)
 
 	epoll_items = malloc(n_epoll_items * sizeof(struct epoll_item_private));
 
-	if (epoll_set < 0 || epoll_items == 0 || write_thread_data.fds == 0 ||
-		read_thread_data == 0 || read_threads == 0)
+	if (epoll_set < 0 || !epoll_items || write_thread_data.fds == NULL ||
+		!read_thread_data || !read_threads)
 		goto error;
 
 	if (sysconf(_SC_NPROCESSORS_ONLN) < 2) {
