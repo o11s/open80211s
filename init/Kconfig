@@ -932,14 +932,14 @@ config MEMCG_KMEM
 	  will ever exhaust kernel resources alone.
 
 config MEMCG_DEBUG_ASYNC_DESTROY
-	bool "Memory Resource Controller Debug assynchronous object destruction"
+	bool "Memory Resource Controller Debug asynchronous object destruction"
 	depends on MEMCG_KMEM || MEMCG_SWAP
 	default n
 	help
-	  When a memcg is destroyed, the memory
-	  consumed by it may not be immediately freed. This is because when some
-	  extensions are used, such as swap or kernel memory, objects can
-	  outlive the group and hold a reference to it.
+	  When a memcg is destroyed, the memory consumed by it may not be
+	  immediately freed. This is because when some extensions are used, such
+	  as swap or kernel memory, objects can outlive the group and hold a
+	  reference to it.
 
 	  If this is the case, the dangling_memcgs file will show information
 	  about what are the memcgs still alive, and which references are still
