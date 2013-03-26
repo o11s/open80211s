@@ -349,7 +349,9 @@ static void free_ioctx(struct kioctx *ctx)
 	kunmap_atomic(ring);
 
 	while (atomic_read(&ctx->reqs_available) < ctx->nr_events - 1) {
-		wait_event(ctx->wait, head != ctx->shadow_tail);
+		wait_event(ctx->wait,
+			   (head != ctx->shadow_tail) ||
+			   (atomic_read(&ctx->reqs_available) >= ctx->nr_events - 1));
 
 		avail = (head <= ctx->shadow_tail
 			 ? ctx->shadow_tail : ctx->nr_events) - head;
@@ -772,17 +774,6 @@ void batch_complete_aio(struct batch_complete *batch)
 				n = n->rb_left;
 		} else {
 			n = rb_parent(n);
-		}
-
-		if (unlikely(xchg(&req->ki_cancel,
-				  KIOCB_CANCELLED) == KIOCB_CANCELLED)) {
-			/*
-			 * Can't use the percpu reqs_available here - could race
-			 * with free_ioctx()
-			 */
-			atomic_inc(&req->ki_ctx->reqs_available);
-			aio_put_req(req);
-			continue;
 		}
 
 		if (unlikely(req->ki_eventfd != eventfd)) {
