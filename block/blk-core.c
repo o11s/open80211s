@@ -2508,7 +2508,8 @@ static bool blk_end_bidi_request(struct request *rq, int error,
  *     %true  - still buffers pending for this request
  **/
 bool __blk_end_bidi_request(struct request *rq, int error,
-				   unsigned int nr_bytes, unsigned int bidi_bytes,
+				   unsigned int nr_bytes,
+				   unsigned int bidi_bytes,
 				   struct batch_complete *batch)
 {
 	if (blk_update_bidi_request(rq, error, nr_bytes, bidi_bytes, batch))
@@ -2624,7 +2625,8 @@ EXPORT_SYMBOL(__blk_end_request);
  * Description:
  *     Completely finish @rq.  Must be called with queue lock held.
  */
-void blk_end_request_all_batch(struct request *rq, int error, struct batch_complete *batch)
+void blk_end_request_all_batch(struct request *rq, int error,
+			       struct batch_complete *batch)
 {
 	bool pending;
 	unsigned int bidi_bytes = 0;
@@ -2632,7 +2634,8 @@ void blk_end_request_all_batch(struct request *rq, int error, struct batch_compl
 	if (unlikely(blk_bidi_rq(rq)))
 		bidi_bytes = blk_rq_bytes(rq->next_rq);
 
-	pending = __blk_end_bidi_request(rq, error, blk_rq_bytes(rq), bidi_bytes, batch);
+	pending = __blk_end_bidi_request(rq, error, blk_rq_bytes(rq),
+					 bidi_bytes, batch);
 	BUG_ON(pending);
 }
 EXPORT_SYMBOL(blk_end_request_all_batch);
