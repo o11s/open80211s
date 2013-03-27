@@ -971,20 +971,18 @@ palinfo_read_entry(char *page, char **start, off_t off, int count, int *eof, voi
 static void __cpuinit
 create_palinfo_proc_entries(unsigned int cpu)
 {
-#	define CPUSTR	"cpu%d"
-
 	pal_func_cpu_u_t f;
 	struct proc_dir_entry **pdir;
 	struct proc_dir_entry *cpu_dir;
 	int j;
-	char cpustr[sizeof(CPUSTR)];
+	char cpustr[32];
 
 
 	/*
 	 * we keep track of created entries in a depth-first order for
 	 * cleanup purposes. Each entry is stored into palinfo_proc_entries
 	 */
-	sprintf(cpustr,CPUSTR, cpu);
+	snprintf(cpustr, sizeof(cpustr), "cpu%d", cpu);
 
 	cpu_dir = proc_mkdir(cpustr, palinfo_dir);
 
