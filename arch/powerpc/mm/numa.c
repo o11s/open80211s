@@ -66,7 +66,7 @@ static void __init setup_node_to_cpumask_map(void)
 
 	/* setup nr_node_ids if not done yet */
 	if (nr_node_ids == MAX_NUMNODES)
-		setup_nr_node_ids()
+		setup_nr_node_ids();
 
 	/* allocate the map */
 	for (node = 0; node < nr_node_ids; node++)
