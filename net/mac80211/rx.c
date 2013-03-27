@@ -2143,6 +2143,7 @@ static ieee80211_rx_result debug_noinline
 ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_sub_if_data *sdata = rx->sdata;
+	struct ieee80211_sub_if_data *tmp_sdata;
 	struct ieee80211_local *local = rx->local;
 	struct net_device *dev = sdata->dev;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
@@ -2169,6 +2170,19 @@ ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 		return RX_DROP_MONITOR;
 	}
 
+	if (ieee80211_vif_is_mesh(&rx->sdata->vif) &&
+	    !is_multicast_ether_addr(hdr->addr1)) {
+		u8 *dest = ieee80211_get_DA(hdr);
+
+		/* deliver unicast frames to the dest netif */
+		tmp_sdata = mesh_bss_find_if(mbss(sdata), dest);
+		if (tmp_sdata && tmp_sdata != sdata) {
+			local = tmp_sdata->local;
+			rx->sdata = tmp_sdata;
+			dev = tmp_sdata->dev;
+		}
+	}
+
 	err = __ieee80211_data_to_8023(rx, &port_control);
 	if (unlikely(err))
 		return RX_DROP_UNUSABLE;
@@ -2186,7 +2200,6 @@ ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 
 	if (ieee80211_vif_is_mesh(&rx->sdata->vif)) {
 		struct mesh_local_bss *mbss = mbss(sdata);
-		struct ieee80211_sub_if_data *tmp_sdata;
 		struct sk_buff *skb = rx->skb, *fwd_skb;
 		u8 *dest = ((struct ethhdr *)rx->skb->data)->h_dest;
 		u8 *src = ((struct ethhdr *)rx->skb->data)->h_source;
@@ -2219,14 +2232,6 @@ ieee80211_rx_h_data(struct ieee80211_rx_data *rx)
 			rx->sdata = sdata;
 			rx->skb = skb;
 			dev = sdata->dev;
-		} else {
-			/* deliver unicast frames to the dest netif */
-			tmp_sdata = mesh_bss_find_if(mbss, dest);
-			if (tmp_sdata && tmp_sdata != sdata) {
-				local = tmp_sdata->local;
-				rx->sdata = tmp_sdata;
-				dev = tmp_sdata->dev;
-			}
 		}
 	}
 
