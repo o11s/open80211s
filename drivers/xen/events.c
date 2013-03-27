@@ -404,11 +404,21 @@ static void unmask_evtchn(int port)
 	if (unlikely((cpu != cpu_from_evtchn(port))))
 		do_hypercall = 1;
 	else {
+		/*
+		 * Need to clear the mask before checking pending to
+		 * avoid a race with an event becoming pending.
+		 *
+		 * EVTCHNOP_unmask will only trigger an upcall if the
+		 * mask bit was set, so if a hypercall is needed
+		 * remask the event.
+		 */
 		sync_clear_bit(port, BM(&s->evtchn_mask[0]));
 		evtchn_pending = sync_test_bit(port, BM(&s->evtchn_pending[0]));
 
-		if (unlikely(evtchn_pending && xen_hvm_domain()))
+		if (unlikely(evtchn_pending && xen_hvm_domain())) {
+			sync_set_bit(port, BM(&s->evtchn_mask[0]));
 			do_hypercall = 1;
+		}
 	}
 
 	/* Slow path (hypercall) if this is a non-local port or if this is
