@@ -1022,6 +1022,9 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	struct beacon_data *bcn;
 
 	netif_carrier_off(sdata->dev);
+	if (sdata->dev->priv_flags & IFF_BRIDGE_PORT)
+		/* stop bridge transmissions */
+		call_netdevice_notifiers(NETDEV_CHANGE, sdata->dev);
 
 	/* stop the beacon */
 	ifmsh->mesh_id_len = 0;
