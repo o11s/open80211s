@@ -18,7 +18,7 @@ config MIPS
 	select HAVE_KRETPROBES
 	select HAVE_DEBUG_KMEMLEAK
 	select ARCH_BINFMT_ELF_RANDOMIZE_PIE
-	select HAVE_ARCH_TRANSPARENT_HUGEPAGE
+	select HAVE_ARCH_TRANSPARENT_HUGEPAGE if CPU_SUPPORTS_HUGEPAGES && 64BIT
 	select RTC_LIB if !MACH_LOONGSON
 	select GENERIC_ATOMIC64 if !64BIT
 	select ARCH_HAS_ATOMIC64_DEC_IF_POSITIVE
@@ -354,6 +354,7 @@ config MIPS_SEAD3
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select SYS_SUPPORTS_SMARTMIPS
+	select SYS_SUPPORTS_MICROMIPS
 	select USB_ARCH_HAS_EHCI
 	select USB_EHCI_BIG_ENDIAN_DESC
 	select USB_EHCI_BIG_ENDIAN_MMIO
@@ -1242,6 +1243,7 @@ config CPU_MIPS32_R2
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
+	select HAVE_KVM
 	help
 	  Choose this option to build a kernel for release 2 or later of the
 	  MIPS32 architecture.  Most modern embedded systems with a 32-bit
@@ -1493,7 +1495,6 @@ config CPU_XLP
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_64BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
-	select CPU_HAS_LLSC
 	select WEAK_ORDERING
 	select WEAK_REORDERING_BEYOND_LLSC
 	select CPU_HAS_PREFETCH
@@ -1742,6 +1743,20 @@ config 64BIT
 	  Select this option if you want to build a 64-bit kernel.
 
 endchoice
+
+config KVM_GUEST
+	bool "KVM Guest Kernel"
+	help
+	  Select this option if building a guest kernel for KVM (Trap & Emulate) mode
+
+config KVM_HOST_FREQ
+	int "KVM Host Processor Frequency (MHz)"
+	depends on KVM_GUEST
+	default 500
+	help
+	  Select this option if building a guest kernel for KVM to skip
+	  RTC emulation when determining guest CPU Frequency.  Instead, the guest
+	  processor frequency is automatically derived from the host frequency.
 
 choice
 	prompt "Kernel page size"
@@ -2023,6 +2038,7 @@ config SB1_PASS_2_1_WORKAROUNDS
 	depends on CPU_SB1 && CPU_SB1_PASS_2
 	default y
 
+
 config 64BIT_PHYS_ADDR
 	bool
 
@@ -2101,6 +2117,9 @@ config SYS_SUPPORTS_HIGHMEM
 	bool
 
 config SYS_SUPPORTS_SMARTMIPS
+	bool
+
+config SYS_SUPPORTS_MICROMIPS
 	bool
 
 config ARCH_FLATMEM_ENABLE
@@ -2556,3 +2575,5 @@ source "security/Kconfig"
 source "crypto/Kconfig"
 
 source "lib/Kconfig"
+
+source "arch/mips/kvm/Kconfig"
