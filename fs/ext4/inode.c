@@ -258,8 +258,21 @@ void ext4_evict_inode(struct inode *inode)
 			     "couldn't mark inode dirty (err %d)", err);
 		goto stop_handle;
 	}
-	if (inode->i_blocks)
+	if (inode->i_blocks) {
+		/*
+		 * Since we are evicting the inode, it shouldn't be
+		 * locked.  We've added a warning which triggers if
+		 * the mutex is not locked, so take the lock even
+		 * though it's not strictly necessary.  However,
+		 * taking the lock using a simple mutex_lock() will
+		 * trigger a (false positive) lockdep warning, so take
+		 * it using a trylock.
+		 */
+		int locked = mutex_trylock(&inode->i_mutex);
 		ext4_truncate(inode);
+		if (likely(locked))
+			mutex_unlock(&inode->i_mutex);
+	}
 
 	/*
 	 * ext4_ext_truncate() doesn't reserve any slop when it
@@ -3788,6 +3801,7 @@ void ext4_truncate(struct inode *inode)
 	struct address_space *mapping = inode->i_mapping;
 	loff_t page_len;
 
+	WARN_ON(!mutex_is_locked(&inode->i_mutex));
 	trace_ext4_truncate_enter(inode);
 
 	if (!ext4_can_truncate(inode))
