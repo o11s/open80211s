@@ -326,7 +326,6 @@ config PM_H1940
 
 config MACH_N30
 	bool "Acer N30 family"
-	select MACH_N35
 	select S3C_DEV_NAND
 	select S3C_DEV_USB_HOST
 	help
@@ -649,7 +648,6 @@ comment "S3C2442 Boards"
 config MACH_NEO1973_GTA02
 	bool "Openmoko GTA02 / Freerunner phone"
 	select I2C
-	select MACH_NEO1973
 	select MFD_PCF50633
 	select PCF50633_GPIO
 	select POWER_SUPPLY
@@ -670,10 +668,7 @@ config MACH_RX1950
 	help
 	   Say Y here if you're using HP iPAQ rx1950
 
-config SMDK2440_CPU2442
-	bool "SMDM2440 with S3C2442 CPU module"
-
-endif	# CPU_S3C2440
+endif	# CPU_S3C2442
 
 if CPU_S3C2443 || CPU_S3C2416
 

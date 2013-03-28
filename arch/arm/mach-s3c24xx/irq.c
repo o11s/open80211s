@@ -26,6 +26,7 @@
 #include <linux/device.h>
 #include <linux/irqdomain.h>
 
+#include <asm/exception.h>
 #include <asm/mach/irq.h>
 
 #include <mach/regs-irq.h>
@@ -81,7 +82,7 @@ static void s3c_irq_mask(struct irq_data *data)
 	mask |= (1UL << data->hwirq);
 	__raw_writel(mask, intc->reg_mask);
 
-	if (parent_intc && irq_data->parent_irq) {
+	if (parent_intc) {
 		parent_data = &parent_intc->irqs[irq_data->parent_irq];
 
 		/* check to see if we need to mask the parent IRQ */
@@ -105,7 +106,7 @@ static void s3c_irq_unmask(struct irq_data *data)
 	mask &= ~(1UL << data->hwirq);
 	__raw_writel(mask, intc->reg_mask);
 
-	if (parent_intc && irq_data->parent_irq) {
+	if (parent_intc) {
 		irqno = irq_find_mapping(parent_intc->domain,
 					 irq_data->parent_irq);
 		s3c_irq_unmask(irq_get_irq_data(irqno));
@@ -282,6 +283,56 @@ static void s3c_irq_demux(unsigned int irq, struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
+static struct s3c_irq_intc *main_intc;
+static struct s3c_irq_intc *main_intc2;
+
+static inline int s3c24xx_handle_intc(struct s3c_irq_intc *intc,
+				      struct pt_regs *regs)
+{
+	int pnd;
+	int offset;
+	int irq;
+
+	pnd = __raw_readl(intc->reg_intpnd);
+	if (!pnd)
+		return false;
+
+	/* We have a problem that the INTOFFSET register does not always
+	 * show one interrupt. Occasionally we get two interrupts through
+	 * the prioritiser, and this causes the INTOFFSET register to show
+	 * what looks like the logical-or of the two interrupt numbers.
+	 *
+	 * Thanks to Klaus, Shannon, et al for helping to debug this problem
+	 */
+	offset = __raw_readl(intc->reg_intpnd + 4);
+
+	/* Find the bit manually, when the offset is wrong.
+	 * The pending register only ever contains the one bit of the next
+	 * interrupt to handle.
+	 */
+	if (!(pnd & (1 << offset)))
+		offset =  __ffs(pnd);
+
+	irq = irq_find_mapping(intc->domain, offset);
+	handle_IRQ(irq, regs);
+	return true;
+}
+
+asmlinkage void __exception_irq_entry s3c24xx_handle_irq(struct pt_regs *regs)
+{
+	do {
+		if (likely(main_intc))
+			if (s3c24xx_handle_intc(main_intc, regs))
+				continue;
+
+		if (main_intc2)
+			if (s3c24xx_handle_intc(main_intc2, regs))
+				continue;
+
+		break;
+	} while (1);
+}
+
 #ifdef CONFIG_FIQ
 /**
  * s3c24xx_set_fiq - set the FIQ routing
@@ -324,18 +375,10 @@ static int s3c24xx_irq_map(struct irq_domain *h, unsigned int virq,
 	struct s3c_irq_data *parent_irq_data;
 	unsigned int irqno;
 
-	if (!intc) {
-		pr_err("irq-s3c24xx: no controller found for hwirq %lu\n", hw);
-		return -EINVAL;
-	}
-
-	if (!irq_data) {
-		pr_err("irq-s3c24xx: no irq data found for hwirq %lu\n", hw);
-		return -EINVAL;
-	}
-
 	/* attach controller pointer to irq_data */
 	irq_data->intc = intc;
+
+	parent_intc = intc->parent;
 
 	/* set handler and flags */
 	switch (irq_data->type) {
@@ -345,7 +388,7 @@ static int s3c24xx_irq_map(struct irq_domain *h, unsigned int virq,
 		/* On the S3C2412, the EINT0to3 have a parent irq
 		 * but need the s3c_irq_eint0t4 chip
 		 */
-		if (irq_data->parent_irq && (!soc_is_s3c2412() || hw >= 4))
+		if (parent_intc && (!soc_is_s3c2412() || hw >= 4))
 			irq_set_chip_and_handler(virq, &s3c_irqext_chip,
 						 handle_edge_irq);
 		else
@@ -353,8 +396,7 @@ static int s3c24xx_irq_map(struct irq_domain *h, unsigned int virq,
 						 handle_edge_irq);
 		break;
 	case S3C_IRQTYPE_EDGE:
-		if (irq_data->parent_irq ||
-		    intc->reg_pending == S3C2416_SRCPND2)
+		if (parent_intc || intc->reg_pending == S3C2416_SRCPND2)
 			irq_set_chip_and_handler(virq, &s3c_irq_level_chip,
 						 handle_edge_irq);
 		else
@@ -362,7 +404,7 @@ static int s3c24xx_irq_map(struct irq_domain *h, unsigned int virq,
 						 handle_edge_irq);
 		break;
 	case S3C_IRQTYPE_LEVEL:
-		if (irq_data->parent_irq)
+		if (parent_intc)
 			irq_set_chip_and_handler(virq, &s3c_irq_level_chip,
 						 handle_level_irq);
 		else
@@ -375,21 +417,14 @@ static int s3c24xx_irq_map(struct irq_domain *h, unsigned int virq,
 	}
 	set_irq_flags(virq, IRQF_VALID);
 
-	if (irq_data->parent_irq) {
-		parent_intc = intc->parent;
-		if (!parent_intc) {
-			pr_err("irq-s3c24xx: no parent controller found for hwirq %lu\n",
-			       hw);
+	if (parent_intc && irq_data->type != S3C_IRQTYPE_NONE) {
+		if (irq_data->parent_irq > 31) {
+			pr_err("irq-s3c24xx: parent irq %lu is out of range\n",
+			       irq_data->parent_irq);
 			goto err;
 		}
 
 		parent_irq_data = &parent_intc->irqs[irq_data->parent_irq];
-		if (!irq_data) {
-			pr_err("irq-s3c24xx: no irq data found for hwirq %lu\n",
-			       hw);
-			goto err;
-		}
-
 		parent_irq_data->sub_intc = intc;
 		parent_irq_data->sub_bits |= (1UL << hw);
 
@@ -444,7 +479,7 @@ static void s3c24xx_clear_intc(struct s3c_irq_intc *intc)
 	}
 }
 
-struct s3c_irq_intc *s3c24xx_init_intc(struct device_node *np,
+static struct s3c_irq_intc *s3c24xx_init_intc(struct device_node *np,
 				       struct s3c_irq_data *irq_data,
 				       struct s3c_irq_intc *parent,
 				       unsigned long address)
@@ -518,6 +553,13 @@ struct s3c_irq_intc *s3c24xx_init_intc(struct device_node *np,
 		goto err;
 	}
 
+	if (address == 0x4a000000)
+		main_intc = intc;
+	else if (address == 0x4a000040)
+		main_intc2 = intc;
+
+	set_handle_irq(s3c24xx_handle_irq);
+
 	return intc;
 
 err:
@@ -525,12 +567,35 @@ err:
 	return ERR_PTR(ret);
 }
 
-/* s3c24xx_init_irq
- *
- * Initialise S3C2410 IRQ system
-*/
+static struct s3c_irq_data init_eint[32] = {
+	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
+	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
+	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
+	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT4 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT5 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT6 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT7 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT8 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT9 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT10 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT11 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT12 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT13 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT14 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT15 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT16 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT17 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT18 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT19 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT20 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT21 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT22 */
+	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT23 */
+};
 
-static struct s3c_irq_data init_base[32] = {
+#ifdef CONFIG_CPU_S3C2410
+static struct s3c_irq_data init_s3c2410base[32] = {
 	{ .type = S3C_IRQTYPE_EINT, }, /* EINT0 */
 	{ .type = S3C_IRQTYPE_EINT, }, /* EINT1 */
 	{ .type = S3C_IRQTYPE_EINT, }, /* EINT2 */
@@ -565,34 +630,7 @@ static struct s3c_irq_data init_base[32] = {
 	{ .type = S3C_IRQTYPE_LEVEL, }, /* ADCPARENT */
 };
 
-static struct s3c_irq_data init_eint[32] = {
-	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
-	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
-	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
-	{ .type = S3C_IRQTYPE_NONE, }, /* reserved */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT4 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT5 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT6 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 4 }, /* EINT7 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT8 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT9 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT10 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT11 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT12 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT13 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT14 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT15 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT16 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT17 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT18 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT19 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT20 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT21 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT22 */
-	{ .type = S3C_IRQTYPE_EINT, .parent_irq = 5 }, /* EINT23 */
-};
-
-static struct s3c_irq_data init_subint[32] = {
+static struct s3c_irq_data init_s3c2410subint[32] = {
 	{ .type = S3C_IRQTYPE_LEVEL, .parent_irq = 28 }, /* UART0-RX */
 	{ .type = S3C_IRQTYPE_LEVEL, .parent_irq = 28 }, /* UART0-TX */
 	{ .type = S3C_IRQTYPE_LEVEL, .parent_irq = 28 }, /* UART0-ERR */
@@ -606,7 +644,7 @@ static struct s3c_irq_data init_subint[32] = {
 	{ .type = S3C_IRQTYPE_EDGE, .parent_irq = 31 }, /* ADC */
 };
 
-void __init s3c24xx_init_irq(void)
+void __init s3c2410_init_irq(void)
 {
 	struct s3c_irq_intc *main_intc;
 
@@ -614,15 +652,16 @@ void __init s3c24xx_init_irq(void)
 	init_FIQ(FIQ_START);
 #endif
 
-	main_intc = s3c24xx_init_intc(NULL, &init_base[0], NULL, 0x4a000000);
+	main_intc = s3c24xx_init_intc(NULL, &init_s3c2410base[0], NULL, 0x4a000000);
 	if (IS_ERR(main_intc)) {
 		pr_err("irq: could not create main interrupt controller\n");
 		return;
 	}
 
-	s3c24xx_init_intc(NULL, &init_subint[0], main_intc, 0x4a000018);
+	s3c24xx_init_intc(NULL, &init_s3c2410subint[0], main_intc, 0x4a000018);
 	s3c24xx_init_intc(NULL, &init_eint[0], main_intc, 0x560000a4);
 }
+#endif
 
 #ifdef CONFIG_CPU_S3C2412
 static struct s3c_irq_data init_s3c2412base[32] = {
