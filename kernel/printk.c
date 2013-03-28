@@ -1267,8 +1267,6 @@ static void call_console_drivers(int level, const char *text, size_t len)
 
 	trace_console(text, 0, len, len);
 
-	if (level >= console_loglevel && !ignore_loglevel)
-		return;
 	if (!console_drivers)
 		return;
 
@@ -1281,6 +1279,9 @@ static void call_console_drivers(int level, const char *text, size_t len)
 			continue;
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
+			continue;
+		if (level >= console_loglevel && !ignore_loglevel &&
+		    !(con->flags & CON_ALLDATA))
 			continue;
 		con->write(con, text, len);
 	}

@@ -1,0 +1,94 @@
+started by Jörn Engel <joern@logfs.org> 2012.03.17
+
+Blocksonsole for the impatient
+==============================
+
+1. Find an unused USB stick and prepare it for blockconsole by writing
+   the blockconsole signature to it:
+   $ ./mkblockconsole /dev/<usb_stick>
+
+2. USB stick is ready for use, replug it so that the kernel can start
+   logging to it.
+
+3. After you've done logging, read out the logs from it like this:
+   $ ./bcon_tail
+
+   This creates a file called /var/log/bcon.<UUID> which contains the
+   last 16M of the logs.  Open it with a sane editor like vim which
+   can display zeroed gaps as a single line and start staring at the
+   logs.
+   For the really impatient, use:
+   $ vi `./bcon_tail`
+
+Introduction:
+=============
+
+This module logs kernel printk messages to block devices, e.g. usb
+sticks.  It allows after-the-fact debugging when the main
+disk/filesystem fails and serial consoles and netconsole are
+impractical.
+
+It can currently only be used built-in.  Blockconsole hooks into the
+partition scanning code and will bring up configured block devices as
+soon as possible.  While this doesn't allow capture of early kernel
+panics, it does capture most of the boot process.
+
+Block device configuration:
+==================================
+
+Blockconsole has no configuration parameter.  In order to use a block
+device for logging, the blockconsole header has to be written to the
+device in question.  Logging to partitions is not supported.
+
+The example program mkblockconsole can be used to generate such a
+header on a device.
+
+Header format:
+==============
+
+A legal header looks like this:
+
+Linux blockconsole version 1.1
+818cf322
+00000000
+00000000
+
+It consists of a newline, the "Linux blockconsole version 1.1" string
+plus three numbers on separate lines each.  Numbers are all 32bit,
+represented as 8-byte hex strings, with letters in lowercase.  The
+first number is a uuid for this particular console device.  Just pick
+a random number when generating the device.  The second number is a
+wrap counter and unlikely to ever increment.  The third is a tile
+counter, with a tile being one megabyte in size.
+
+Miscellaneous notes:
+====================
+
+Blockconsole will write a new header for every tile or once every
+megabyte.  The header starts with a newline in order to ensure the
+"Linux blockconsole...' string always ends up at the beginning of a
+line if you read the blockconsole in a text editor.
+
+The blockconsole header is constructed such that opening the log
+device in a text editor, ignoring memory constraints due to large
+devices, should just work and be reasonably non-confusing to readers.
+However, the example program bcon_tail can be used to copy the last 16
+tiles of the log device to /var/log/bcon.<uuid>, which should be much
+easier to handle.
+
+The wrap counter is used by blockconsole to determine where to
+continue logging after a reboot.  New logs will be written to the
+first tile that wasn't written to by the last instance of
+blockconsole.  Similarly bcon_tail is doing a binary search to find
+the end of the log.
+
+Writing to the log device is strictly circular.  This should give
+optimal performance and reliability on cheap devices, like usb sticks.
+
+Writing to block devices has to happen in sector granularity, while
+kernel logging happens in byte granularity.  In order not to lose
+messages in important cases like kernel crashes, a timer will write
+out partial sectors if no new messages appear for a while.  The
+unwritten part of the sector will be filled with spaces and a single
+newline.  In a quiet system, these empty lines can make up the bulk of
+the log.

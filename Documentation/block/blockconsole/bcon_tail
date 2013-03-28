@@ -1,0 +1,82 @@
+#!/bin/bash
+
+TAIL_LEN=16
+TEMPLATE=/tmp/bcon_template
+BUF=/tmp/bcon_buf
+
+if [ $(whoami) != "root" ]; then
+	echo "You need to be root to run this."
+	exit 1
+fi
+
+if [ -z "$(which lsscsi)" ]; then
+	echo "You need to install the lsscsi package on your distro."
+	exit 1
+fi
+
+if [ -z "$(which hdparm)" ]; then
+	echo "You need to install the hdparm package on your distro."
+	exit 1
+fi
+
+end_of_log() {
+	DEV=$1
+	UUID=`head -c40 $DEV|tail -c8`
+	LOGFILE=/var/log/bcon.$UUID
+	SECTORS=`hdparm -g $DEV|grep sectors|sed 's/.*sectors = \([0-9]*\).*/\1/'`
+	#MSIZE=`expr $SECTORS / 2048`
+	dd if=$DEV iflag=direct bs=512 2>/dev/null|head -c50 > $TEMPLATE
+	#START, MIDDLE and END are in sectors
+	START=0
+	MIDDLE=$SECTORS
+	END=$SECTORS
+	while true; do
+		MIDDLE=`expr \( \( $END + $START \) / 4096 \) \* 2048`
+		if [ $MIDDLE -eq $START ]; then
+			break
+		fi
+		dd if=$DEV iflag=direct bs=512 count=1 skip=$MIDDLE 2>/dev/null|head -c50 > $BUF
+		if diff -q $BUF $TEMPLATE > /dev/null; then
+			START=$MIDDLE
+		else
+			END=$MIDDLE
+		fi
+	done
+	#switch to megabytes
+	END=`expr $END / 2048`
+	START=`expr $START / 2048`
+	if [ $START -lt $TAIL_LEN ]; then
+		START=0
+	else
+		START=`expr $START - $TAIL_LEN + 1`
+	fi
+	LEN=`expr $END - $START`
+	dd if=$DEV iflag=direct bs=1M count=$LEN skip=$START >$LOGFILE 2>/dev/null
+	echo $LOGFILE
+}
+
+# HEADER contains a newline, so the funny quoting is necessary
+HEADER='
+Linux blockconsole version 1.1'
+
+DEV="$1"
+if [ -n "$DEV" ]; then
+	if [ ! -b "$DEV" ]; then
+		echo "bcon_tail: No block device file $DEV"
+		exit 1
+	fi
+	if [ "`head -c32 $DEV`" != "$HEADER" ]; then
+		echo "bcon_tail: Invalid device file $DEV"
+		exit 1
+	fi
+	end_of_log $DEV
+	exit 0
+fi
+
+CANDIDATES=`lsscsi |sed 's|.*/dev|/dev|'`
+
+for DEV in $CANDIDATES; do
+	if [ "`head -c32 $DEV`" == "$HEADER" ]; then
+		end_of_log $DEV
+	fi
+done

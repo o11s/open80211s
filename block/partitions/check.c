@@ -42,6 +42,9 @@ static int (*check_part[])(struct parsed_partitions *) = {
 	 * Probe partition formats with tables at disk address 0
 	 * that also have an ADFS boot block at 0xdc0.
 	 */
+#ifdef CONFIG_BLOCKCONSOLE
+	blockconsole_partition,
+#endif
 #ifdef CONFIG_ACORN_PARTITION_ICS
 	adfspart_check_ICS,
 #endif
