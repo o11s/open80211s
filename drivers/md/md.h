@@ -567,6 +567,7 @@ extern struct md_thread *md_register_thread(
 extern void md_unregister_thread(struct md_thread **threadp);
 extern void md_wakeup_thread(struct md_thread *thread);
 extern void md_check_recovery(struct mddev *mddev);
+extern void md_reap_sync_thread(struct mddev *mddev);
 extern void md_write_start(struct mddev *mddev, struct bio *bi);
 extern void md_write_end(struct mddev *mddev);
 extern void md_done_sync(struct mddev *mddev, int blocks, int ok);
@@ -612,4 +613,12 @@ static inline int mddev_check_plugged(struct mddev *mddev)
 	return !!blk_check_plugged(md_unplug, mddev,
 				   sizeof(struct blk_plug_cb));
 }
+
+static inline int mddev_lock(struct mddev * mddev)
+{
+	return mutex_lock_interruptible(&mddev->reconfig_mutex);
+}
+extern void mddev_unlock(struct mddev *mddev);
+extern int md_queue_misc_work(struct work_struct *work);
+
 #endif /* _MD_MD_H */
