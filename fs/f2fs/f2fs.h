@@ -125,11 +125,15 @@ static inline int update_sits_in_cursum(struct f2fs_summary_block *rs, int i)
 					 * file keeping -1 as its node offset to
 					 * distinguish from index node blocks.
 					 */
-#define RDONLY_NODE		1	/*
-					 * specify a read-only mode when getting
-					 * a node block. 0 is read-write mode.
-					 * used by get_dnode_of_data().
+enum {
+	ALLOC_NODE,			/* allocate a new node page if needed */
+	LOOKUP_NODE,			/* look up a node without readahead */
+	LOOKUP_NODE_RA,			/*
+					 * look up a node with readahead called
+					 * by get_datablock_ro.
 					 */
+};
+
 #define F2FS_LINK_MAX		32000	/* maximum link count per file */
 
 /* for in-memory extent cache entry */
@@ -137,7 +141,7 @@ struct extent_info {
 	rwlock_t ext_lock;	/* rwlock for consistency */
 	unsigned int fofs;	/* start offset in a file */
 	u32 blk_addr;		/* start block address of the extent */
-	unsigned int len;	/* lenth of the extent */
+	unsigned int len;	/* length of the extent */
 };
 
 /*
@@ -511,9 +515,12 @@ static inline void mutex_unlock_op(struct f2fs_sb_info *sbi, enum lock_type t)
 /*
  * Check whether the given nid is within node id range.
  */
-static inline void check_nid_range(struct f2fs_sb_info *sbi, nid_t nid)
+static inline int check_nid_range(struct f2fs_sb_info *sbi, nid_t nid)
 {
-	BUG_ON((nid >= NM_I(sbi)->max_nid));
+	WARN_ON((nid >= NM_I(sbi)->max_nid));
+	if (nid >= NM_I(sbi)->max_nid)
+		return -EINVAL;
+	return 0;
 }
 
 #define F2FS_DEFAULT_ALLOCATED_BLOCKS	1

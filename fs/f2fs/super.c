@@ -21,6 +21,7 @@
 #include <linux/seq_file.h>
 #include <linux/random.h>
 #include <linux/exportfs.h>
+#include <linux/blkdev.h>
 #include <linux/f2fs_fs.h>
 
 #include "f2fs.h"
@@ -82,7 +83,7 @@ static struct inode *f2fs_alloc_inode(struct super_block *sb)
 
 	init_once((void *) fi);
 
-	/* Initilize f2fs-specific inode info */
+	/* Initialize f2fs-specific inode info */
 	fi->vfs_inode.i_version = 1;
 	atomic_set(&fi->dirty_dents, 0);
 	fi->i_current_depth = 1;
@@ -180,7 +181,7 @@ static int f2fs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	buf->f_files = sbi->total_node_count;
 	buf->f_ffree = sbi->total_node_count - valid_inode_count(sbi);
 
-	buf->f_namelen = F2FS_MAX_NAME_LEN;
+	buf->f_namelen = F2FS_NAME_LEN;
 	buf->f_fsid.val[0] = (u32)id;
 	buf->f_fsid.val[1] = (u32)(id >> 32);
 
@@ -473,7 +474,7 @@ static int validate_superblock(struct super_block *sb,
 	if (!*raw_super_buf) {
 		f2fs_msg(sb, KERN_ERR, "unable to read %s superblock",
 				super);
-		return 1;
+		return -EIO;
 	}
 
 	*raw_super = (struct f2fs_super_block *)
@@ -485,7 +486,7 @@ static int validate_superblock(struct super_block *sb,
 
 	f2fs_msg(sb, KERN_ERR, "Can't find a valid F2FS filesystem "
 				"in %s superblock", super);
-	return 1;
+	return -EINVAL;
 }
 
 static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
@@ -508,9 +509,12 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 		goto free_sbi;
 	}
 
-	if (validate_superblock(sb, &raw_super, &raw_super_buf, 0)) {
+	err = validate_superblock(sb, &raw_super, &raw_super_buf, 0);
+	if (err) {
 		brelse(raw_super_buf);
-		if (validate_superblock(sb, &raw_super, &raw_super_buf, 1))
+		/* check secondary superblock when primary failed */
+		err = validate_superblock(sb, &raw_super, &raw_super_buf, 1);
+		if (err)
 			goto free_sb_buf;
 	}
 	/* init some FS parameters */
@@ -649,6 +653,14 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	err = f2fs_build_stats(sbi);
 	if (err)
 		goto fail;
+
+	if (test_opt(sbi, DISCARD)) {
+		struct request_queue *q = bdev_get_queue(sb->s_bdev);
+		if (!blk_queue_discard(q))
+			f2fs_msg(sb, KERN_WARNING,
+					"mounting with \"discard\" option, but "
+					"the device does not support discard");
+	}
 
 	return 0;
 fail:
