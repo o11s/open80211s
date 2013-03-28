@@ -3427,7 +3427,6 @@ isdn_tty_parse_at(modem_info *info)
 			p++;
 			isdn_tty_cmd_ATA(info);
 			return;
-			break;
 		case 'D':
 			/* D - Dial */
 			if (info->msr & UART_MSR_DCD)
