@@ -403,7 +403,7 @@ struct flex_groups {
 #define EXT4_RESERVED_FL		0x80000000 /* reserved for ext4 lib */
 
 #define EXT4_FL_USER_VISIBLE		0x004BDFFF /* User visible flags */
-#define EXT4_FL_USER_MODIFIABLE		0x004B80FF /* User modifiable flags */
+#define EXT4_FL_USER_MODIFIABLE		0x004380FF /* User modifiable flags */
 
 /* Flags that should be inherited by new inodes from their parent. */
 #define EXT4_FL_INHERITED (EXT4_SECRM_FL | EXT4_UNRM_FL | EXT4_COMPR_FL |\
@@ -1374,6 +1374,7 @@ enum {
 	EXT4_STATE_DIOREAD_LOCK,	/* Disable support for dio read
 					   nolocking */
 	EXT4_STATE_MAY_INLINE_DATA,	/* may have in-inode data */
+	EXT4_STATE_ORDERED_MODE,	/* data=ordered mode */
 };
 
 #define EXT4_INODE_BIT_FNS(name, field, offset)				\
@@ -2108,8 +2109,9 @@ extern ssize_t ext4_ind_direct_IO(int rw, struct kiocb *iocb,
 				unsigned long nr_segs);
 extern int ext4_ind_calc_metadata_amount(struct inode *inode, sector_t lblock);
 extern int ext4_ind_trans_blocks(struct inode *inode, int nrblocks, int chunk);
-extern void ext4_ind_truncate(struct inode *inode);
-extern int ext4_ind_punch_hole(struct file *file, loff_t offset, loff_t length);
+extern void ext4_ind_truncate(handle_t *, struct inode *inode);
+extern int ext4_free_hole_blocks(handle_t *handle, struct inode *inode,
+				 ext4_lblk_t first, ext4_lblk_t stop);
 
 /* ioctl.c */
 extern long ext4_ioctl(struct file *, unsigned int, unsigned long);
@@ -2573,9 +2575,9 @@ extern int ext4_ext_index_trans_blocks(struct inode *inode, int nrblocks,
 				       int chunk);
 extern int ext4_ext_map_blocks(handle_t *handle, struct inode *inode,
 			       struct ext4_map_blocks *map, int flags);
-extern void ext4_ext_truncate(struct inode *);
-extern int ext4_ext_punch_hole(struct file *file, loff_t offset,
-				loff_t length);
+extern void ext4_ext_truncate(handle_t *, struct inode *);
+extern int ext4_ext_remove_space(struct inode *inode, ext4_lblk_t start,
+				 ext4_lblk_t end);
 extern void ext4_ext_init(struct super_block *);
 extern void ext4_ext_release(struct super_block *);
 extern long ext4_fallocate(struct file *file, int mode, loff_t offset,
@@ -2606,6 +2608,7 @@ extern int ext4_find_delalloc_range(struct inode *inode,
 extern int ext4_find_delalloc_cluster(struct inode *inode, ext4_lblk_t lblk);
 extern int ext4_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 			__u64 start, __u64 len);
+extern int ext4_ind_migrate(struct inode *inode);
 
 
 /* move_extent.c */

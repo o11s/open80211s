@@ -353,10 +353,13 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
 	struct super_block		*sb = journal->j_private;
 	struct ext4_sb_info		*sbi = EXT4_SB(sb);
 	int				error = is_journal_aborted(journal);
-	struct ext4_journal_cb_entry	*jce, *tmp;
+	struct ext4_journal_cb_entry	*jce;
 
+	BUG_ON(txn->t_state == T_FINISHED);
 	spin_lock(&sbi->s_md_lock);
-	list_for_each_entry_safe(jce, tmp, &txn->t_private_list, jce_list) {
+	while (!list_empty(&txn->t_private_list)) {
+		jce = list_entry(txn->t_private_list.next,
+				 struct ext4_journal_cb_entry, jce_list);
 		list_del_init(&jce->jce_list);
 		spin_unlock(&sbi->s_md_lock);
 		jce->jce_func(sb, jce, error);
@@ -4010,6 +4013,7 @@ failed_mount_wq:
 		sbi->s_journal = NULL;
 	}
 failed_mount3:
+	ext4_es_unregister_shrinker(sb);
 	del_timer(&sbi->s_err_report);
 	if (sbi->s_flex_groups)
 		ext4_kvfree(sbi->s_flex_groups);

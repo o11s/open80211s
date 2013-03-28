@@ -210,8 +210,7 @@ void ext4_evict_inode(struct inode *inode)
 			journal_t *journal = EXT4_SB(inode->i_sb)->s_journal;
 			tid_t commit_tid = EXT4_I(inode)->i_datasync_tid;
 
-			jbd2_log_start_commit(journal, commit_tid);
-			jbd2_log_wait_commit(journal, commit_tid);
+			jbd2_complete_transaction(journal, commit_tid);
 			filemap_write_and_wait(&inode->i_data);
 		}
 		truncate_inode_pages(&inode->i_data, 0);
@@ -258,8 +257,21 @@ void ext4_evict_inode(struct inode *inode)
 			     "couldn't mark inode dirty (err %d)", err);
 		goto stop_handle;
 	}
-	if (inode->i_blocks)
+	if (inode->i_blocks) {
+		/*
+		 * Since we are evicting the inode, it shouldn't be
+		 * locked.  We've added a warning which triggers if
+		 * the mutex is not locked, so take the lock even
+		 * though it's not strictly necessary.  However,
+		 * taking the lock using a simple mutex_lock() will
+		 * trigger a (false positive) lockdep warning, so take
+		 * it using a trylock.
+		 */
+		int locked = mutex_trylock(&inode->i_mutex);
 		ext4_truncate(inode);
+		if (likely(locked))
+			mutex_unlock(&inode->i_mutex);
+	}
 
 	/*
 	 * ext4_ext_truncate() doesn't reserve any slop when it
@@ -1087,14 +1099,32 @@ static int write_end_fn(handle_t *handle, struct buffer_head *bh)
 	return ext4_handle_dirty_metadata(handle, NULL, bh);
 }
 
-static int ext4_generic_write_end(struct file *file,
-				  struct address_space *mapping,
-				  loff_t pos, unsigned len, unsigned copied,
-				  struct page *page, void *fsdata)
+/*
+ * We need to pick up the new inode size which generic_commit_write gave us
+ * `file' can be NULL - eg, when called from page_symlink().
+ *
+ * ext4 never places buffers on inode->i_mapping->private_list.  metadata
+ * buffers are managed internally.
+ */
+static int ext4_write_end(struct file *file,
+			  struct address_space *mapping,
+			  loff_t pos, unsigned len, unsigned copied,
+			  struct page *page, void *fsdata)
 {
-	int i_size_changed = 0;
-	struct inode *inode = mapping->host;
 	handle_t *handle = ext4_journal_current_handle();
+	struct inode *inode = mapping->host;
+	int ret = 0, ret2;
+	int i_size_changed = 0;
+
+	trace_ext4_write_end(inode, pos, len, copied);
+	if (ext4_test_inode_state(inode, EXT4_STATE_ORDERED_MODE)) {
+		ret = ext4_jbd2_file_inode(handle, inode);
+		if (ret) {
+			unlock_page(page);
+			page_cache_release(page);
+			goto errout;
+		}
+	}
 
 	if (ext4_has_inline_data(inode))
 		copied = ext4_write_inline_data_end(inode, pos, len,
@@ -1105,7 +1135,7 @@ static int ext4_generic_write_end(struct file *file,
 
 	/*
 	 * No need to use i_size_read() here, the i_size
-	 * cannot change under us because we hold i_mutex.
+	 * cannot change under us because we hole i_mutex.
 	 *
 	 * But it's important to update i_size while still holding page lock:
 	 * page writeout could otherwise come in and zero beyond i_size.
@@ -1115,10 +1145,10 @@ static int ext4_generic_write_end(struct file *file,
 		i_size_changed = 1;
 	}
 
-	if (pos + copied >  EXT4_I(inode)->i_disksize) {
+	if (pos + copied > EXT4_I(inode)->i_disksize) {
 		/* We need to mark inode dirty even if
 		 * new_i_size is less that inode->i_size
-		 * bu greater than i_disksize.(hint delalloc)
+		 * but greater than i_disksize. (hint delalloc)
 		 */
 		ext4_update_i_disksize(inode, (pos + copied));
 		i_size_changed = 1;
@@ -1135,87 +1165,15 @@ static int ext4_generic_write_end(struct file *file,
 	if (i_size_changed)
 		ext4_mark_inode_dirty(handle, inode);
 
-	return copied;
-}
-
-/*
- * We need to pick up the new inode size which generic_commit_write gave us
- * `file' can be NULL - eg, when called from page_symlink().
- *
- * ext4 never places buffers on inode->i_mapping->private_list.  metadata
- * buffers are managed internally.
- */
-static int ext4_ordered_write_end(struct file *file,
-				  struct address_space *mapping,
-				  loff_t pos, unsigned len, unsigned copied,
-				  struct page *page, void *fsdata)
-{
-	handle_t *handle = ext4_journal_current_handle();
-	struct inode *inode = mapping->host;
-	int ret = 0, ret2;
-
-	trace_ext4_ordered_write_end(inode, pos, len, copied);
-	ret = ext4_jbd2_file_inode(handle, inode);
-
-	if (ret == 0) {
-		ret2 = ext4_generic_write_end(file, mapping, pos, len, copied,
-							page, fsdata);
-		copied = ret2;
-		if (pos + len > inode->i_size && ext4_can_truncate(inode))
-			/* if we have allocated more blocks and copied
-			 * less. We will have blocks allocated outside
-			 * inode->i_size. So truncate them
-			 */
-			ext4_orphan_add(handle, inode);
-		if (ret2 < 0)
-			ret = ret2;
-	} else {
-		unlock_page(page);
-		page_cache_release(page);
-	}
-
-	ret2 = ext4_journal_stop(handle);
-	if (!ret)
-		ret = ret2;
-
-	if (pos + len > inode->i_size) {
-		ext4_truncate_failed_write(inode);
-		/*
-		 * If truncate failed early the inode might still be
-		 * on the orphan list; we need to make sure the inode
-		 * is removed from the orphan list in that case.
-		 */
-		if (inode->i_nlink)
-			ext4_orphan_del(NULL, inode);
-	}
-
-
-	return ret ? ret : copied;
-}
-
-static int ext4_writeback_write_end(struct file *file,
-				    struct address_space *mapping,
-				    loff_t pos, unsigned len, unsigned copied,
-				    struct page *page, void *fsdata)
-{
-	handle_t *handle = ext4_journal_current_handle();
-	struct inode *inode = mapping->host;
-	int ret = 0, ret2;
-
-	trace_ext4_writeback_write_end(inode, pos, len, copied);
-	ret2 = ext4_generic_write_end(file, mapping, pos, len, copied,
-							page, fsdata);
-	copied = ret2;
+	if (copied < 0)
+		ret = copied;
 	if (pos + len > inode->i_size && ext4_can_truncate(inode))
 		/* if we have allocated more blocks and copied
 		 * less. We will have blocks allocated outside
 		 * inode->i_size. So truncate them
 		 */
 		ext4_orphan_add(handle, inode);
-
-	if (ret2 < 0)
-		ret = ret2;
-
+errout:
 	ret2 = ext4_journal_stop(handle);
 	if (!ret)
 		ret = ret2;
@@ -2818,18 +2776,9 @@ static int ext4_da_write_end(struct file *file,
 	unsigned long start, end;
 	int write_mode = (int)(unsigned long)fsdata;
 
-	if (write_mode == FALL_BACK_TO_NONDELALLOC) {
-		switch (ext4_inode_journal_mode(inode)) {
-		case EXT4_INODE_ORDERED_DATA_MODE:
-			return ext4_ordered_write_end(file, mapping, pos,
-					len, copied, page, fsdata);
-		case EXT4_INODE_WRITEBACK_DATA_MODE:
-			return ext4_writeback_write_end(file, mapping, pos,
-					len, copied, page, fsdata);
-		default:
-			BUG();
-		}
-	}
+	if (write_mode == FALL_BACK_TO_NONDELALLOC)
+		return ext4_write_end(file, mapping, pos,
+				      len, copied, page, fsdata);
 
 	trace_ext4_da_write_end(inode, pos, len, copied);
 	start = pos & (PAGE_CACHE_SIZE - 1);
@@ -3334,27 +3283,12 @@ static int ext4_journalled_set_page_dirty(struct page *page)
 	return __set_page_dirty_nobuffers(page);
 }
 
-static const struct address_space_operations ext4_ordered_aops = {
+static const struct address_space_operations ext4_aops = {
 	.readpage		= ext4_readpage,
 	.readpages		= ext4_readpages,
 	.writepage		= ext4_writepage,
 	.write_begin		= ext4_write_begin,
-	.write_end		= ext4_ordered_write_end,
-	.bmap			= ext4_bmap,
-	.invalidatepage		= ext4_invalidatepage,
-	.releasepage		= ext4_releasepage,
-	.direct_IO		= ext4_direct_IO,
-	.migratepage		= buffer_migrate_page,
-	.is_partially_uptodate  = block_is_partially_uptodate,
-	.error_remove_page	= generic_error_remove_page,
-};
-
-static const struct address_space_operations ext4_writeback_aops = {
-	.readpage		= ext4_readpage,
-	.readpages		= ext4_readpages,
-	.writepage		= ext4_writepage,
-	.write_begin		= ext4_write_begin,
-	.write_end		= ext4_writeback_write_end,
+	.write_end		= ext4_write_end,
 	.bmap			= ext4_bmap,
 	.invalidatepage		= ext4_invalidatepage,
 	.releasepage		= ext4_releasepage,
@@ -3399,23 +3333,21 @@ void ext4_set_aops(struct inode *inode)
 {
 	switch (ext4_inode_journal_mode(inode)) {
 	case EXT4_INODE_ORDERED_DATA_MODE:
-		if (test_opt(inode->i_sb, DELALLOC))
-			inode->i_mapping->a_ops = &ext4_da_aops;
-		else
-			inode->i_mapping->a_ops = &ext4_ordered_aops;
+		ext4_set_inode_state(inode, EXT4_STATE_ORDERED_MODE);
 		break;
 	case EXT4_INODE_WRITEBACK_DATA_MODE:
-		if (test_opt(inode->i_sb, DELALLOC))
-			inode->i_mapping->a_ops = &ext4_da_aops;
-		else
-			inode->i_mapping->a_ops = &ext4_writeback_aops;
+		ext4_clear_inode_state(inode, EXT4_STATE_ORDERED_MODE);
 		break;
 	case EXT4_INODE_JOURNAL_DATA_MODE:
 		inode->i_mapping->a_ops = &ext4_journalled_aops;
-		break;
+		return;
 	default:
 		BUG();
 	}
+	if (test_opt(inode->i_sb, DELALLOC))
+		inode->i_mapping->a_ops = &ext4_da_aops;
+	else
+		inode->i_mapping->a_ops = &ext4_aops;
 }
 
 
@@ -3646,20 +3578,190 @@ int ext4_can_truncate(struct inode *inode)
 int ext4_punch_hole(struct file *file, loff_t offset, loff_t length)
 {
 	struct inode *inode = file_inode(file);
+	struct super_block *sb = inode->i_sb;
+	ext4_lblk_t first_block, stop_block;
+	struct address_space *mapping = inode->i_mapping;
+	loff_t first_page, last_page, page_len;
+	loff_t first_page_offset, last_page_offset;
+	handle_t *handle;
+	unsigned int credits;
+	int ret = 0;
+
 	if (!S_ISREG(inode->i_mode))
 		return -EOPNOTSUPP;
 
-	if (!ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
-		return ext4_ind_punch_hole(file, offset, length);
-
-	if (EXT4_SB(inode->i_sb)->s_cluster_ratio > 1) {
+	if (EXT4_SB(sb)->s_cluster_ratio > 1) {
 		/* TODO: Add support for bigalloc file systems */
 		return -EOPNOTSUPP;
 	}
 
 	trace_ext4_punch_hole(inode, offset, length);
 
-	return ext4_ext_punch_hole(file, offset, length);
+	/*
+	 * Write out all dirty pages to avoid race conditions
+	 * Then release them.
+	 */
+	if (mapping->nrpages && mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) {
+		ret = filemap_write_and_wait_range(mapping, offset,
+						   offset + length - 1);
+		if (ret)
+			return ret;
+	}
+
+	mutex_lock(&inode->i_mutex);
+	/* It's not possible punch hole on append only file */
+	if (IS_APPEND(inode) || IS_IMMUTABLE(inode)) {
+		ret = -EPERM;
+		goto out_mutex;
+	}
+	if (IS_SWAPFILE(inode)) {
+		ret = -ETXTBSY;
+		goto out_mutex;
+	}
+
+	/* No need to punch hole beyond i_size */
+	if (offset >= inode->i_size)
+		goto out_mutex;
+
+	/*
+	 * If the hole extends beyond i_size, set the hole
+	 * to end after the page that contains i_size
+	 */
+	if (offset + length > inode->i_size) {
+		length = inode->i_size +
+		   PAGE_CACHE_SIZE - (inode->i_size & (PAGE_CACHE_SIZE - 1)) -
+		   offset;
+	}
+
+	first_page = (offset + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
+	last_page = (offset + length) >> PAGE_CACHE_SHIFT;
+
+	first_page_offset = first_page << PAGE_CACHE_SHIFT;
+	last_page_offset = last_page << PAGE_CACHE_SHIFT;
+
+	/* Now release the pages */
+	if (last_page_offset > first_page_offset) {
+		truncate_pagecache_range(inode, first_page_offset,
+					 last_page_offset - 1);
+	}
+
+	/* Wait all existing dio workers, newcomers will block on i_mutex */
+	ext4_inode_block_unlocked_dio(inode);
+	ret = ext4_flush_unwritten_io(inode);
+	if (ret)
+		goto out_dio;
+	inode_dio_wait(inode);
+
+	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
+		credits = ext4_writepage_trans_blocks(inode);
+	else
+		credits = ext4_blocks_for_truncate(inode);
+	handle = ext4_journal_start(inode, EXT4_HT_TRUNCATE, credits);
+	if (IS_ERR(handle)) {
+		ret = PTR_ERR(handle);
+		ext4_std_error(sb, ret);
+		goto out_dio;
+	}
+
+	/*
+	 * Now we need to zero out the non-page-aligned data in the
+	 * pages at the start and tail of the hole, and unmap the
+	 * buffer heads for the block aligned regions of the page that
+	 * were completely zeroed.
+	 */
+	if (first_page > last_page) {
+		/*
+		 * If the file space being truncated is contained
+		 * within a page just zero out and unmap the middle of
+		 * that page
+		 */
+		ret = ext4_discard_partial_page_buffers(handle,
+			mapping, offset, length, 0);
+
+		if (ret)
+			goto out_stop;
+	} else {
+		/*
+		 * zero out and unmap the partial page that contains
+		 * the start of the hole
+		 */
+		page_len = first_page_offset - offset;
+		if (page_len > 0) {
+			ret = ext4_discard_partial_page_buffers(handle, mapping,
+						offset, page_len, 0);
+			if (ret)
+				goto out_stop;
+		}
+
+		/*
+		 * zero out and unmap the partial page that contains
+		 * the end of the hole
+		 */
+		page_len = offset + length - last_page_offset;
+		if (page_len > 0) {
+			ret = ext4_discard_partial_page_buffers(handle, mapping,
+					last_page_offset, page_len, 0);
+			if (ret)
+				goto out_stop;
+		}
+	}
+
+	/*
+	 * If i_size is contained in the last page, we need to
+	 * unmap and zero the partial page after i_size
+	 */
+	if (inode->i_size >> PAGE_CACHE_SHIFT == last_page &&
+	   inode->i_size % PAGE_CACHE_SIZE != 0) {
+		page_len = PAGE_CACHE_SIZE -
+			(inode->i_size & (PAGE_CACHE_SIZE - 1));
+
+		if (page_len > 0) {
+			ret = ext4_discard_partial_page_buffers(handle,
+					mapping, inode->i_size, page_len, 0);
+
+			if (ret)
+				goto out_stop;
+		}
+	}
+
+	first_block = (offset + sb->s_blocksize - 1) >>
+		EXT4_BLOCK_SIZE_BITS(sb);
+	stop_block = (offset + length) >> EXT4_BLOCK_SIZE_BITS(sb);
+
+	/* If there are no blocks to remove, return now */
+	if (first_block >= stop_block)
+		goto out_stop;
+
+	down_write(&EXT4_I(inode)->i_data_sem);
+	ext4_discard_preallocations(inode);
+
+	ret = ext4_es_remove_extent(inode, first_block,
+				    stop_block - first_block);
+	if (ret) {
+		up_write(&EXT4_I(inode)->i_data_sem);
+		goto out_stop;
+	}
+
+	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
+		ret = ext4_ext_remove_space(inode, first_block,
+					    stop_block - 1);
+	else
+		ret = ext4_free_hole_blocks(handle, inode, first_block,
+					    stop_block);
+
+	ext4_discard_preallocations(inode);
+	up_write(&EXT4_I(inode)->i_data_sem);
+	if (IS_SYNC(inode))
+		ext4_handle_sync(handle);
+	inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
+	ext4_mark_inode_dirty(handle, inode);
+out_stop:
+	ext4_journal_stop(handle);
+out_dio:
+	ext4_inode_resume_unlocked_dio(inode);
+out_mutex:
+	mutex_unlock(&inode->i_mutex);
+	return ret;
 }
 
 /*
@@ -3692,6 +3794,13 @@ int ext4_punch_hole(struct file *file, loff_t offset, loff_t length)
  */
 void ext4_truncate(struct inode *inode)
 {
+	struct ext4_inode_info *ei = EXT4_I(inode);
+	unsigned int credits;
+	handle_t *handle;
+	struct address_space *mapping = inode->i_mapping;
+	loff_t page_len;
+
+	WARN_ON(!mutex_is_locked(&inode->i_mutex));
 	trace_ext4_truncate_enter(inode);
 
 	if (!ext4_can_truncate(inode))
@@ -3710,10 +3819,72 @@ void ext4_truncate(struct inode *inode)
 			return;
 	}
 
+	/*
+	 * finish any pending end_io work so we won't run the risk of
+	 * converting any truncated blocks to initialized later
+	 */
+	ext4_flush_unwritten_io(inode);
+
 	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
-		ext4_ext_truncate(inode);
+		credits = ext4_writepage_trans_blocks(inode);
 	else
-		ext4_ind_truncate(inode);
+		credits = ext4_blocks_for_truncate(inode);
+
+	handle = ext4_journal_start(inode, EXT4_HT_TRUNCATE, credits);
+	if (IS_ERR(handle)) {
+		ext4_std_error(inode->i_sb, PTR_ERR(handle));
+		return;
+	}
+
+	if (inode->i_size % PAGE_CACHE_SIZE != 0) {
+		page_len = PAGE_CACHE_SIZE -
+			(inode->i_size & (PAGE_CACHE_SIZE - 1));
+
+		if (ext4_discard_partial_page_buffers(handle,
+				mapping, inode->i_size, page_len, 0))
+			goto out_stop;
+	}
+
+	/*
+	 * We add the inode to the orphan list, so that if this
+	 * truncate spans multiple transactions, and we crash, we will
+	 * resume the truncate when the filesystem recovers.  It also
+	 * marks the inode dirty, to catch the new size.
+	 *
+	 * Implication: the file must always be in a sane, consistent
+	 * truncatable state while each transaction commits.
+	 */
+	if (ext4_orphan_add(handle, inode))
+		goto out_stop;
+
+	down_write(&EXT4_I(inode)->i_data_sem);
+
+	ext4_discard_preallocations(inode);
+
+	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
+		ext4_ext_truncate(handle, inode);
+	else
+		ext4_ind_truncate(handle, inode);
+
+	up_write(&ei->i_data_sem);
+
+	if (IS_SYNC(inode))
+		ext4_handle_sync(handle);
+
+out_stop:
+	/*
+	 * If this was a simple ftruncate() and the file will remain alive,
+	 * then we need to clear up the orphan record which we created above.
+	 * However, if this was a real unlink then we were called by
+	 * ext4_delete_inode(), and we allow that function to clean up the
+	 * orphan info for us.
+	 */
+	if (inode->i_nlink)
+		ext4_orphan_del(handle, inode);
+
+	inode->i_mtime = inode->i_ctime = ext4_current_time(inode);
+	ext4_mark_inode_dirty(handle, inode);
+	ext4_journal_stop(handle);
 
 	trace_ext4_truncate_exit(inode);
 }
