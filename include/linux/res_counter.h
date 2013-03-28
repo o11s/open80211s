@@ -13,8 +13,8 @@
  * info about what this counter is.
  */
 
-#include <linux/cgroup.h>
 #include <linux/errno.h>
+#include <linux/spinlock.h>
 
 /*
  * The core object. the cgroup that wishes to account for some
