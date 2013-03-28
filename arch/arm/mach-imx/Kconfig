@@ -65,6 +65,9 @@ config IRAM_ALLOC
 	bool
 	select GENERIC_ALLOCATOR
 
+config HAVE_IMX_ANATOP
+	bool
+
 config HAVE_IMX_GPC
 	bool
 
@@ -128,6 +131,8 @@ config SOC_IMX25
 
 config SOC_IMX27
 	bool
+	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_OPP
 	select COMMON_CLK
 	select CPU_ARM926T
 	select IMX_HAVE_IOMUX_V1
@@ -155,6 +160,7 @@ config SOC_IMX35
 config SOC_IMX5
 	bool
 	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_OPP
 	select ARCH_MX5
 	select ARCH_MXC_IOMUX_V3
 	select COMMON_CLK
@@ -813,6 +819,7 @@ config SOC_IMX6Q
 	select CPU_V7
 	select HAVE_ARM_SCU
 	select HAVE_CAN_FLEXCAN if CAN
+	select HAVE_IMX_ANATOP
 	select HAVE_IMX_GPC
 	select HAVE_IMX_MMDC
 	select HAVE_IMX_SRC

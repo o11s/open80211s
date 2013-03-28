@@ -11,7 +11,7 @@
  */
 
 /dts-v1/;
-/include/ "imx6q.dtsi"
+#include "imx6q.dtsip"
 
 / {
 	model = "Freescale i.MX6 Quad SABRE Automotive Board";
@@ -29,8 +29,8 @@
 	hog {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
-				1376 0x80000000	/* MX6Q_PAD_NANDF_CS2__GPIO_6_15 */
-				13   0x80000000	/* MX6Q_PAD_SD2_DAT2__GPIO_1_13 */
+				MX6Q_PAD_NANDF_CS2__GPIO_6_15 0x80000000
+				MX6Q_PAD_SD2_DAT2__GPIO_1_13  0x80000000
 			>;
 		};
 	};
