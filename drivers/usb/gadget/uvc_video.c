@@ -229,13 +229,18 @@ uvc_video_free_requests(struct uvc_video *video)
 static int
 uvc_video_alloc_requests(struct uvc_video *video)
 {
+	unsigned int req_size;
 	unsigned int i;
 	int ret = -ENOMEM;
 
 	BUG_ON(video->req_size);
 
+	req_size = video->ep->maxpacket
+		 * max_t(unsigned int, video->ep->maxburst, 1)
+		 * (video->ep->mult + 1);
+
 	for (i = 0; i < UVC_NUM_REQUESTS; ++i) {
-		video->req_buffer[i] = kmalloc(video->ep->maxpacket, GFP_KERNEL);
+		video->req_buffer[i] = kmalloc(req_size, GFP_KERNEL);
 		if (video->req_buffer[i] == NULL)
 			goto error;
 
@@ -245,14 +250,14 @@ uvc_video_alloc_requests(struct uvc_video *video)
 
 		video->req[i]->buf = video->req_buffer[i];
 		video->req[i]->length = 0;
-		video->req[i]->dma = DMA_ADDR_INVALID;
 		video->req[i]->complete = uvc_video_complete;
 		video->req[i]->context = video;
 
 		list_add_tail(&video->req[i]->list, &video->req_free);
 	}
 
-	video->req_size = video->ep->maxpacket;
+	video->req_size = req_size;
+
 	return 0;
 
 error:
@@ -309,7 +314,8 @@ uvc_video_pump(struct uvc_video *video)
 		video->encode(req, video, buf);
 
 		/* Queue the USB request */
-		if ((ret = usb_ep_queue(video->ep, req, GFP_KERNEL)) < 0) {
+		ret = usb_ep_queue(video->ep, req, GFP_ATOMIC);
+		if (ret < 0) {
 			printk(KERN_INFO "Failed to queue request (%d)\n", ret);
 			usb_ep_set_halt(video->ep);
 			spin_unlock_irqrestore(&video->queue.irqlock, flags);

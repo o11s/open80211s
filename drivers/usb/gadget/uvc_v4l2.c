@@ -41,9 +41,8 @@ uvc_send_response(struct uvc_device *uvc, struct uvc_request_data *data)
 
 	req->length = min_t(unsigned int, uvc->event_length, data->length);
 	req->zero = data->length < uvc->event_length;
-	req->dma = DMA_ADDR_INVALID;
 
-	memcpy(req->buf, data->data, data->length);
+	memcpy(req->buf, data->data, req->length);
 
 	return usb_ep_queue(cdev->gadget->ep0, req, GFP_KERNEL);
 }
@@ -178,9 +177,9 @@ uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		struct v4l2_capability *cap = arg;
 
 		memset(cap, 0, sizeof *cap);
-		strncpy(cap->driver, "g_uvc", sizeof(cap->driver));
-		strncpy(cap->card, cdev->gadget->name, sizeof(cap->card));
-		strncpy(cap->bus_info, dev_name(&cdev->gadget->dev),
+		strlcpy(cap->driver, "g_uvc", sizeof(cap->driver));
+		strlcpy(cap->card, cdev->gadget->name, sizeof(cap->card));
+		strlcpy(cap->bus_info, dev_name(&cdev->gadget->dev),
 			sizeof cap->bus_info);
 		cap->version = DRIVER_VERSION_NUMBER;
 		cap->capabilities = V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_STREAMING;
@@ -254,7 +253,19 @@ uvc_v4l2_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		if (*type != video->queue.type)
 			return -EINVAL;
 
-		return uvc_video_enable(video, 1);
+		/* Enable UVC video. */
+		ret = uvc_video_enable(video, 1);
+		if (ret < 0)
+			return ret;
+
+		/*
+		 * Complete the alternate setting selection setup phase now that
+		 * userspace is ready to provide video frames.
+		 */
+		uvc_function_setup_continue(uvc);
+		uvc->state = UVC_STATE_STREAMING;
+
+		return 0;
 	}
 
 	case VIDIOC_STREAMOFF:
