@@ -28,11 +28,7 @@
 #include <linux/slab.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
-
 #include <linux/platform_data/usb-ehci-mxc.h>
-
-#include <asm/mach-types.h>
-
 #include "ehci.h"
 
 #define DRIVER_DESC "Freescale On-Chip EHCI Host driver"
@@ -60,8 +56,6 @@ static int ehci_mxc_drv_probe(struct platform_device *pdev)
 	struct ehci_mxc_priv *priv;
 	struct device *dev = &pdev->dev;
 	struct ehci_hcd *ehci;
-
-	dev_info(&pdev->dev, "initializing i.MX USB Controller\n");
 
 	if (!pdata) {
 		dev_err(dev, "No platform data given, bailing out.\n");
@@ -178,7 +172,7 @@ err_alloc:
 	return ret;
 }
 
-static int __exit ehci_mxc_drv_remove(struct platform_device *pdev)
+static int ehci_mxc_drv_remove(struct platform_device *pdev)
 {
 	struct mxc_usbh_platform_data *pdata = pdev->dev.platform_data;
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
