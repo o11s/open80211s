@@ -542,7 +542,7 @@ static int bridge_brd_start(struct bridge_dev_context *dev_ctxt,
 		 * Enable Mailbox events and also drain any pending
 		 * stale messages.
 		 */
-		dev_context->mbox = omap_mbox_get("dsp", &dsp_mbox_notifier);
+		dev_context->mbox = mailbox_get("dsp", &dsp_mbox_notifier);
 		if (IS_ERR(dev_context->mbox)) {
 			dev_context->mbox = NULL;
 			pr_err("%s: Failed to get dsp mailbox handle\n",
@@ -677,8 +677,8 @@ static int bridge_brd_stop(struct bridge_dev_context *dev_ctxt)
 	}
 	/* Disable the mailbox interrupts */
 	if (dev_context->mbox) {
-		omap_mbox_disable_irq(dev_context->mbox, IRQ_RX);
-		omap_mbox_put(dev_context->mbox, &dsp_mbox_notifier);
+		mailbox_disable_irq(dev_context->mbox, IRQ_RX);
+		mailbox_put(dev_context->mbox, &dsp_mbox_notifier);
 		dev_context->mbox = NULL;
 	}
 	/* Reset IVA2 clocks*/
