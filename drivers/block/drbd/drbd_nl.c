@@ -696,37 +696,52 @@ out:
 	return 0;
 }
 
-/* initializes the md.*_offset members, so we are able to find
- * the on disk meta data */
+/* Initializes the md.*_offset members, so we are able to find
+ * the on disk meta data.
+ *
+ * We currently have two possible layouts:
+ * external:
+ *   |----------- md_size_sect ------------------|
+ *   [ 4k superblock ][ activity log ][  Bitmap  ]
+ *   | al_offset == 8 |
+ *   | bm_offset = al_offset + X      |
+ *  ==> bitmap sectors = md_size_sect - bm_offset
+ *
+ * internal:
+ *            |----------- md_size_sect ------------------|
+ * [data.....][  Bitmap  ][ activity log ][ 4k superblock ]
+ *                        | al_offset < 0 |
+ *            | bm_offset = al_offset - Y |
+ *  ==> bitmap sectors = Y = al_offset - bm_offset
+ *
+ *  Activity log size used to be fixed 32kB,
+ *  but is about to become configurable.
+ */
 static void drbd_md_set_sector_offsets(struct drbd_conf *mdev,
 				       struct drbd_backing_dev *bdev)
 {
 	sector_t md_size_sect = 0;
-	int meta_dev_idx;
+	unsigned int al_size_sect = bdev->md.al_size_4k * 8;
 
-	rcu_read_lock();
-	meta_dev_idx = rcu_dereference(bdev->disk_conf)->meta_dev_idx;
+	bdev->md.md_offset = drbd_md_ss(bdev);
 
-	switch (meta_dev_idx) {
+	switch (bdev->md.meta_dev_idx) {
 	default:
 		/* v07 style fixed size indexed meta data */
-		bdev->md.md_size_sect = MD_RESERVED_SECT;
-		bdev->md.md_offset = drbd_md_ss__(mdev, bdev);
-		bdev->md.al_offset = MD_AL_OFFSET;
-		bdev->md.bm_offset = MD_BM_OFFSET;
+		bdev->md.md_size_sect = MD_128MB_SECT;
+		bdev->md.al_offset = MD_4kB_SECT;
+		bdev->md.bm_offset = MD_4kB_SECT + al_size_sect;
 		break;
 	case DRBD_MD_INDEX_FLEX_EXT:
 		/* just occupy the full device; unit: sectors */
 		bdev->md.md_size_sect = drbd_get_capacity(bdev->md_bdev);
-		bdev->md.md_offset = 0;
-		bdev->md.al_offset = MD_AL_OFFSET;
-		bdev->md.bm_offset = MD_BM_OFFSET;
+		bdev->md.al_offset = MD_4kB_SECT;
+		bdev->md.bm_offset = MD_4kB_SECT + al_size_sect;
 		break;
 	case DRBD_MD_INDEX_INTERNAL:
 	case DRBD_MD_INDEX_FLEX_INT:
-		bdev->md.md_offset = drbd_md_ss__(mdev, bdev);
 		/* al size is still fixed */
-		bdev->md.al_offset = -MD_AL_SECTORS;
+		bdev->md.al_offset = -al_size_sect;
 		/* we need (slightly less than) ~ this much bitmap sectors: */
 		md_size_sect = drbd_get_capacity(bdev->backing_bdev);
 		md_size_sect = ALIGN(md_size_sect, BM_SECT_PER_EXT);
@@ -735,14 +750,13 @@ static void drbd_md_set_sector_offsets(struct drbd_conf *mdev,
 
 		/* plus the "drbd meta data super block",
 		 * and the activity log; */
-		md_size_sect += MD_BM_OFFSET;
+		md_size_sect += MD_4kB_SECT + al_size_sect;
 
 		bdev->md.md_size_sect = md_size_sect;
 		/* bitmap offset is adjusted by 'super' block size */
-		bdev->md.bm_offset   = -md_size_sect + MD_AL_OFFSET;
+		bdev->md.bm_offset   = -md_size_sect + MD_4kB_SECT;
 		break;
 	}
-	rcu_read_unlock();
 }
 
 /* input size is expected to be in KB */
@@ -805,7 +819,7 @@ void drbd_resume_io(struct drbd_conf *mdev)
 enum determine_dev_size drbd_determine_dev_size(struct drbd_conf *mdev, enum dds_flags flags) __must_hold(local)
 {
 	sector_t prev_first_sect, prev_size; /* previous meta location */
-	sector_t la_size, u_size;
+	sector_t la_size_sect, u_size;
 	sector_t size;
 	char ppb[10];
 
@@ -828,7 +842,7 @@ enum determine_dev_size drbd_determine_dev_size(struct drbd_conf *mdev, enum dds
 
 	prev_first_sect = drbd_md_first_sector(mdev->ldev);
 	prev_size = mdev->ldev->md.md_size_sect;
-	la_size = mdev->ldev->md.la_size_sect;
+	la_size_sect = mdev->ldev->md.la_size_sect;
 
 	/* TODO: should only be some assert here, not (re)init... */
 	drbd_md_set_sector_offsets(mdev, mdev->ldev);
@@ -864,7 +878,7 @@ enum determine_dev_size drbd_determine_dev_size(struct drbd_conf *mdev, enum dds
 	if (rv == dev_size_error)
 		goto out;
 
-	la_size_changed = (la_size != mdev->ldev->md.la_size_sect);
+	la_size_changed = (la_size_sect != mdev->ldev->md.la_size_sect);
 
 	md_moved = prev_first_sect != drbd_md_first_sector(mdev->ldev)
 		|| prev_size	   != mdev->ldev->md.md_size_sect;
@@ -886,9 +900,9 @@ enum determine_dev_size drbd_determine_dev_size(struct drbd_conf *mdev, enum dds
 		drbd_md_mark_dirty(mdev);
 	}
 
-	if (size > la_size)
+	if (size > la_size_sect)
 		rv = grew;
-	if (size < la_size)
+	if (size < la_size_sect)
 		rv = shrunk;
 out:
 	lc_unlock(mdev->act_log);
@@ -903,7 +917,7 @@ drbd_new_dev_size(struct drbd_conf *mdev, struct drbd_backing_dev *bdev,
 		  sector_t u_size, int assume_peer_has_space)
 {
 	sector_t p_size = mdev->p_size;   /* partner's disk size. */
-	sector_t la_size = bdev->md.la_size_sect; /* last agreed size. */
+	sector_t la_size_sect = bdev->md.la_size_sect; /* last agreed size. */
 	sector_t m_size; /* my size */
 	sector_t size = 0;
 
@@ -917,8 +931,8 @@ drbd_new_dev_size(struct drbd_conf *mdev, struct drbd_backing_dev *bdev,
 	if (p_size && m_size) {
 		size = min_t(sector_t, p_size, m_size);
 	} else {
-		if (la_size) {
-			size = la_size;
+		if (la_size_sect) {
+			size = la_size_sect;
 			if (m_size && m_size < size)
 				size = m_size;
 			if (p_size && p_size < size)
@@ -1127,15 +1141,32 @@ static bool should_set_defaults(struct genl_info *info)
 	return 0 != (flags & DRBD_GENL_F_SET_DEFAULTS);
 }
 
-static void enforce_disk_conf_limits(struct disk_conf *dc)
+static unsigned int drbd_al_extents_max(struct drbd_backing_dev *bdev)
 {
-	if (dc->al_extents < DRBD_AL_EXTENTS_MIN)
-		dc->al_extents = DRBD_AL_EXTENTS_MIN;
-	if (dc->al_extents > DRBD_AL_EXTENTS_MAX)
-		dc->al_extents = DRBD_AL_EXTENTS_MAX;
+	/* This is limited by 16 bit "slot" numbers,
+	 * and by available on-disk context storage.
+	 *
+	 * Also (u16)~0 is special (denotes a "free" extent).
+	 *
+	 * One transaction occupies one 4kB on-disk block,
+	 * we have n such blocks in the on disk ring buffer,
+	 * the "current" transaction may fail (n-1),
+	 * and there is 919 slot numbers context information per transaction.
+	 *
+	 * 72 transaction blocks amounts to more than 2**16 context slots,
+	 * so cap there first.
+	 */
+	const unsigned int max_al_nr = DRBD_AL_EXTENTS_MAX;
+	const unsigned int sufficient_on_disk =
+		(max_al_nr + AL_CONTEXT_PER_TRANSACTION -1)
+		/AL_CONTEXT_PER_TRANSACTION;
 
-	if (dc->c_plan_ahead > DRBD_C_PLAN_AHEAD_MAX)
-		dc->c_plan_ahead = DRBD_C_PLAN_AHEAD_MAX;
+	unsigned int al_size_4k = bdev->md.al_size_4k;
+
+	if (al_size_4k > sufficient_on_disk)
+		return max_al_nr;
+
+	return (al_size_4k - 1) * AL_CONTEXT_PER_TRANSACTION;
 }
 
 int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
@@ -1182,7 +1213,13 @@ int drbd_adm_disk_opts(struct sk_buff *skb, struct genl_info *info)
 	if (!expect(new_disk_conf->resync_rate >= 1))
 		new_disk_conf->resync_rate = 1;
 
-	enforce_disk_conf_limits(new_disk_conf);
+	if (new_disk_conf->al_extents < DRBD_AL_EXTENTS_MIN)
+		new_disk_conf->al_extents = DRBD_AL_EXTENTS_MIN;
+	if (new_disk_conf->al_extents > drbd_al_extents_max(mdev->ldev))
+		new_disk_conf->al_extents = drbd_al_extents_max(mdev->ldev);
+
+	if (new_disk_conf->c_plan_ahead > DRBD_C_PLAN_AHEAD_MAX)
+		new_disk_conf->c_plan_ahead = DRBD_C_PLAN_AHEAD_MAX;
 
 	fifo_size = (new_disk_conf->c_plan_ahead * 10 * SLEEP_TIME) / HZ;
 	if (fifo_size != mdev->rs_plan_s->size) {
@@ -1330,7 +1367,8 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		goto fail;
 	}
 
-	enforce_disk_conf_limits(new_disk_conf);
+	if (new_disk_conf->c_plan_ahead > DRBD_C_PLAN_AHEAD_MAX)
+		new_disk_conf->c_plan_ahead = DRBD_C_PLAN_AHEAD_MAX;
 
 	new_plan = fifo_alloc((new_disk_conf->c_plan_ahead * 10 * SLEEP_TIME) / HZ);
 	if (!new_plan) {
@@ -1399,8 +1437,16 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		goto fail;
 	}
 
-	/* RT - for drbd_get_max_capacity() DRBD_MD_INDEX_FLEX_INT */
-	drbd_md_set_sector_offsets(mdev, nbc);
+	/* Read our meta data super block early.
+	 * This also sets other on-disk offsets. */
+	retcode = drbd_md_read(mdev, nbc);
+	if (retcode != NO_ERROR)
+		goto fail;
+
+	if (new_disk_conf->al_extents < DRBD_AL_EXTENTS_MIN)
+		new_disk_conf->al_extents = DRBD_AL_EXTENTS_MIN;
+	if (new_disk_conf->al_extents > drbd_al_extents_max(nbc))
+		new_disk_conf->al_extents = drbd_al_extents_max(nbc);
 
 	if (drbd_get_max_capacity(nbc) < new_disk_conf->disk_size) {
 		dev_err(DEV, "max capacity %llu smaller than disk size %llu\n",
@@ -1416,7 +1462,7 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 		min_md_device_sectors = (2<<10);
 	} else {
 		max_possible_sectors = DRBD_MAX_SECTORS;
-		min_md_device_sectors = MD_RESERVED_SECT * (new_disk_conf->meta_dev_idx + 1);
+		min_md_device_sectors = MD_128MB_SECT * (new_disk_conf->meta_dev_idx + 1);
 	}
 
 	if (drbd_get_capacity(nbc->md_bdev) < min_md_device_sectors) {
@@ -1467,18 +1513,12 @@ int drbd_adm_attach(struct sk_buff *skb, struct genl_info *info)
 	if (!get_ldev_if_state(mdev, D_ATTACHING))
 		goto force_diskless;
 
-	drbd_md_set_sector_offsets(mdev, nbc);
-
 	if (!mdev->bitmap) {
 		if (drbd_bm_init(mdev)) {
 			retcode = ERR_NOMEM;
 			goto force_diskless_dec;
 		}
 	}
-
-	retcode = drbd_md_read(mdev, nbc);
-	if (retcode != NO_ERROR)
-		goto force_diskless_dec;
 
 	if (mdev->state.conn < C_CONNECTED &&
 	    mdev->state.role == R_PRIMARY &&
@@ -3162,6 +3202,7 @@ static enum drbd_ret_code adm_delete_minor(struct drbd_conf *mdev)
 				    CS_VERBOSE + CS_WAIT_COMPLETE);
 		idr_remove(&mdev->tconn->volumes, mdev->vnr);
 		idr_remove(&minors, mdev_to_minor(mdev));
+		destroy_workqueue(mdev->submit.wq);
 		del_gendisk(mdev->vdisk);
 		synchronize_rcu();
 		kref_put(&mdev->kref, &drbd_minor_destroy);
