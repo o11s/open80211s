@@ -605,7 +605,7 @@ dump_pq_desc_dbg(struct ioat2_dma_chan *ioat, struct ioat_ring_ent *desc, struct
 	int i;
 
 	dev_dbg(dev, "desc[%d]: (%#llx->%#llx) flags: %#x"
-		" sz: %#x ctl: %#x (op: %d int: %d compl: %d pq: '%s%s' src_cnt: %d)\n",
+		" sz: %#10.8x ctl: %#x (op: %#x int: %d compl: %d pq: '%s%s' src_cnt: %d)\n",
 		desc_id(desc), (unsigned long long) desc->txd.phys,
 		(unsigned long long) (pq_ex ? pq_ex->next : pq->next),
 		desc->txd.flags, pq->size, pq->ctl, pq->ctl_f.op, pq->ctl_f.int_en,
@@ -617,6 +617,7 @@ dump_pq_desc_dbg(struct ioat2_dma_chan *ioat, struct ioat_ring_ent *desc, struct
 			(unsigned long long) pq_get_src(descs, i), pq->coef[i]);
 	dev_dbg(dev, "\tP: %#llx\n", pq->p_addr);
 	dev_dbg(dev, "\tQ: %#llx\n", pq->q_addr);
+	dev_dbg(dev, "\tNEXT: %#llx\n", pq->next);
 }
 
 static struct dma_async_tx_descriptor *
@@ -1330,15 +1331,9 @@ int ioat3_dma_probe(struct ioatdma_device *device, int dca)
 	}
 
 
-	if (is_raid_device) {
-		dma->device_tx_status = ioat3_tx_status;
-		device->cleanup_fn = ioat3_cleanup_event;
-		device->timer_fn = ioat3_timer_event;
-	} else {
-		dma->device_tx_status = ioat_dma_tx_status;
-		device->cleanup_fn = ioat2_cleanup_event;
-		device->timer_fn = ioat2_timer_event;
-	}
+	dma->device_tx_status = ioat3_tx_status;
+	device->cleanup_fn = ioat3_cleanup_event;
+	device->timer_fn = ioat3_timer_event;
 
 	#ifdef CONFIG_ASYNC_TX_DISABLE_PQ_VAL_DMA
 	dma_cap_clear(DMA_PQ_VAL, dma->cap_mask);
