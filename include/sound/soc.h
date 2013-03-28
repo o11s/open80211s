@@ -324,6 +324,8 @@ struct snd_soc_dai_link;
 struct snd_soc_platform_driver;
 struct snd_soc_codec;
 struct snd_soc_codec_driver;
+struct snd_soc_component;
+struct snd_soc_component_driver;
 struct soc_enum;
 struct snd_soc_jack;
 struct snd_soc_jack_zone;
@@ -377,6 +379,10 @@ int snd_soc_register_codec(struct device *dev,
 		const struct snd_soc_codec_driver *codec_drv,
 		struct snd_soc_dai_driver *dai_drv, int num_dai);
 void snd_soc_unregister_codec(struct device *dev);
+int snd_soc_register_component(struct device *dev,
+			 const struct snd_soc_component_driver *cmpnt_drv,
+			 struct snd_soc_dai_driver *dai_drv, int num_dai);
+void snd_soc_unregister_component(struct device *dev);
 int snd_soc_codec_volatile_register(struct snd_soc_codec *codec,
 				    unsigned int reg);
 int snd_soc_codec_readable_register(struct snd_soc_codec *codec,
@@ -841,6 +847,20 @@ struct snd_soc_platform {
 #endif
 };
 
+struct snd_soc_component_driver {
+	const char *name;
+};
+
+struct snd_soc_component {
+	const char *name;
+	int id;
+	int num_dai;
+	struct device *dev;
+	struct list_head list;
+
+	const struct snd_soc_component_driver *driver;
+};
+
 struct snd_soc_dai_link {
 	/* config - must be set by machine driver */
 	const char *name;			/* Codec name */
@@ -1086,7 +1106,6 @@ struct soc_enum {
 	unsigned int mask;
 	const char * const *texts;
 	const unsigned int *values;
-	void *dapm;
 };
 
 /* codec IO */

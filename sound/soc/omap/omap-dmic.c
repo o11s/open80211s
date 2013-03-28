@@ -448,6 +448,10 @@ static struct snd_soc_dai_driver omap_dmic_dai = {
 	.ops = &omap_dmic_dai_ops,
 };
 
+static const struct snd_soc_component_driver omap_dmic_component = {
+	.name		= "omap-dmic",
+};
+
 static int asoc_dmic_probe(struct platform_device *pdev)
 {
 	struct omap_dmic *dmic;
@@ -493,21 +497,12 @@ static int asoc_dmic_probe(struct platform_device *pdev)
 		goto err_put_clk;
 	}
 
-	if (!devm_request_mem_region(&pdev->dev, res->start,
-				     resource_size(res), pdev->name)) {
-		dev_err(dmic->dev, "memory region already claimed\n");
-		ret = -ENODEV;
-		goto err_put_clk;
-	}
+	dmic->io_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(dmic->io_base))
+		return PTR_ERR(dmic->io_base);
 
-	dmic->io_base = devm_ioremap(&pdev->dev, res->start,
-				     resource_size(res));
-	if (!dmic->io_base) {
-		ret = -ENOMEM;
-		goto err_put_clk;
-	}
-
-	ret = snd_soc_register_dai(&pdev->dev, &omap_dmic_dai);
+	ret = snd_soc_register_component(&pdev->dev, &omap_dmic_component,
+					 &omap_dmic_dai, 1);
 	if (ret)
 		goto err_put_clk;
 
@@ -522,7 +517,7 @@ static int asoc_dmic_remove(struct platform_device *pdev)
 {
 	struct omap_dmic *dmic = platform_get_drvdata(pdev);
 
-	snd_soc_unregister_dai(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 	clk_put(dmic->fclk);
 
 	return 0;
