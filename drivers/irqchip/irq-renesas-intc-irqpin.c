@@ -18,6 +18,7 @@
  */
 
 #include <linux/init.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
@@ -70,6 +71,7 @@ struct intc_irqpin_priv {
 	struct intc_irqpin_iomem iomem[INTC_IRQPIN_REG_NR];
 	struct intc_irqpin_irq irq[INTC_IRQPIN_MAX];
 	struct renesas_intc_irqpin_config config;
+	unsigned int min_irq;
 	unsigned int number_of_irqs;
 	struct platform_device *pdev;
 	struct irq_chip irq_chip;
@@ -249,6 +251,10 @@ static irqreturn_t intc_irqpin_irq_handler(int irq, void *dev_id)
 	struct intc_irqpin_priv *p = i->p;
 	unsigned long bit;
 
+	if (!i->domain_irq)
+		/* unmapped: spurious IRQ, map it now */
+		irq_create_mapping(p->irq_domain, irq - p->min_irq);
+
 	intc_irqpin_dbg(i, "demux1");
 	bit = intc_irqpin_hwirq_mask(p, INTC_IRQPIN_REG_SOURCE, i->hw_irq);
 
@@ -321,6 +327,7 @@ static int intc_irqpin_probe(struct platform_device *pdev)
 		}
 	}
 
+	p->min_irq = INT_MAX;
 	/* allow any number of IRQs between 1 and INTC_IRQPIN_MAX */
 	for (k = 0; k < INTC_IRQPIN_MAX; k++) {
 		irq = platform_get_resource(pdev, IORESOURCE_IRQ, k);
@@ -329,6 +336,8 @@ static int intc_irqpin_probe(struct platform_device *pdev)
 
 		p->irq[k].p = p;
 		p->irq[k].requested_irq = irq->start;
+		if (p->min_irq > irq->start)
+			p->min_irq = irq->start;
 	}
 
 	p->number_of_irqs = k;
@@ -371,6 +380,10 @@ static int intc_irqpin_probe(struct platform_device *pdev)
 	/* mask all interrupts using priority */
 	for (k = 0; k < p->number_of_irqs; k++)
 		intc_irqpin_mask_unmask_prio(p, k, 1);
+
+	if (!pdata)
+		p->config.control_parent = of_property_read_bool(pdev->dev.of_node,
+								 "control-parent");
 
 	/* use more severe masking method if requested */
 	if (p->config.control_parent) {
