@@ -1325,6 +1325,7 @@ static int fimc_lite_subdev_registered(struct v4l2_subdev *sd)
 	q->mem_ops = &vb2_dma_contig_memops;
 	q->buf_struct_size = sizeof(struct flite_buffer);
 	q->drv_priv = fimc;
+	q->timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 
 	ret = vb2_queue_init(q);
 	if (ret < 0)
@@ -1408,6 +1409,7 @@ static const struct v4l2_ctrl_config fimc_lite_ctrl = {
 	.id	= V4L2_CTRL_CLASS_USER | 0x1001,
 	.type	= V4L2_CTRL_TYPE_BOOLEAN,
 	.name	= "Test Pattern 640x480",
+	.step	= 1,
 };
 
 static int fimc_lite_create_capture_subdev(struct fimc_lite *fimc)

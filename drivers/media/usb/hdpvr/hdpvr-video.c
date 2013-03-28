@@ -10,6 +10,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/kconfig.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -581,13 +582,13 @@ static int vidioc_querycap(struct file *file, void  *priv,
 }
 
 static int vidioc_s_std(struct file *file, void *private_data,
-			v4l2_std_id *std)
+			v4l2_std_id std)
 {
 	struct hdpvr_fh *fh = file->private_data;
 	struct hdpvr_device *dev = fh->dev;
 	u8 std_type = 1;
 
-	if (*std & (V4L2_STD_NTSC | V4L2_STD_PAL_60))
+	if (std & (V4L2_STD_NTSC | V4L2_STD_PAL_60))
 		std_type = 0;
 
 	return hdpvr_config_call(dev, CTRL_VIDEO_STD_TYPE, std_type);
@@ -1238,7 +1239,7 @@ static void hdpvr_device_release(struct video_device *vdev)
 	v4l2_device_unregister(&dev->v4l2_dev);
 
 	/* deregister I2C adapter */
-#if defined(CONFIG_I2C) || (CONFIG_I2C_MODULE)
+#if IS_ENABLED(CONFIG_I2C)
 	mutex_lock(&dev->i2c_mutex);
 	i2c_del_adapter(&dev->i2c_adapter);
 	mutex_unlock(&dev->i2c_mutex);

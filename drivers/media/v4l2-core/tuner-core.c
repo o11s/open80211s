@@ -220,22 +220,22 @@ static void fe_standby(struct dvb_frontend *fe)
 
 static int fe_has_signal(struct dvb_frontend *fe)
 {
-	u16 strength = 0;
+	u16 strength;
 
-	if (fe->ops.tuner_ops.get_rf_strength)
-		fe->ops.tuner_ops.get_rf_strength(fe, &strength);
+	if (fe->ops.tuner_ops.get_rf_strength(fe, &strength) < 0)
+		return 0;
 
 	return strength;
 }
 
 static int fe_get_afc(struct dvb_frontend *fe)
 {
-	s32 afc = 0;
+	s32 afc;
 
-	if (fe->ops.tuner_ops.get_afc)
-		fe->ops.tuner_ops.get_afc(fe, &afc);
+	if (fe->ops.tuner_ops.get_afc(fe, &afc) < 0)
+		return 0;
 
-	return 0;
+	return afc;
 }
 
 static int fe_set_config(struct dvb_frontend *fe, void *priv_cfg)
@@ -253,11 +253,9 @@ static int fe_set_config(struct dvb_frontend *fe, void *priv_cfg)
 
 static void tuner_status(struct dvb_frontend *fe);
 
-static struct analog_demod_ops tuner_analog_ops = {
+static const struct analog_demod_ops tuner_analog_ops = {
 	.set_params     = fe_set_params,
 	.standby        = fe_standby,
-	.has_signal     = fe_has_signal,
-	.get_afc        = fe_get_afc,
 	.set_config     = fe_set_config,
 	.tuner_status   = tuner_status
 };
@@ -452,6 +450,11 @@ static void set_type(struct i2c_client *c, unsigned int type,
 		t->fe.analog_demod_priv = t;
 		memcpy(analog_ops, &tuner_analog_ops,
 		       sizeof(struct analog_demod_ops));
+
+		if (fe_tuner_ops->get_rf_strength)
+			analog_ops->has_signal = fe_has_signal;
+		if (fe_tuner_ops->get_afc)
+			analog_ops->get_afc = fe_get_afc;
 
 	} else {
 		t->name = analog_ops->info.name;
@@ -1134,7 +1137,7 @@ static int tuner_s_std(struct v4l2_subdev *sd, v4l2_std_id std)
 	return 0;
 }
 
-static int tuner_s_frequency(struct v4l2_subdev *sd, struct v4l2_frequency *f)
+static int tuner_s_frequency(struct v4l2_subdev *sd, const struct v4l2_frequency *f)
 {
 	struct tuner *t = to_tuner(sd);
 
@@ -1233,7 +1236,7 @@ static int tuner_g_tuner(struct v4l2_subdev *sd, struct v4l2_tuner *vt)
  * Note: vt->type should be initialized before calling it.
  * This is done by either video_ioctl2 or by the bridge driver.
  */
-static int tuner_s_tuner(struct v4l2_subdev *sd, struct v4l2_tuner *vt)
+static int tuner_s_tuner(struct v4l2_subdev *sd, const struct v4l2_tuner *vt)
 {
 	struct tuner *t = to_tuner(sd);
 
