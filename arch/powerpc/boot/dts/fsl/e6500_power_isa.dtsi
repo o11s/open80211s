@@ -1,7 +1,7 @@
 /*
- * e5500 Power ISA Device Tree Source (include)
+ * e6500 Power ISA Device Tree Source (include)
  *
- * Copyright 2012 Freescale Semiconductor Inc.
+ * Copyright 2013 Freescale Semiconductor Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -54,6 +54,11 @@
 		power-isa-scpm;		// Store Conditional Page Mobility
 		power-isa-wt;		// Wait
 		power-isa-64;		// 64-bit
+		power-isa-e.pt;		// Embedded.Page Table
+		power-isa-e.hv.lrat;	// Embedded.Hypervisor.LRAT
+		power-isa-e.em;		// Embedded Multi-Threading
+		power-isa-v;		// Vector (AltiVec)
+		fsl,eref-er;		// Enhanced Reservations (Load and Reserve and Store Cond.)
 		fsl,eref-deo;		// Data Cache Extended Operations
 		mmu-type = "power-embedded";
 	};
