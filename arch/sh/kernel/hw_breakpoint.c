@@ -113,9 +113,11 @@ static int get_hbp_len(u16 hbp_len)
 	case SH_BREAKPOINT_LEN_4:
 		len_in_bytes = 4;
 		break;
+#ifdef UBC_64BIT
 	case SH_BREAKPOINT_LEN_8:
 		len_in_bytes = 8;
 		break;
+#endif
 	}
 	return len_in_bytes;
 }
@@ -149,9 +151,11 @@ int arch_bp_generic_fields(int sh_len, int sh_type,
 	case SH_BREAKPOINT_LEN_4:
 		*gen_len = HW_BREAKPOINT_LEN_4;
 		break;
+#ifdef UBC_64BIT
 	case SH_BREAKPOINT_LEN_8:
 		*gen_len = HW_BREAKPOINT_LEN_8;
 		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -190,9 +194,11 @@ static int arch_build_bp_info(struct perf_event *bp)
 	case HW_BREAKPOINT_LEN_4:
 		info->len = SH_BREAKPOINT_LEN_4;
 		break;
+#ifdef UBC_64BIT
 	case HW_BREAKPOINT_LEN_8:
 		info->len = SH_BREAKPOINT_LEN_8;
 		break;
+#endif
 	default:
 		return -EINVAL;
 	}
@@ -240,9 +246,11 @@ int arch_validate_hwbkpt_settings(struct perf_event *bp)
 	case SH_BREAKPOINT_LEN_4:
 		align = 3;
 		break;
+#ifdef UBC_64BIT
 	case SH_BREAKPOINT_LEN_8:
 		align = 7;
 		break;
+#endif
 	default:
 		return ret;
 	}
