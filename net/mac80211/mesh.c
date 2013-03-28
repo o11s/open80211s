@@ -80,9 +80,9 @@ static void dump_mbss_list(char *reason)
 }
 
 static inline bool
-mesh_bss_matches(struct mesh_local_bss *mbss,
+mesh_bss_matches(struct ieee80211_sub_if_data *sdata,
 		 struct mesh_setup *setup,
-		 const struct mesh_config *conf)
+		 const struct mesh_config *conf, struct mesh_local_bss *mbss)
 {
 	return mbss->can_share &&
 	       setup->shared &&
@@ -91,11 +91,13 @@ mesh_bss_matches(struct mesh_local_bss *mbss,
 	       mbss->path_sel_proto == setup->path_sel_proto &&
 	       mbss->path_metric == setup->path_metric &&
 	       mbss->sync_method == setup->sync_method &&
-	       mbss->is_secure == setup->is_secure;
+	       mbss->is_secure == setup->is_secure &&
+	       net_eq(wiphy_net(sdata->wdev.wiphy), mbss->net);
 }
 
 static struct mesh_local_bss * __must_check
-mesh_bss_find(struct mesh_setup *setup, const struct mesh_config *conf)
+mesh_bss_find(struct ieee80211_sub_if_data *sdata,
+	      struct mesh_setup *setup, const struct mesh_config *conf)
 {
 	struct mesh_local_bss *mbss;
 
@@ -105,14 +107,15 @@ mesh_bss_find(struct mesh_setup *setup, const struct mesh_config *conf)
 	lockdep_assert_held(&mesh_bss_mtx);
 
 	list_for_each_entry(mbss, &mesh_bss_list, list)
-		if (mesh_bss_matches(mbss, setup, conf))
+		if (mesh_bss_matches(sdata, setup, conf, mbss))
 			return mbss;
 
 	return NULL;
 }
 
 static struct mesh_local_bss * __must_check
-mesh_bss_create(struct mesh_setup *setup, const struct mesh_config *conf)
+mesh_bss_create(struct ieee80211_sub_if_data *sdata,
+		struct mesh_setup *setup, const struct mesh_config *conf)
 {
 	struct mesh_local_bss *mbss;
 
@@ -134,6 +137,7 @@ mesh_bss_create(struct mesh_setup *setup, const struct mesh_config *conf)
 	mbss->path_sel_proto = setup->path_sel_proto;
 	mbss->sync_method = setup->sync_method;
 	mbss->is_secure = setup->is_secure;
+	mbss->net = wiphy_net(sdata->wdev.wiphy);
 	return mbss;
 }
 
@@ -171,9 +175,9 @@ int mesh_bss_add(struct ieee80211_sub_if_data *sdata,
 		return -EINVAL;
 
 	mutex_lock(&mesh_bss_mtx);
-	mbss = mesh_bss_find(setup, conf);
+	mbss = mesh_bss_find(sdata, setup, conf);
 	if (!mbss) {
-		mbss = mesh_bss_create(setup, conf);
+		mbss = mesh_bss_create(sdata, setup, conf);
 		if (!mbss) {
 			ret = -ENOMEM;
 			goto out_fail;

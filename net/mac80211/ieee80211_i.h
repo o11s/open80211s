@@ -294,6 +294,7 @@ struct mesh_stats {
  * @path_metric: which metric to use
  * @is_secure: true if the mesh is secure
  * @can_share: true if this bss can be shared (user-configurable per-if)
+ * @net: network namespace devices in this mbss belong to
  * @list: listptr for siblings in mesh_bss_list
  * @if_list: interfaces sharing this bss
  */
@@ -310,6 +311,7 @@ struct mesh_local_bss {
 	bool is_secure;
 
 	bool can_share;
+	struct net *net;
 
 	struct list_head list;
 	struct list_head if_list;
