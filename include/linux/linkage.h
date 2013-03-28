@@ -2,6 +2,7 @@
 #define _LINUX_LINKAGE_H
 
 #include <linux/compiler.h>
+#include <linux/export.h>
 #include <asm/linkage.h>
 
 #ifdef __cplusplus
@@ -12,6 +13,18 @@
 
 #ifndef asmlinkage
 #define asmlinkage CPP_ASMLINKAGE
+#endif
+
+#ifndef cond_syscall
+#define cond_syscall(x) asm(".weak\t" VMLINUX_SYMBOL_STR(x) "\n\t"	\
+			    ".set\t" VMLINUX_SYMBOL_STR(x) ","	\
+			    VMLINUX_SYMBOL_STR(sys_ni_syscall))
+#endif
+
+#ifndef SYSCALL_ALIAS
+#define SYSCALL_ALIAS(alias, name)				\
+	asm ("\t.globl " VMLINUX_SYMBOL_STR(alias)			\
+	"\n\t.set\t" VMLINUX_SYMBOL_STR(alias) "," VMLINUX_SYMBOL_STR(name))
 #endif
 
 #define __page_aligned_data	__section(.data..page_aligned) __aligned(PAGE_SIZE)
