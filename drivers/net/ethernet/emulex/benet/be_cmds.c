@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2011 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -2667,10 +2667,8 @@ int be_cmd_set_mac_list(struct be_adapter *adapter, u8 *mac_array,
 	cmd.size = sizeof(struct be_cmd_req_set_mac_list);
 	cmd.va = dma_alloc_coherent(&adapter->pdev->dev, cmd.size,
 			&cmd.dma, GFP_KERNEL);
-	if (!cmd.va) {
-		dev_err(&adapter->pdev->dev, "Memory alloc failure\n");
+	if (!cmd.va)
 		return -ENOMEM;
-	}
 
 	spin_lock_bh(&adapter->mcc_lock);
 
@@ -3199,6 +3197,31 @@ int be_cmd_enable_vf(struct be_adapter *adapter, u8 domain)
 	status = be_mcc_notify_wait(adapter);
 err:
 	spin_unlock_bh(&adapter->mcc_lock);
+	return status;
+}
+
+int be_cmd_intr_set(struct be_adapter *adapter, bool intr_enable)
+{
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_req_intr_set *req;
+	int status;
+
+	if (mutex_lock_interruptible(&adapter->mbox_lock))
+		return -1;
+
+	wrb = wrb_from_mbox(adapter);
+
+	req = embedded_payload(wrb);
+
+	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
+			       OPCODE_COMMON_SET_INTERRUPT_ENABLE, sizeof(*req),
+			       wrb, NULL);
+
+	req->intr_enabled = intr_enable;
+
+	status = be_mbox_notify_wait(adapter);
+
+	mutex_unlock(&adapter->mbox_lock);
 	return status;
 }
 

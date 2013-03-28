@@ -75,8 +75,6 @@
 #define FW_FILE_NAME_E1H	"bnx2x/bnx2x-e1h-" FW_FILE_VERSION ".fw"
 #define FW_FILE_NAME_E2		"bnx2x/bnx2x-e2-" FW_FILE_VERSION ".fw"
 
-#define MAC_LEADING_ZERO_CNT (ALIGN(ETH_ALEN, sizeof(u32)) - ETH_ALEN)
-
 /* Time in jiffies before concluding the transmitter is hung */
 #define TX_TIMEOUT		(5*HZ)
 
@@ -2955,14 +2953,16 @@ static unsigned long bnx2x_get_common_flags(struct bnx2x *bp,
 	__set_bit(BNX2X_Q_FLG_ACTIVE, &flags);
 
 	/* tx only connections collect statistics (on the same index as the
-	 *  parent connection). The statistics are zeroed when the parent
-	 *  connection is initialized.
+	 * parent connection). The statistics are zeroed when the parent
+	 * connection is initialized.
 	 */
 
 	__set_bit(BNX2X_Q_FLG_STATS, &flags);
 	if (zero_stats)
 		__set_bit(BNX2X_Q_FLG_ZERO_STATS, &flags);
 
+	__set_bit(BNX2X_Q_FLG_PCSUM_ON_PKT, &flags);
+	__set_bit(BNX2X_Q_FLG_TUN_INC_INNER_IP_ID, &flags);
 
 #ifdef BNX2X_STOP_ON_ERROR
 	__set_bit(BNX2X_Q_FLG_TX_SEC, &flags);
@@ -3227,16 +3227,29 @@ static void bnx2x_drv_info_ether_stat(struct bnx2x *bp)
 {
 	struct eth_stats_info *ether_stat =
 		&bp->slowpath->drv_info_to_mcp.ether_stat;
+	struct bnx2x_vlan_mac_obj *mac_obj =
+		&bp->sp_objs->mac_obj;
+	int i;
 
 	strlcpy(ether_stat->version, DRV_MODULE_VERSION,
 		ETH_STAT_INFO_VERSION_LEN);
 
-	bp->sp_objs[0].mac_obj.get_n_elements(bp, &bp->sp_objs[0].mac_obj,
-					DRV_INFO_ETH_STAT_NUM_MACS_REQUIRED,
-					ether_stat->mac_local);
-
+	/* get DRV_INFO_ETH_STAT_NUM_MACS_REQUIRED macs, placing them in the
+	 * mac_local field in ether_stat struct. The base address is offset by 2
+	 * bytes to account for the field being 8 bytes but a mac address is
+	 * only 6 bytes. Likewise, the stride for the get_n_elements function is
+	 * 2 bytes to compensate from the 6 bytes of a mac to the 8 bytes
+	 * allocated by the ether_stat struct, so the macs will land in their
+	 * proper positions.
+	 */
+	for (i = 0; i < DRV_INFO_ETH_STAT_NUM_MACS_REQUIRED; i++)
+		memset(ether_stat->mac_local + i, 0,
+		       sizeof(ether_stat->mac_local[0]));
+	mac_obj->get_n_elements(bp, &bp->sp_objs[0].mac_obj,
+				DRV_INFO_ETH_STAT_NUM_MACS_REQUIRED,
+				ether_stat->mac_local + MAC_PAD, MAC_PAD,
+				ETH_ALEN);
 	ether_stat->mtu_size = bp->dev->mtu;
-
 	if (bp->dev->features & NETIF_F_RXCSUM)
 		ether_stat->feature_flags |= FEATURE_ETH_CHKSUM_OFFLOAD_MASK;
 	if (bp->dev->features & NETIF_F_TSO)
@@ -3258,8 +3271,7 @@ static void bnx2x_drv_info_fcoe_stat(struct bnx2x *bp)
 	if (!CNIC_LOADED(bp))
 		return;
 
-	memcpy(fcoe_stat->mac_local + MAC_LEADING_ZERO_CNT,
-	       bp->fip_mac, ETH_ALEN);
+	memcpy(fcoe_stat->mac_local + MAC_PAD, bp->fip_mac, ETH_ALEN);
 
 	fcoe_stat->qos_priority =
 		app->traffic_type_priority[LLFC_TRAFFIC_TYPE_FCOE];
@@ -3361,8 +3373,8 @@ static void bnx2x_drv_info_iscsi_stat(struct bnx2x *bp)
 	if (!CNIC_LOADED(bp))
 		return;
 
-	memcpy(iscsi_stat->mac_local + MAC_LEADING_ZERO_CNT,
-	       bp->cnic_eth_dev.iscsi_mac, ETH_ALEN);
+	memcpy(iscsi_stat->mac_local + MAC_PAD, bp->cnic_eth_dev.iscsi_mac,
+	       ETH_ALEN);
 
 	iscsi_stat->qos_priority =
 		app->traffic_type_priority[LLFC_TRAFFIC_TYPE_ISCSI];
@@ -6029,9 +6041,10 @@ void bnx2x_nic_init(struct bnx2x *bp, u32 load_code)
 	rmb();
 	bnx2x_init_rx_rings(bp);
 	bnx2x_init_tx_rings(bp);
-
-	if (IS_VF(bp))
+	if (IS_VF(bp)) {
+		bnx2x_memset_stats(bp);
 		return;
+	}
 
 	/* Initialize MOD_ABS interrupts */
 	bnx2x_init_mod_abs_int(bp, &bp->link_vars, bp->common.chip_id,
@@ -9525,6 +9538,10 @@ sp_rtnl_not_reset:
 		bnx2x_vfpf_storm_rx_mode(bp);
 	}
 
+	if (test_and_clear_bit(BNX2X_SP_RTNL_HYPERVISOR_VLAN,
+			       &bp->sp_rtnl_state))
+		bnx2x_pf_set_vfs_vlan(bp);
+
 	/* work which needs rtnl lock not-taken (as it takes the lock itself and
 	 * can be called from other contexts as well)
 	 */
@@ -9532,8 +9549,10 @@ sp_rtnl_not_reset:
 
 	/* enable SR-IOV if applicable */
 	if (IS_SRIOV(bp) && test_and_clear_bit(BNX2X_SP_RTNL_ENABLE_SRIOV,
-					       &bp->sp_rtnl_state))
+					       &bp->sp_rtnl_state)) {
+		bnx2x_disable_sriov(bp);
 		bnx2x_enable_sriov(bp);
+	}
 }
 
 static void bnx2x_period_task(struct work_struct *work)
@@ -9701,6 +9720,31 @@ static struct bnx2x_prev_path_list *
 	return NULL;
 }
 
+static int bnx2x_prev_path_mark_eeh(struct bnx2x *bp)
+{
+	struct bnx2x_prev_path_list *tmp_list;
+	int rc;
+
+	rc = down_interruptible(&bnx2x_prev_sem);
+	if (rc) {
+		BNX2X_ERR("Received %d when tried to take lock\n", rc);
+		return rc;
+	}
+
+	tmp_list = bnx2x_prev_path_get_entry(bp);
+	if (tmp_list) {
+		tmp_list->aer = 1;
+		rc = 0;
+	} else {
+		BNX2X_ERR("path %d: Entry does not exist for eeh; Flow occurs before initial insmod is over ?\n",
+			  BP_PATH(bp));
+	}
+
+	up(&bnx2x_prev_sem);
+
+	return rc;
+}
+
 static bool bnx2x_prev_is_path_marked(struct bnx2x *bp)
 {
 	struct bnx2x_prev_path_list *tmp_list;
@@ -9709,14 +9753,15 @@ static bool bnx2x_prev_is_path_marked(struct bnx2x *bp)
 	if (down_trylock(&bnx2x_prev_sem))
 		return false;
 
-	list_for_each_entry(tmp_list, &bnx2x_prev_list, list) {
-		if (PCI_SLOT(bp->pdev->devfn) == tmp_list->slot &&
-		    bp->pdev->bus->number == tmp_list->bus &&
-		    BP_PATH(bp) == tmp_list->path) {
+	tmp_list = bnx2x_prev_path_get_entry(bp);
+	if (tmp_list) {
+		if (tmp_list->aer) {
+			DP(NETIF_MSG_HW, "Path %d was marked by AER\n",
+			   BP_PATH(bp));
+		} else {
 			rc = true;
 			BNX2X_DEV_INFO("Path %d was already cleaned from previous drivers\n",
 				       BP_PATH(bp));
-			break;
 		}
 	}
 
@@ -9730,6 +9775,28 @@ static int bnx2x_prev_mark_path(struct bnx2x *bp, bool after_undi)
 	struct bnx2x_prev_path_list *tmp_list;
 	int rc;
 
+	rc = down_interruptible(&bnx2x_prev_sem);
+	if (rc) {
+		BNX2X_ERR("Received %d when tried to take lock\n", rc);
+		return rc;
+	}
+
+	/* Check whether the entry for this path already exists */
+	tmp_list = bnx2x_prev_path_get_entry(bp);
+	if (tmp_list) {
+		if (!tmp_list->aer) {
+			BNX2X_ERR("Re-Marking the path.\n");
+		} else {
+			DP(NETIF_MSG_HW, "Removing AER indication from path %d\n",
+			   BP_PATH(bp));
+			tmp_list->aer = 0;
+		}
+		up(&bnx2x_prev_sem);
+		return 0;
+	}
+	up(&bnx2x_prev_sem);
+
+	/* Create an entry for this path and add it */
 	tmp_list = kmalloc(sizeof(struct bnx2x_prev_path_list), GFP_KERNEL);
 	if (!tmp_list) {
 		BNX2X_ERR("Failed to allocate 'bnx2x_prev_path_list'\n");
@@ -9739,6 +9806,7 @@ static int bnx2x_prev_mark_path(struct bnx2x *bp, bool after_undi)
 	tmp_list->bus = bp->pdev->bus->number;
 	tmp_list->slot = PCI_SLOT(bp->pdev->devfn);
 	tmp_list->path = BP_PATH(bp);
+	tmp_list->aer = 0;
 	tmp_list->undi = after_undi ? (1 << BP_PORT(bp)) : 0;
 
 	rc = down_interruptible(&bnx2x_prev_sem);
@@ -9746,8 +9814,8 @@ static int bnx2x_prev_mark_path(struct bnx2x *bp, bool after_undi)
 		BNX2X_ERR("Received %d when tried to take lock\n", rc);
 		kfree(tmp_list);
 	} else {
-		BNX2X_DEV_INFO("Marked path [%d] - finished previous unload\n",
-				BP_PATH(bp));
+		DP(NETIF_MSG_HW, "Marked path [%d] - finished previous unload\n",
+		   BP_PATH(bp));
 		list_add(&tmp_list->list, &bnx2x_prev_list);
 		up(&bnx2x_prev_sem);
 	}
@@ -9986,6 +10054,7 @@ static int bnx2x_prev_unload(struct bnx2x *bp)
 	}
 
 	do {
+		int aer = 0;
 		/* Lock MCP using an unload request */
 		fw = bnx2x_fw_command(bp, DRV_MSG_CODE_UNLOAD_REQ_WOL_DIS, 0);
 		if (!fw) {
@@ -9994,7 +10063,18 @@ static int bnx2x_prev_unload(struct bnx2x *bp)
 			break;
 		}
 
-		if (fw == FW_MSG_CODE_DRV_UNLOAD_COMMON) {
+		rc = down_interruptible(&bnx2x_prev_sem);
+		if (rc) {
+			BNX2X_ERR("Cannot check for AER; Received %d when tried to take lock\n",
+				  rc);
+		} else {
+			/* If Path is marked by EEH, ignore unload status */
+			aer = !!(bnx2x_prev_path_get_entry(bp) &&
+				 bnx2x_prev_path_get_entry(bp)->aer);
+			up(&bnx2x_prev_sem);
+		}
+
+		if (fw == FW_MSG_CODE_DRV_UNLOAD_COMMON || aer) {
 			rc = bnx2x_prev_unload_common(bp);
 			break;
 		}
@@ -10034,8 +10114,12 @@ static void bnx2x_get_common_hwinfo(struct bnx2x *bp)
 	id = ((val & 0xffff) << 16);
 	val = REG_RD(bp, MISC_REG_CHIP_REV);
 	id |= ((val & 0xf) << 12);
-	val = REG_RD(bp, MISC_REG_CHIP_METAL);
-	id |= ((val & 0xff) << 4);
+
+	/* Metal is read from PCI regs, but we can't access >=0x400 from
+	 * the configuration space (so we need to reg_rd)
+	 */
+	val = REG_RD(bp, PCICFG_OFFSET + PCI_ID_VAL3);
+	id |= (((val >> 24) & 0xf) << 4);
 	val = REG_RD(bp, MISC_REG_BOND_ID);
 	id |= (val & 0xf);
 	bp->common.chip_id = id;
@@ -10812,14 +10896,12 @@ static void bnx2x_get_cnic_mac_hwinfo(struct bnx2x *bp)
 			}
 		}
 
-		if (IS_MF_STORAGE_SD(bp))
-			/* Zero primary MAC configuration */
-			memset(bp->dev->dev_addr, 0, ETH_ALEN);
-
-		if (IS_MF_FCOE_AFEX(bp) || IS_MF_FCOE_SD(bp))
-			/* use FIP MAC as primary MAC */
+		/* If this is a storage-only interface, use SAN mac as
+		 * primary MAC. Notice that for SD this is already the case,
+		 * as the SAN mac was copied from the primary MAC.
+		 */
+		if (IS_MF_FCOE_AFEX(bp))
 			memcpy(bp->dev->dev_addr, fip_mac, ETH_ALEN);
-
 	} else {
 		val2 = SHMEM_RD(bp, dev_info.port_hw_config[port].
 				iscsi_mac_upper);
@@ -11055,6 +11137,9 @@ static int bnx2x_get_hwinfo(struct bnx2x *bp)
 						func_mf_config[func].config);
 				} else
 					BNX2X_DEV_INFO("illegal OV for SD\n");
+				break;
+			case SHARED_FEAT_CFG_FORCE_SF_MODE_FORCED_SF:
+				bp->mf_config[vn] = 0;
 				break;
 			default:
 				/* Unknown configuration: reset mf_config */
@@ -11401,26 +11486,6 @@ static int bnx2x_init_bp(struct bnx2x *bp)
 /*
  * net_device service functions
  */
-
-static int bnx2x_open_epilog(struct bnx2x *bp)
-{
-	/* Enable sriov via delayed work. This must be done via delayed work
-	 * because it causes the probe of the vf devices to be run, which invoke
-	 * register_netdevice which must have rtnl lock taken. As we are holding
-	 * the lock right now, that could only work if the probe would not take
-	 * the lock. However, as the probe of the vf may be called from other
-	 * contexts as well (such as passthrough to vm failes) it can't assume
-	 * the lock is being held for it. Using delayed work here allows the
-	 * probe code to simply take the lock (i.e. wait for it to be released
-	 * if it is being held).
-	 */
-	smp_mb__before_clear_bit();
-	set_bit(BNX2X_SP_RTNL_ENABLE_SRIOV, &bp->sp_rtnl_state);
-	smp_mb__after_clear_bit();
-	schedule_delayed_work(&bp->sp_rtnl_task, 0);
-
-	return 0;
-}
 
 /* called with rtnl_lock */
 static int bnx2x_open(struct net_device *dev)
@@ -11791,6 +11856,8 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 	.ndo_setup_tc		= bnx2x_setup_tc,
 #ifdef CONFIG_BNX2X_SRIOV
 	.ndo_set_vf_mac		= bnx2x_set_vf_mac,
+	.ndo_set_vf_vlan        = bnx2x_set_vf_vlan,
+	.ndo_get_vf_config	= bnx2x_get_vf_config,
 #endif
 #ifdef NETDEV_FCOE_WWNN
 	.ndo_fcoe_get_wwn	= bnx2x_fcoe_get_wwn,
@@ -11953,7 +12020,7 @@ static int bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 	dev->watchdog_timeo = TX_TIMEOUT;
 
 	dev->netdev_ops = &bnx2x_netdev_ops;
-	bnx2x_set_ethtool_ops(dev);
+	bnx2x_set_ethtool_ops(bp, dev);
 
 	dev->priv_flags |= IFF_UNICAST_FLT;
 
@@ -11961,6 +12028,13 @@ static int bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 		NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 |
 		NETIF_F_RXCSUM | NETIF_F_LRO | NETIF_F_GRO |
 		NETIF_F_RXHASH | NETIF_F_HW_VLAN_TX;
+	if (!CHIP_IS_E1x(bp)) {
+		dev->hw_features |= NETIF_F_GSO_GRE;
+		dev->hw_enc_features =
+			NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | NETIF_F_SG |
+			NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 |
+			NETIF_F_GSO_GRE;
+	}
 
 	dev->vlan_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 | NETIF_F_HIGHDMA;
@@ -12447,7 +12521,8 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 	 * l2 connections.
 	 */
 	if (IS_VF(bp)) {
-		bnx2x_vf_map_doorbells(bp);
+		bp->doorbells = bnx2x_vf_doorbells(bp);
+		mutex_init(&bp->vf2pf_mutex);
 		rc = bnx2x_vf_pci_alloc(bp);
 		if (rc)
 			goto init_one_exit;
@@ -12475,13 +12550,8 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 			goto init_one_exit;
 	}
 
-	/* Enable SRIOV if capability found in configuration space.
-	 * Once the generic SR-IOV framework makes it in from the
-	 * pci tree this will be revised, to allow dynamic control
-	 * over the number of VFs. Right now, change the num of vfs
-	 * param below to enable SR-IOV.
-	 */
-	rc = bnx2x_iov_init_one(bp, int_mode, 0/*num vfs*/);
+	/* Enable SRIOV if capability found in configuration space */
+	rc = bnx2x_iov_init_one(bp, int_mode, BNX2X_MAX_NUM_OF_VFS);
 	if (rc)
 		goto init_one_exit;
 
@@ -12492,16 +12562,6 @@ static int bnx2x_init_one(struct pci_dev *pdev,
 	/* disable FCOE L2 queue for E1x*/
 	if (CHIP_IS_E1x(bp))
 		bp->flags |= NO_FCOE_FLAG;
-
-	/* disable FCOE for 57840 device, until FW supports it */
-	switch (ent->driver_data) {
-	case BCM57840_O:
-	case BCM57840_4_10:
-	case BCM57840_2_20:
-	case BCM57840_MFO:
-	case BCM57840_MF:
-		bp->flags |= NO_FCOE_FLAG;
-	}
 
 	/* Set bp->num_queues for MSI-X mode*/
 	bnx2x_set_num_queues(bp);
@@ -12636,9 +12696,7 @@ static void bnx2x_remove_one(struct pci_dev *pdev)
 
 static int bnx2x_eeh_nic_unload(struct bnx2x *bp)
 {
-	int i;
-
-	bp->state = BNX2X_STATE_ERROR;
+	bp->state = BNX2X_STATE_CLOSING_WAIT4_HALT;
 
 	bp->rx_mode = BNX2X_RX_MODE_NONE;
 
@@ -12647,29 +12705,21 @@ static int bnx2x_eeh_nic_unload(struct bnx2x *bp)
 
 	/* Stop Tx */
 	bnx2x_tx_disable(bp);
-
-	bnx2x_netif_stop(bp, 0);
 	/* Delete all NAPI objects */
 	bnx2x_del_all_napi(bp);
 	if (CNIC_LOADED(bp))
 		bnx2x_del_all_napi_cnic(bp);
+	netdev_reset_tc(bp->dev);
 
 	del_timer_sync(&bp->timer);
+	cancel_delayed_work(&bp->sp_task);
+	cancel_delayed_work(&bp->period_task);
 
-	bnx2x_stats_handle(bp, STATS_EVENT_STOP);
+	spin_lock_bh(&bp->stats_lock);
+	bp->stats_state = STATS_STATE_DISABLED;
+	spin_unlock_bh(&bp->stats_lock);
 
-	/* Release IRQs */
-	bnx2x_free_irq(bp);
-
-	/* Free SKBs, SGEs, TPA pool and driver internals */
-	bnx2x_free_skbs(bp);
-
-	for_each_rx_queue(bp, i)
-		bnx2x_free_rx_sge_range(bp, bp->fp + i, NUM_RX_SGE);
-
-	bnx2x_free_mem(bp);
-
-	bp->state = BNX2X_STATE_CLOSED;
+	bnx2x_save_statistics(bp);
 
 	netif_carrier_off(bp->dev);
 
@@ -12705,6 +12755,8 @@ static pci_ers_result_t bnx2x_io_error_detected(struct pci_dev *pdev,
 
 	rtnl_lock();
 
+	BNX2X_ERR("IO error detected\n");
+
 	netif_device_detach(dev);
 
 	if (state == pci_channel_io_perm_failure) {
@@ -12714,6 +12766,8 @@ static pci_ers_result_t bnx2x_io_error_detected(struct pci_dev *pdev,
 
 	if (netif_running(dev))
 		bnx2x_eeh_nic_unload(bp);
+
+	bnx2x_prev_path_mark_eeh(bp);
 
 	pci_disable_device(pdev);
 
@@ -12733,9 +12787,10 @@ static pci_ers_result_t bnx2x_io_slot_reset(struct pci_dev *pdev)
 {
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct bnx2x *bp = netdev_priv(dev);
+	int i;
 
 	rtnl_lock();
-
+	BNX2X_ERR("IO slot reset initializing...\n");
 	if (pci_enable_device(pdev)) {
 		dev_err(&pdev->dev,
 			"Cannot re-enable PCI device after reset\n");
@@ -12748,6 +12803,42 @@ static pci_ers_result_t bnx2x_io_slot_reset(struct pci_dev *pdev)
 
 	if (netif_running(dev))
 		bnx2x_set_power_state(bp, PCI_D0);
+
+	if (netif_running(dev)) {
+		BNX2X_ERR("IO slot reset --> driver unload\n");
+		if (IS_PF(bp) && SHMEM2_HAS(bp, drv_capabilities_flag)) {
+			u32 v;
+
+			v = SHMEM2_RD(bp,
+				      drv_capabilities_flag[BP_FW_MB_IDX(bp)]);
+			SHMEM2_WR(bp, drv_capabilities_flag[BP_FW_MB_IDX(bp)],
+				  v & ~DRV_FLAGS_CAPABILITIES_LOADED_L2);
+		}
+		bnx2x_drain_tx_queues(bp);
+		bnx2x_send_unload_req(bp, UNLOAD_RECOVERY);
+		bnx2x_netif_stop(bp, 1);
+		bnx2x_free_irq(bp);
+
+		/* Report UNLOAD_DONE to MCP */
+		bnx2x_send_unload_done(bp, true);
+
+		bp->sp_state = 0;
+		bp->port.pmf = 0;
+
+		bnx2x_prev_unload(bp);
+
+		/* We should have resetted the engine, so It's fair to
+		 * assume the FW will no longer write to the bnx2x driver.
+		 */
+		bnx2x_squeeze_objects(bp);
+		bnx2x_free_skbs(bp);
+		for_each_rx_queue(bp, i)
+			bnx2x_free_rx_sge_range(bp, bp->fp + i, NUM_RX_SGE);
+		bnx2x_free_fp_mem(bp);
+		bnx2x_free_mem(bp);
+
+		bp->state = BNX2X_STATE_CLOSED;
+	}
 
 	rtnl_unlock();
 
@@ -12775,6 +12866,9 @@ static void bnx2x_io_resume(struct pci_dev *pdev)
 
 	bnx2x_eeh_recover(bp);
 
+	bp->fw_seq = SHMEM_RD(bp, func_mb[BP_FW_MB_IDX(bp)].drv_mb_header) &
+							DRV_MSG_SEQ_NUMBER_MASK;
+
 	if (netif_running(dev))
 		bnx2x_nic_load(bp, LOAD_NORMAL);
 
@@ -12797,6 +12891,9 @@ static struct pci_driver bnx2x_pci_driver = {
 	.suspend     = bnx2x_suspend,
 	.resume      = bnx2x_resume,
 	.err_handler = &bnx2x_err_handler,
+#ifdef CONFIG_BNX2X_SRIOV
+	.sriov_configure = bnx2x_sriov_configure,
+#endif
 };
 
 static int __init bnx2x_init(void)

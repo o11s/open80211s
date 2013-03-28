@@ -501,10 +501,8 @@ static int iwl_pcie_txq_alloc(struct iwl_trans *trans,
 	 * shared with device */
 	txq->tfds = dma_alloc_coherent(trans->dev, tfd_sz,
 				       &txq->q.dma_addr, GFP_KERNEL);
-	if (!txq->tfds) {
-		IWL_ERR(trans, "dma_alloc_coherent(%zd) failed\n", tfd_sz);
+	if (!txq->tfds)
 		goto error;
-	}
 
 	BUILD_BUG_ON(IWL_HCMD_SCRATCHBUF_SIZE != sizeof(*txq->scratchbufs));
 	BUILD_BUG_ON(offsetof(struct iwl_pcie_txq_scratch_buf, scratch) !=
@@ -1609,7 +1607,7 @@ int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 	 * Check here that the packets are in the right place on the ring.
 	 */
 #ifdef CONFIG_IWLWIFI_DEBUG
-	wifi_seq = SEQ_TO_SN(le16_to_cpu(hdr->seq_ctrl));
+	wifi_seq = IEEE80211_SEQ_TO_SN(le16_to_cpu(hdr->seq_ctrl));
 	WARN_ONCE((iwl_read_prph(trans, SCD_AGGR_SEL) & BIT(txq_id)) &&
 		  ((wifi_seq & 0xff) != q->write_ptr),
 		  "Q: %d WiFi Seq %d tfdNum %d",

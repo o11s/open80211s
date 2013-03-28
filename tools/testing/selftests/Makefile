@@ -5,6 +5,7 @@ TARGETS += vm
 TARGETS += cpu-hotplug
 TARGETS += memory-hotplug
 TARGETS += efivarfs
+TARGETS += net
 
 all:
 	for TARGET in $(TARGETS); do \

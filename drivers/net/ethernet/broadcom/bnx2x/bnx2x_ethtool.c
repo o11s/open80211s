@@ -1393,10 +1393,9 @@ static int bnx2x_get_module_eeprom(struct net_device *dev,
 				   u8 *data)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int rc = 0, phy_idx;
+	int rc = -EINVAL, phy_idx;
 	u8 *user_data = data;
-	int remaining_len = ee->len, xfer_size;
-	unsigned int page_off = ee->offset;
+	unsigned int start_addr = ee->offset, xfer_size = 0;
 
 	if (!netif_running(dev)) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
@@ -1405,21 +1404,52 @@ static int bnx2x_get_module_eeprom(struct net_device *dev,
 	}
 
 	phy_idx = bnx2x_get_cur_phy_idx(bp);
-	bnx2x_acquire_phy_lock(bp);
-	while (!rc && remaining_len > 0) {
-		xfer_size = (remaining_len > SFP_EEPROM_PAGE_SIZE) ?
-			SFP_EEPROM_PAGE_SIZE : remaining_len;
+
+	/* Read A0 section */
+	if (start_addr < ETH_MODULE_SFF_8079_LEN) {
+		/* Limit transfer size to the A0 section boundary */
+		if (start_addr + ee->len > ETH_MODULE_SFF_8079_LEN)
+			xfer_size = ETH_MODULE_SFF_8079_LEN - start_addr;
+		else
+			xfer_size = ee->len;
+		bnx2x_acquire_phy_lock(bp);
 		rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
 						  &bp->link_params,
-						  page_off,
+						  I2C_DEV_ADDR_A0,
+						  start_addr,
 						  xfer_size,
 						  user_data);
-		remaining_len -= xfer_size;
+		bnx2x_release_phy_lock(bp);
+		if (rc) {
+			DP(BNX2X_MSG_ETHTOOL, "Failed reading A0 section\n");
+
+			return -EINVAL;
+		}
 		user_data += xfer_size;
-		page_off += xfer_size;
+		start_addr += xfer_size;
 	}
 
-	bnx2x_release_phy_lock(bp);
+	/* Read A2 section */
+	if ((start_addr >= ETH_MODULE_SFF_8079_LEN) &&
+	    (start_addr < ETH_MODULE_SFF_8472_LEN)) {
+		xfer_size = ee->len - xfer_size;
+		/* Limit transfer size to the A2 section boundary */
+		if (start_addr + xfer_size > ETH_MODULE_SFF_8472_LEN)
+			xfer_size = ETH_MODULE_SFF_8472_LEN - start_addr;
+		start_addr -= ETH_MODULE_SFF_8079_LEN;
+		bnx2x_acquire_phy_lock(bp);
+		rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+						  &bp->link_params,
+						  I2C_DEV_ADDR_A2,
+						  start_addr,
+						  xfer_size,
+						  user_data);
+		bnx2x_release_phy_lock(bp);
+		if (rc) {
+			DP(BNX2X_MSG_ETHTOOL, "Failed reading A2 section\n");
+			return -EINVAL;
+		}
+	}
 	return rc;
 }
 
@@ -1427,24 +1457,50 @@ static int bnx2x_get_module_info(struct net_device *dev,
 				 struct ethtool_modinfo *modinfo)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int phy_idx;
+	int phy_idx, rc;
+	u8 sff8472_comp, diag_type;
+
 	if (!netif_running(dev)) {
-		DP(BNX2X_MSG_ETHTOOL  | BNX2X_MSG_NVM,
+		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
 		   "cannot access eeprom when the interface is down\n");
 		return -EAGAIN;
 	}
-
 	phy_idx = bnx2x_get_cur_phy_idx(bp);
-	switch (bp->link_params.phy[phy_idx].media_type) {
-	case ETH_PHY_SFPP_10G_FIBER:
-	case ETH_PHY_SFP_1G_FIBER:
-	case ETH_PHY_DA_TWINAX:
+	bnx2x_acquire_phy_lock(bp);
+	rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+					  &bp->link_params,
+					  I2C_DEV_ADDR_A0,
+					  SFP_EEPROM_SFF_8472_COMP_ADDR,
+					  SFP_EEPROM_SFF_8472_COMP_SIZE,
+					  &sff8472_comp);
+	bnx2x_release_phy_lock(bp);
+	if (rc) {
+		DP(BNX2X_MSG_ETHTOOL, "Failed reading SFF-8472 comp field\n");
+		return -EINVAL;
+	}
+
+	bnx2x_acquire_phy_lock(bp);
+	rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+					  &bp->link_params,
+					  I2C_DEV_ADDR_A0,
+					  SFP_EEPROM_DIAG_TYPE_ADDR,
+					  SFP_EEPROM_DIAG_TYPE_SIZE,
+					  &diag_type);
+	bnx2x_release_phy_lock(bp);
+	if (rc) {
+		DP(BNX2X_MSG_ETHTOOL, "Failed reading Diag Type field\n");
+		return -EINVAL;
+	}
+
+	if (!sff8472_comp ||
+	    (diag_type & SFP_EEPROM_DIAG_ADDR_CHANGE_REQ)) {
 		modinfo->type = ETH_MODULE_SFF_8079;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
-		return 0;
-	default:
-		return -EOPNOTSUPP;
+	} else {
+		modinfo->type = ETH_MODULE_SFF_8472;
+		modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
 	}
+	return 0;
 }
 
 static int bnx2x_nvram_write_dword(struct bnx2x *bp, u32 offset, u32 val,
@@ -3232,7 +3288,32 @@ static const struct ethtool_ops bnx2x_ethtool_ops = {
 	.get_ts_info		= ethtool_op_get_ts_info,
 };
 
-void bnx2x_set_ethtool_ops(struct net_device *netdev)
+static const struct ethtool_ops bnx2x_vf_ethtool_ops = {
+	.get_settings		= bnx2x_get_settings,
+	.set_settings		= bnx2x_set_settings,
+	.get_drvinfo		= bnx2x_get_drvinfo,
+	.get_msglevel		= bnx2x_get_msglevel,
+	.set_msglevel		= bnx2x_set_msglevel,
+	.get_link		= bnx2x_get_link,
+	.get_coalesce		= bnx2x_get_coalesce,
+	.get_ringparam		= bnx2x_get_ringparam,
+	.set_ringparam		= bnx2x_set_ringparam,
+	.get_sset_count		= bnx2x_get_sset_count,
+	.get_strings		= bnx2x_get_strings,
+	.get_ethtool_stats	= bnx2x_get_ethtool_stats,
+	.get_rxnfc		= bnx2x_get_rxnfc,
+	.set_rxnfc		= bnx2x_set_rxnfc,
+	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
+	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
+	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+	.get_channels		= bnx2x_get_channels,
+	.set_channels		= bnx2x_set_channels,
+};
+
+void bnx2x_set_ethtool_ops(struct bnx2x *bp, struct net_device *netdev)
 {
-	SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
+	if (IS_PF(bp))
+		SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
+	else /* vf */
+		SET_ETHTOOL_OPS(netdev, &bnx2x_vf_ethtool_ops);
 }

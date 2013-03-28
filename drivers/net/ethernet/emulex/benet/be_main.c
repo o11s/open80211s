@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2011 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -146,19 +146,15 @@ static int be_queue_alloc(struct be_adapter *adapter, struct be_queue_info *q,
 	q->entry_size = entry_size;
 	mem->size = len * entry_size;
 	mem->va = dma_alloc_coherent(&adapter->pdev->dev, mem->size, &mem->dma,
-				     GFP_KERNEL);
+				     GFP_KERNEL | __GFP_ZERO);
 	if (!mem->va)
 		return -ENOMEM;
-	memset(mem->va, 0, mem->size);
 	return 0;
 }
 
-static void be_intr_set(struct be_adapter *adapter, bool enable)
+static void be_reg_intr_set(struct be_adapter *adapter, bool enable)
 {
 	u32 reg, enabled;
-
-	if (adapter->eeh_error)
-		return;
 
 	pci_read_config_dword(adapter->pdev, PCICFG_MEMBAR_CTRL_INT_CTRL_OFFSET,
 				&reg);
@@ -173,6 +169,22 @@ static void be_intr_set(struct be_adapter *adapter, bool enable)
 
 	pci_write_config_dword(adapter->pdev,
 			PCICFG_MEMBAR_CTRL_INT_CTRL_OFFSET, reg);
+}
+
+static void be_intr_set(struct be_adapter *adapter, bool enable)
+{
+	int status = 0;
+
+	/* On lancer interrupts can't be controlled via this register */
+	if (lancer_chip(adapter))
+		return;
+
+	if (adapter->eeh_error)
+		return;
+
+	status = be_cmd_intr_set(adapter, enable);
+	if (status)
+		be_reg_intr_set(adapter, enable);
 }
 
 static void be_rxq_notify(struct be_adapter *adapter, u16 qid, u16 posted)
@@ -2435,9 +2447,6 @@ static int be_close(struct net_device *netdev)
 
 	be_roce_dev_close(adapter);
 
-	if (!lancer_chip(adapter))
-		be_intr_set(adapter, false);
-
 	for_all_evt_queues(adapter, eqo, i)
 		napi_disable(&eqo->napi);
 
@@ -2525,9 +2534,6 @@ static int be_open(struct net_device *netdev)
 
 	be_irq_register(adapter);
 
-	if (!lancer_chip(adapter))
-		be_intr_set(adapter, true);
-
 	for_all_rx_queues(adapter, rxo, i)
 		be_cq_notify(adapter, rxo->cq.id, true, 0);
 
@@ -2562,10 +2568,9 @@ static int be_setup_wol(struct be_adapter *adapter, bool enable)
 
 	cmd.size = sizeof(struct be_cmd_req_acpi_wol_magic_config);
 	cmd.va = dma_alloc_coherent(&adapter->pdev->dev, cmd.size, &cmd.dma,
-				    GFP_KERNEL);
+				    GFP_KERNEL | __GFP_ZERO);
 	if (cmd.va == NULL)
 		return -1;
-	memset(cmd.va, 0, cmd.size);
 
 	if (enable) {
 		status = pci_write_config_dword(adapter->pdev,
@@ -3457,11 +3462,9 @@ static int lancer_fw_download(struct be_adapter *adapter,
 	flash_cmd.size = sizeof(struct lancer_cmd_req_write_object)
 				+ LANCER_FW_DOWNLOAD_CHUNK;
 	flash_cmd.va = dma_alloc_coherent(&adapter->pdev->dev, flash_cmd.size,
-						&flash_cmd.dma, GFP_KERNEL);
+					  &flash_cmd.dma, GFP_KERNEL);
 	if (!flash_cmd.va) {
 		status = -ENOMEM;
-		dev_err(&adapter->pdev->dev,
-			"Memory allocation failure while flashing\n");
 		goto lancer_fw_exit;
 	}
 
@@ -3563,8 +3566,6 @@ static int be_fw_download(struct be_adapter *adapter, const struct firmware* fw)
 					  &flash_cmd.dma, GFP_KERNEL);
 	if (!flash_cmd.va) {
 		status = -ENOMEM;
-		dev_err(&adapter->pdev->dev,
-			"Memory allocation failure while flashing\n");
 		goto be_fw_exit;
 	}
 
@@ -3791,12 +3792,13 @@ static int be_ctrl_init(struct be_adapter *adapter)
 
 	rx_filter->size = sizeof(struct be_cmd_req_rx_filter);
 	rx_filter->va = dma_alloc_coherent(&adapter->pdev->dev, rx_filter->size,
-					&rx_filter->dma, GFP_KERNEL);
+					   &rx_filter->dma,
+					   GFP_KERNEL | __GFP_ZERO);
 	if (rx_filter->va == NULL) {
 		status = -ENOMEM;
 		goto free_mbox;
 	}
-	memset(rx_filter->va, 0, rx_filter->size);
+
 	mutex_init(&adapter->mbox_lock);
 	spin_lock_init(&adapter->mcc_lock);
 	spin_lock_init(&adapter->mcc_cq_lock);
@@ -3838,10 +3840,9 @@ static int be_stats_init(struct be_adapter *adapter)
 		cmd->size = sizeof(struct be_cmd_req_get_stats_v1);
 
 	cmd->va = dma_alloc_coherent(&adapter->pdev->dev, cmd->size, &cmd->dma,
-				     GFP_KERNEL);
+				     GFP_KERNEL | __GFP_ZERO);
 	if (cmd->va == NULL)
 		return -1;
-	memset(cmd->va, 0, cmd->size);
 	return 0;
 }
 
@@ -3853,6 +3854,7 @@ static void be_remove(struct pci_dev *pdev)
 		return;
 
 	be_roce_dev_remove(adapter);
+	be_intr_set(adapter, false);
 
 	cancel_delayed_work_sync(&adapter->func_recovery_work);
 
@@ -4142,11 +4144,11 @@ static int be_probe(struct pci_dev *pdev, const struct pci_device_id *pdev_id)
 			goto ctrl_clean;
 	}
 
-	/* The INTR bit may be set in the card when probed by a kdump kernel
-	 * after a crash.
-	 */
-	if (!lancer_chip(adapter))
-		be_intr_set(adapter, false);
+	/* Wait for interrupts to quiesce after an FLR */
+	msleep(100);
+
+	/* Allow interrupts for other ULPs running on NIC function */
+	be_intr_set(adapter, true);
 
 	status = be_stats_init(adapter);
 	if (status)

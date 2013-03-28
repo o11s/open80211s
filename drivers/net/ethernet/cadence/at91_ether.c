@@ -47,22 +47,19 @@ static int at91ether_start(struct net_device *dev)
 	int i;
 
 	lp->rx_ring = dma_alloc_coherent(&lp->pdev->dev,
-					MAX_RX_DESCR * sizeof(struct macb_dma_desc),
-					&lp->rx_ring_dma, GFP_KERNEL);
-	if (!lp->rx_ring) {
-		netdev_err(dev, "unable to alloc rx ring DMA buffer\n");
+					 (MAX_RX_DESCR *
+					  sizeof(struct macb_dma_desc)),
+					 &lp->rx_ring_dma, GFP_KERNEL);
+	if (!lp->rx_ring)
 		return -ENOMEM;
-	}
 
 	lp->rx_buffers = dma_alloc_coherent(&lp->pdev->dev,
-					MAX_RX_DESCR * MAX_RBUFF_SZ,
-					&lp->rx_buffers_dma, GFP_KERNEL);
+					    MAX_RX_DESCR * MAX_RBUFF_SZ,
+					    &lp->rx_buffers_dma, GFP_KERNEL);
 	if (!lp->rx_buffers) {
-		netdev_err(dev, "unable to alloc rx data DMA buffer\n");
-
 		dma_free_coherent(&lp->pdev->dev,
-					MAX_RX_DESCR * sizeof(struct macb_dma_desc),
-					lp->rx_ring, lp->rx_ring_dma);
+				  MAX_RX_DESCR * sizeof(struct macb_dma_desc),
+				  lp->rx_ring, lp->rx_ring_dma);
 		lp->rx_ring = NULL;
 		return -ENOMEM;
 	}
@@ -209,7 +206,6 @@ static void at91ether_rx(struct net_device *dev)
 			netif_rx(skb);
 		} else {
 			lp->stats.rx_dropped++;
-			netdev_notice(dev, "Memory squeeze, dropping packet.\n");
 		}
 
 		if (lp->rx_ring[lp->rx_tail].ctrl & MACB_BIT(RX_MHASH_MATCH))
@@ -519,18 +515,7 @@ static struct platform_driver at91ether_driver = {
 	},
 };
 
-static int __init at91ether_init(void)
-{
-	return platform_driver_probe(&at91ether_driver, at91ether_probe);
-}
-
-static void __exit at91ether_exit(void)
-{
-	platform_driver_unregister(&at91ether_driver);
-}
-
-module_init(at91ether_init)
-module_exit(at91ether_exit)
+module_platform_driver_probe(at91ether_driver, at91ether_probe);
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("AT91RM9200 EMAC Ethernet driver");

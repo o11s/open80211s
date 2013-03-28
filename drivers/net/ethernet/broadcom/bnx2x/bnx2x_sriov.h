@@ -193,6 +193,7 @@ struct bnx2x_virtf {
 #define VF_CFG_TPA		0x0004
 #define VF_CFG_INT_SIMD		0x0008
 #define VF_CACHE_LINE		0x0010
+#define VF_CFG_VLAN		0x0020
 
 	u8 state;
 #define VF_FREE		0	/* VF ready to be acquired holds no resc */
@@ -712,6 +713,7 @@ void bnx2x_add_tlv(struct bnx2x *bp, void *tlvs_list, u16 offset, u16 type,
 		   u16 length);
 void bnx2x_vfpf_prep(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv,
 		     u16 type, u16 length);
+void bnx2x_vfpf_finalize(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv);
 void bnx2x_dp_tlv_list(struct bnx2x *bp, void *tlvs_list);
 
 bool bnx2x_tlv_supported(u16 tlvtype);
@@ -750,13 +752,17 @@ static inline int bnx2x_vf_ustorm_prods_offset(struct bnx2x *bp,
 }
 
 enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp);
-void bnx2x_vf_map_doorbells(struct bnx2x *bp);
+void __iomem *bnx2x_vf_doorbells(struct bnx2x *bp);
 int bnx2x_vf_pci_alloc(struct bnx2x *bp);
-void bnx2x_enable_sriov(struct bnx2x *bp);
+int bnx2x_enable_sriov(struct bnx2x *bp);
+void bnx2x_disable_sriov(struct bnx2x *bp);
 static inline int bnx2x_vf_headroom(struct bnx2x *bp)
 {
 	return bp->vfdb->sriov.nr_virtfn * BNX2X_CLIENTS_PER_VF;
 }
+void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp);
+int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs);
+int bnx2x_open_epilog(struct bnx2x *bp);
 
 #else /* CONFIG_BNX2X_SRIOV */
 
@@ -779,7 +785,8 @@ static inline void bnx2x_iov_init_dmae(struct bnx2x *bp) {}
 static inline int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 				     int num_vfs_param) {return 0; }
 static inline void bnx2x_iov_remove_one(struct bnx2x *bp) {}
-static inline void bnx2x_enable_sriov(struct bnx2x *bp) {}
+static inline int bnx2x_enable_sriov(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_disable_sriov(struct bnx2x *bp) {}
 static inline int bnx2x_vfpf_acquire(struct bnx2x *bp,
 				     u8 tx_count, u8 rx_count) {return 0; }
 static inline int bnx2x_vfpf_release(struct bnx2x *bp) {return 0; }
@@ -802,8 +809,15 @@ static inline enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp
 	return PFVF_BULLETIN_UNCHANGED;
 }
 
-static inline int bnx2x_vf_map_doorbells(struct bnx2x *bp) {return 0; }
+static inline void __iomem *bnx2x_vf_doorbells(struct bnx2x *bp)
+{
+	return NULL;
+}
+
 static inline int bnx2x_vf_pci_alloc(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp) {}
+static inline int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs) {return 0; }
+static inline int bnx2x_open_epilog(struct bnx2x *bp) {return 0; }
 
 #endif /* CONFIG_BNX2X_SRIOV */
 #endif /* bnx2x_sriov.h */

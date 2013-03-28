@@ -1475,6 +1475,11 @@ static inline void *netdev_priv(const struct net_device *dev)
  */
 #define SET_NETDEV_DEVTYPE(net, devtype)	((net)->dev.type = (devtype))
 
+/* Default NAPI poll() weight
+ * Device drivers are strongly advised to not use bigger value
+ */
+#define NAPI_POLL_WEIGHT 64
+
 /**
  *	netif_napi_add - initialize a napi context
  *	@dev:  network device
@@ -1612,6 +1617,9 @@ extern seqcount_t	devnet_rename_seq;	/* Device rename seq */
 		list_for_each_entry_continue(d, &(net)->dev_base_head, dev_list)
 #define for_each_netdev_continue_rcu(net, d)		\
 	list_for_each_entry_continue_rcu(d, &(net)->dev_base_head, dev_list)
+#define for_each_netdev_in_bond_rcu(bond, slave)	\
+		for_each_netdev_rcu(&init_net, slave)	\
+			if (netdev_master_upper_dev_get_rcu(slave) == bond)
 #define net_device_entry(lh)	list_entry(lh, struct net_device, dev_list)
 
 static inline struct net_device *next_net_device(struct net_device *dev)
@@ -1684,7 +1692,6 @@ extern int 		netdev_refcnt_read(const struct net_device *dev);
 extern void		free_netdev(struct net_device *dev);
 extern void		synchronize_net(void);
 extern int		init_dummy_netdev(struct net_device *dev);
-extern void		netdev_resync_ops(struct net_device *dev);
 
 extern struct net_device	*dev_get_by_index(struct net *net, int ifindex);
 extern struct net_device	*__dev_get_by_index(struct net *net, int ifindex);
@@ -2678,6 +2685,19 @@ struct sk_buff *skb_gso_segment(struct sk_buff *skb, netdev_features_t features)
 {
 	return __skb_gso_segment(skb, features, true);
 }
+__be16 skb_network_protocol(struct sk_buff *skb);
+
+static inline bool can_checksum_protocol(netdev_features_t features,
+					 __be16 protocol)
+{
+	return ((features & NETIF_F_GEN_CSUM) ||
+		((features & NETIF_F_V4_CSUM) &&
+		 protocol == htons(ETH_P_IP)) ||
+		((features & NETIF_F_V6_CSUM) &&
+		 protocol == htons(ETH_P_IPV6)) ||
+		((features & NETIF_F_FCOE_CRC) &&
+		 protocol == htons(ETH_P_FCOE)));
+}
 
 #ifdef CONFIG_BUG
 extern void netdev_rx_csum_fault(struct net_device *dev);
@@ -2754,6 +2774,11 @@ static inline void netif_set_gso_max_size(struct net_device *dev,
 					  unsigned int size)
 {
 	dev->gso_max_size = size;
+}
+
+static inline bool netif_is_bond_master(struct net_device *dev)
+{
+	return dev->flags & IFF_MASTER && dev->priv_flags & IFF_BONDING;
 }
 
 static inline bool netif_is_bond_slave(struct net_device *dev)

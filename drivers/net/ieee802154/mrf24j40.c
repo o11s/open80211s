@@ -22,6 +22,7 @@
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/pinctrl/consumer.h>
 #include <net/wpan-phy.h>
 #include <net/mac802154.h>
 
@@ -91,9 +92,8 @@ struct mrf24j40 {
 #define MRF24J40_READLONG(reg) (1 << 15 | (reg) << 5)
 #define MRF24J40_WRITELONG(reg) (1 << 15 | (reg) << 5 | 1 << 4)
 
-/* Maximum speed to run the device at. TODO: Get the real max value from
- * someone at Microchip since it isn't in the datasheet. */
-#define MAX_SPI_SPEED_HZ 1000000
+/* The datasheet indicates the theoretical maximum for SCK to be 10MHz */
+#define MAX_SPI_SPEED_HZ 10000000
 
 #define printdev(X) (&X->spi->dev)
 
@@ -361,6 +361,7 @@ static int mrf24j40_tx(struct ieee802154_dev *dev, struct sk_buff *skb)
 	if (ret == -ERESTARTSYS)
 		goto err;
 	if (ret == 0) {
+		dev_warn(printdev(devrec), "Timeout waiting for TX interrupt\n");
 		ret = -ETIMEDOUT;
 		goto err;
 	}
@@ -477,7 +478,7 @@ static int mrf24j40_filter(struct ieee802154_dev *dev,
 		int i;
 		for (i = 0; i < 8; i++)
 			write_short_reg(devrec, REG_EADR0+i,
-					filt->ieee_addr[i]);
+					filt->ieee_addr[7-i]);
 
 #ifdef DEBUG
 		printk(KERN_DEBUG "Set long addr to: ");
@@ -623,6 +624,7 @@ static int mrf24j40_probe(struct spi_device *spi)
 	int ret = -ENOMEM;
 	u8 val;
 	struct mrf24j40 *devrec;
+	struct pinctrl *pinctrl;
 
 	printk(KERN_INFO "mrf24j40: probe(). IRQ: %d\n", spi->irq);
 
@@ -632,6 +634,11 @@ static int mrf24j40_probe(struct spi_device *spi)
 	devrec->buf = kzalloc(3, GFP_KERNEL);
 	if (!devrec->buf)
 		goto err_buf;
+
+	pinctrl = devm_pinctrl_get_select_default(&spi->dev);
+	if (IS_ERR(pinctrl))
+		dev_warn(&spi->dev,
+			"pinctrl pins are not configured from the driver");
 
 	spi->mode = SPI_MODE_0; /* TODO: Is this appropriate for right here? */
 	if (spi->max_speed_hz > MAX_SPI_SPEED_HZ)

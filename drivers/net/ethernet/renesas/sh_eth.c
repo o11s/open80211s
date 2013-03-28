@@ -592,7 +592,7 @@ static int sh_eth_check_reset(struct net_device *ndev)
 		cnt--;
 	}
 	if (cnt < 0) {
-		printk(KERN_ERR "Device reset fail\n");
+		pr_err("Device reset fail\n");
 		ret = -ETIMEDOUT;
 	}
 	return ret;
@@ -908,11 +908,8 @@ static int sh_eth_ring_init(struct net_device *ndev)
 	/* Allocate all Rx descriptors. */
 	rx_ringsize = sizeof(struct sh_eth_rxdesc) * mdp->num_rx_ring;
 	mdp->rx_ring = dma_alloc_coherent(NULL, rx_ringsize, &mdp->rx_desc_dma,
-			GFP_KERNEL);
-
+					  GFP_KERNEL);
 	if (!mdp->rx_ring) {
-		dev_err(&ndev->dev, "Cannot allocate Rx Ring (size %d bytes)\n",
-			rx_ringsize);
 		ret = -ENOMEM;
 		goto desc_ring_free;
 	}
@@ -922,10 +919,8 @@ static int sh_eth_ring_init(struct net_device *ndev)
 	/* Allocate all Tx descriptors. */
 	tx_ringsize = sizeof(struct sh_eth_txdesc) * mdp->num_tx_ring;
 	mdp->tx_ring = dma_alloc_coherent(NULL, tx_ringsize, &mdp->tx_desc_dma,
-			GFP_KERNEL);
+					  GFP_KERNEL);
 	if (!mdp->tx_ring) {
-		dev_err(&ndev->dev, "Cannot allocate Tx Ring (size %d bytes)\n",
-			tx_ringsize);
 		ret = -ENOMEM;
 		goto desc_ring_free;
 	}
@@ -2220,7 +2215,6 @@ static void sh_eth_tsu_init(struct sh_eth_private *mdp)
 /* MDIO bus release function */
 static int sh_mdio_release(struct net_device *ndev)
 {
-	struct sh_eth_private *mdp = netdev_priv(ndev);
 	struct mii_bus *bus = dev_get_drvdata(&ndev->dev);
 
 	/* unregister mdio bus */
@@ -2229,14 +2223,8 @@ static int sh_mdio_release(struct net_device *ndev)
 	/* remove mdio bus info from net_device */
 	dev_set_drvdata(&ndev->dev, NULL);
 
-	/* free interrupts memory */
-	kfree(bus->irq);
-
 	/* free bitbang info */
 	free_mdio_bitbang(bus);
-
-	/* free bitbang memory */
-	kfree(mdp->bitbang);
 
 	return 0;
 }
@@ -2250,7 +2238,8 @@ static int sh_mdio_init(struct net_device *ndev, int id,
 	struct sh_eth_private *mdp = netdev_priv(ndev);
 
 	/* create bit control struct for PHY */
-	bitbang = kzalloc(sizeof(struct bb_info), GFP_KERNEL);
+	bitbang = devm_kzalloc(&ndev->dev, sizeof(struct bb_info),
+			       GFP_KERNEL);
 	if (!bitbang) {
 		ret = -ENOMEM;
 		goto out;
@@ -2259,18 +2248,17 @@ static int sh_mdio_init(struct net_device *ndev, int id,
 	/* bitbang init */
 	bitbang->addr = mdp->addr + mdp->reg_offset[PIR];
 	bitbang->set_gate = pd->set_mdio_gate;
-	bitbang->mdi_msk = 0x08;
-	bitbang->mdo_msk = 0x04;
-	bitbang->mmd_msk = 0x02;/* MMD */
-	bitbang->mdc_msk = 0x01;
+	bitbang->mdi_msk = PIR_MDI;
+	bitbang->mdo_msk = PIR_MDO;
+	bitbang->mmd_msk = PIR_MMD;
+	bitbang->mdc_msk = PIR_MDC;
 	bitbang->ctrl.ops = &bb_ops;
 
 	/* MII controller setting */
-	mdp->bitbang = bitbang;
 	mdp->mii_bus = alloc_mdio_bitbang(&bitbang->ctrl);
 	if (!mdp->mii_bus) {
 		ret = -ENOMEM;
-		goto out_free_bitbang;
+		goto out;
 	}
 
 	/* Hook up MII support for ethtool */
@@ -2280,7 +2268,9 @@ static int sh_mdio_init(struct net_device *ndev, int id,
 		mdp->pdev->name, id);
 
 	/* PHY IRQ */
-	mdp->mii_bus->irq = kmalloc(sizeof(int)*PHY_MAX_ADDR, GFP_KERNEL);
+	mdp->mii_bus->irq = devm_kzalloc(&ndev->dev,
+					 sizeof(int) * PHY_MAX_ADDR,
+					 GFP_KERNEL);
 	if (!mdp->mii_bus->irq) {
 		ret = -ENOMEM;
 		goto out_free_bus;
@@ -2292,20 +2282,14 @@ static int sh_mdio_init(struct net_device *ndev, int id,
 	/* register mdio bus */
 	ret = mdiobus_register(mdp->mii_bus);
 	if (ret)
-		goto out_free_irq;
+		goto out_free_bus;
 
 	dev_set_drvdata(&ndev->dev, mdp->mii_bus);
 
 	return 0;
 
-out_free_irq:
-	kfree(mdp->mii_bus->irq);
-
 out_free_bus:
 	free_mdio_bitbang(mdp->mii_bus);
-
-out_free_bitbang:
-	kfree(bitbang);
 
 out:
 	return ret;
@@ -2326,7 +2310,7 @@ static const u16 *sh_eth_get_register_offset(int register_type)
 		reg_offset = sh_eth_offset_fast_sh3_sh2;
 		break;
 	default:
-		printk(KERN_ERR "Unknown register type (%d)\n", register_type);
+		pr_err("Unknown register type (%d)\n", register_type);
 		break;
 	}
 
@@ -2356,7 +2340,7 @@ static int sh_eth_drv_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct net_device *ndev = NULL;
 	struct sh_eth_private *mdp = NULL;
-	struct sh_eth_plat_data *pd;
+	struct sh_eth_plat_data *pd = pdev->dev.platform_data;
 
 	/* get base addr */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -2394,10 +2378,9 @@ static int sh_eth_drv_probe(struct platform_device *pdev)
 	mdp = netdev_priv(ndev);
 	mdp->num_tx_ring = TX_RING_SIZE;
 	mdp->num_rx_ring = RX_RING_SIZE;
-	mdp->addr = ioremap(res->start, resource_size(res));
-	if (mdp->addr == NULL) {
-		ret = -ENOMEM;
-		dev_err(&pdev->dev, "ioremap failed.\n");
+	mdp->addr = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(mdp->addr)) {
+		ret = PTR_ERR(mdp->addr);
 		goto out_release;
 	}
 
@@ -2406,7 +2389,6 @@ static int sh_eth_drv_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_resume(&pdev->dev);
 
-	pd = (struct sh_eth_plat_data *)(pdev->dev.platform_data);
 	/* get PHY ID */
 	mdp->phy_id = pd->phy;
 	mdp->phy_interface = pd->phy_interface;
@@ -2444,11 +2426,9 @@ static int sh_eth_drv_probe(struct platform_device *pdev)
 			ret = -ENODEV;
 			goto out_release;
 		}
-		mdp->tsu_addr = ioremap(rtsu->start,
-					resource_size(rtsu));
-		if (mdp->tsu_addr == NULL) {
-			ret = -ENOMEM;
-			dev_err(&pdev->dev, "TSU ioremap failed.\n");
+		mdp->tsu_addr = devm_ioremap_resource(&pdev->dev, rtsu);
+		if (IS_ERR(mdp->tsu_addr)) {
+			ret = PTR_ERR(mdp->tsu_addr);
 			goto out_release;
 		}
 		mdp->port = devno % 2;
@@ -2489,10 +2469,6 @@ out_unregister:
 
 out_release:
 	/* net_dev free */
-	if (mdp && mdp->addr)
-		iounmap(mdp->addr);
-	if (mdp && mdp->tsu_addr)
-		iounmap(mdp->tsu_addr);
 	if (ndev)
 		free_netdev(ndev);
 
@@ -2503,14 +2479,10 @@ out:
 static int sh_eth_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
-	struct sh_eth_private *mdp = netdev_priv(ndev);
 
-	if (mdp->cd->tsu)
-		iounmap(mdp->tsu_addr);
 	sh_mdio_release(ndev);
 	unregister_netdev(ndev);
 	pm_runtime_disable(&pdev->dev);
-	iounmap(mdp->addr);
 	free_netdev(ndev);
 	platform_set_drvdata(pdev, NULL);
 

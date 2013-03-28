@@ -717,14 +717,11 @@ ixgb_setup_tx_resources(struct ixgb_adapter *adapter)
 	txdr->size = ALIGN(txdr->size, 4096);
 
 	txdr->desc = dma_alloc_coherent(&pdev->dev, txdr->size, &txdr->dma,
-					GFP_KERNEL);
+					GFP_KERNEL | __GFP_ZERO);
 	if (!txdr->desc) {
 		vfree(txdr->buffer_info);
-		netif_err(adapter, probe, adapter->netdev,
-			  "Unable to allocate transmit descriptor memory\n");
 		return -ENOMEM;
 	}
-	memset(txdr->desc, 0, txdr->size);
 
 	txdr->next_to_use = 0;
 	txdr->next_to_clean = 0;
@@ -807,8 +804,6 @@ ixgb_setup_rx_resources(struct ixgb_adapter *adapter)
 
 	if (!rxdr->desc) {
 		vfree(rxdr->buffer_info);
-		netif_err(adapter, probe, adapter->netdev,
-			  "Unable to allocate receive descriptors\n");
 		return -ENOMEM;
 	}
 	memset(rxdr->desc, 0, rxdr->size);

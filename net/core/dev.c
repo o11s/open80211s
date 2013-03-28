@@ -2207,6 +2207,25 @@ out:
 }
 EXPORT_SYMBOL(skb_checksum_help);
 
+__be16 skb_network_protocol(struct sk_buff *skb)
+{
+	__be16 type = skb->protocol;
+	int vlan_depth = ETH_HLEN;
+
+	while (type == htons(ETH_P_8021Q)) {
+		struct vlan_hdr *vh;
+
+		if (unlikely(!pskb_may_pull(skb, vlan_depth + VLAN_HLEN)))
+			return 0;
+
+		vh = (struct vlan_hdr *)(skb->data + vlan_depth);
+		type = vh->h_vlan_encapsulated_proto;
+		vlan_depth += VLAN_HLEN;
+	}
+
+	return type;
+}
+
 /**
  *	skb_mac_gso_segment - mac layer segmentation handler.
  *	@skb: buffer to segment
@@ -2217,19 +2236,10 @@ struct sk_buff *skb_mac_gso_segment(struct sk_buff *skb,
 {
 	struct sk_buff *segs = ERR_PTR(-EPROTONOSUPPORT);
 	struct packet_offload *ptype;
-	__be16 type = skb->protocol;
-	int vlan_depth = ETH_HLEN;
+	__be16 type = skb_network_protocol(skb);
 
-	while (type == htons(ETH_P_8021Q)) {
-		struct vlan_hdr *vh;
-
-		if (unlikely(!pskb_may_pull(skb, vlan_depth + VLAN_HLEN)))
-			return ERR_PTR(-EINVAL);
-
-		vh = (struct vlan_hdr *)(skb->data + vlan_depth);
-		type = vh->h_vlan_encapsulated_proto;
-		vlan_depth += VLAN_HLEN;
-	}
+	if (unlikely(!type))
+		return ERR_PTR(-EINVAL);
 
 	__skb_pull(skb, skb->mac_len);
 
@@ -2397,24 +2407,12 @@ static int dev_gso_segment(struct sk_buff *skb, netdev_features_t features)
 	return 0;
 }
 
-static bool can_checksum_protocol(netdev_features_t features, __be16 protocol)
-{
-	return ((features & NETIF_F_GEN_CSUM) ||
-		((features & NETIF_F_V4_CSUM) &&
-		 protocol == htons(ETH_P_IP)) ||
-		((features & NETIF_F_V6_CSUM) &&
-		 protocol == htons(ETH_P_IPV6)) ||
-		((features & NETIF_F_FCOE_CRC) &&
-		 protocol == htons(ETH_P_FCOE)));
-}
-
 static netdev_features_t harmonize_features(struct sk_buff *skb,
 	__be16 protocol, netdev_features_t features)
 {
 	if (skb->ip_summed != CHECKSUM_NONE &&
 	    !can_checksum_protocol(features, protocol)) {
 		features &= ~NETIF_F_ALL_CSUM;
-		features &= ~NETIF_F_SG;
 	} else if (illegal_highdma(skb->dev, skb)) {
 		features &= ~NETIF_F_SG;
 	}
@@ -2589,6 +2587,7 @@ static void qdisc_pkt_len_init(struct sk_buff *skb)
 	 */
 	if (shinfo->gso_size)  {
 		unsigned int hdr_len;
+		u16 gso_segs = shinfo->gso_segs;
 
 		/* mac layer + network layer */
 		hdr_len = skb_transport_header(skb) - skb_mac_header(skb);
@@ -2598,7 +2597,12 @@ static void qdisc_pkt_len_init(struct sk_buff *skb)
 			hdr_len += tcp_hdrlen(skb);
 		else
 			hdr_len += sizeof(struct udphdr);
-		qdisc_skb_cb(skb)->pkt_len += (shinfo->gso_segs - 1) * hdr_len;
+
+		if (shinfo->gso_type & SKB_GSO_DODGY)
+			gso_segs = DIV_ROUND_UP(skb->len - hdr_len,
+						shinfo->gso_size);
+
+		qdisc_skb_cb(skb)->pkt_len += (gso_segs - 1) * hdr_len;
 	}
 }
 
@@ -3325,7 +3329,7 @@ EXPORT_SYMBOL_GPL(netdev_rx_handler_register);
  *	netdev_rx_handler_unregister - unregister receive handler
  *	@dev: device to unregister a handler from
  *
- *	Unregister a receive hander from a device.
+ *	Unregister a receive handler from a device.
  *
  *	The caller must hold the rtnl_mutex.
  */
@@ -4057,6 +4061,9 @@ void netif_napi_add(struct net_device *dev, struct napi_struct *napi,
 	napi->gro_list = NULL;
 	napi->skb = NULL;
 	napi->poll = poll;
+	if (weight > NAPI_POLL_WEIGHT)
+		pr_err_once("netif_napi_add() called with weight %d on device %s\n",
+			    weight, dev->name);
 	napi->weight = weight;
 	list_add(&napi->dev_list, &dev->napi_list);
 	napi->dev = dev;
@@ -4918,18 +4925,23 @@ static netdev_features_t netdev_fix_features(struct net_device *dev,
 		features &= ~(NETIF_F_IP_CSUM|NETIF_F_IPV6_CSUM);
 	}
 
-	/* Fix illegal SG+CSUM combinations. */
-	if ((features & NETIF_F_SG) &&
-	    !(features & NETIF_F_ALL_CSUM)) {
-		netdev_dbg(dev,
-			"Dropping NETIF_F_SG since no checksum feature.\n");
-		features &= ~NETIF_F_SG;
-	}
-
 	/* TSO requires that SG is present as well. */
 	if ((features & NETIF_F_ALL_TSO) && !(features & NETIF_F_SG)) {
 		netdev_dbg(dev, "Dropping TSO features since no SG feature.\n");
 		features &= ~NETIF_F_ALL_TSO;
+	}
+
+	if ((features & NETIF_F_TSO) && !(features & NETIF_F_HW_CSUM) &&
+					!(features & NETIF_F_IP_CSUM)) {
+		netdev_dbg(dev, "Dropping TSO features since no CSUM feature.\n");
+		features &= ~NETIF_F_TSO;
+		features &= ~NETIF_F_TSO_ECN;
+	}
+
+	if ((features & NETIF_F_TSO6) && !(features & NETIF_F_HW_CSUM) &&
+					 !(features & NETIF_F_IPV6_CSUM)) {
+		netdev_dbg(dev, "Dropping TSO6 features since no CSUM feature.\n");
+		features &= ~NETIF_F_TSO6;
 	}
 
 	/* TSO ECN requires that TSO is present as well. */
@@ -5198,6 +5210,10 @@ int register_netdevice(struct net_device *dev)
 	/* Make NETIF_F_HIGHDMA inheritable to VLAN devices.
 	 */
 	dev->vlan_features |= NETIF_F_HIGHDMA;
+
+	/* Make NETIF_F_SG inheritable to tunnel devices.
+	 */
+	dev->hw_enc_features |= NETIF_F_SG;
 
 	ret = call_netdevice_notifiers(NETDEV_POST_INIT, dev);
 	ret = notifier_to_errno(ret);

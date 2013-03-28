@@ -143,6 +143,7 @@ static inline void inet_frag_lru_del(struct inet_frag_queue *q)
 {
 	spin_lock(&q->net->lru_lock);
 	list_del(&q->lru_list);
+	q->net->nqueues--;
 	spin_unlock(&q->net->lru_lock);
 }
 
@@ -151,6 +152,19 @@ static inline void inet_frag_lru_add(struct netns_frags *nf,
 {
 	spin_lock(&nf->lru_lock);
 	list_add_tail(&q->lru_list, &nf->lru_list);
+	q->net->nqueues++;
 	spin_unlock(&nf->lru_lock);
 }
+
+/* RFC 3168 support :
+ * We want to check ECN values of all fragments, do detect invalid combinations.
+ * In ipq->ecn, we store the OR value of each ip4_frag_ecn() fragment value.
+ */
+#define	IPFRAG_ECN_NOT_ECT	0x01 /* one frag had ECN_NOT_ECT */
+#define	IPFRAG_ECN_ECT_1	0x02 /* one frag had ECN_ECT_1 */
+#define	IPFRAG_ECN_ECT_0	0x04 /* one frag had ECN_ECT_0 */
+#define	IPFRAG_ECN_CE		0x08 /* one frag had ECN_CE */
+
+extern const u8 ip_frag_ecn_table[16];
+
 #endif

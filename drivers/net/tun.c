@@ -409,14 +409,12 @@ static void __tun_detach(struct tun_file *tfile, bool clean)
 {
 	struct tun_file *ntfile;
 	struct tun_struct *tun;
-	struct net_device *dev;
 
 	tun = rtnl_dereference(tfile->tun);
 
 	if (tun && !tfile->detached) {
 		u16 index = tfile->queue_index;
 		BUG_ON(index >= tun->numqueues);
-		dev = tun->dev;
 
 		rcu_assign_pointer(tun->tfiles[index],
 				   tun->tfiles[tun->numqueues - 1]);
@@ -1205,6 +1203,8 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 	}
 
 	skb_reset_network_header(skb);
+	skb_probe_transport_header(skb, 0);
+
 	rxhash = skb_get_rxhash(skb);
 	netif_rx_ni(skb);
 

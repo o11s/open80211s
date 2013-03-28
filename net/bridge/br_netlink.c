@@ -136,10 +136,7 @@ static int br_fill_ifinfo(struct sk_buff *skb,
 			goto nla_put_failure;
 
 		pvid = br_get_pvid(pv);
-		for (vid = find_first_bit(pv->vlan_bitmap, BR_VLAN_BITMAP_LEN);
-		     vid < BR_VLAN_BITMAP_LEN;
-		     vid = find_next_bit(pv->vlan_bitmap,
-					 BR_VLAN_BITMAP_LEN, vid+1)) {
+		for_each_set_bit(vid, pv->vlan_bitmap, BR_VLAN_BITMAP_LEN) {
 			vinfo.vid = vid;
 			vinfo.flags = 0;
 			if (vid == pvid)
@@ -360,7 +357,7 @@ int br_setlink(struct net_device *dev, struct nlmsghdr *nlh)
 	struct nlattr *afspec;
 	struct net_bridge_port *p;
 	struct nlattr *tb[IFLA_BRPORT_MAX + 1];
-	int err;
+	int err = 0;
 
 	ifm = nlmsg_data(nlh);
 
@@ -373,7 +370,7 @@ int br_setlink(struct net_device *dev, struct nlmsghdr *nlh)
 	/* We want to accept dev as bridge itself if the AF_SPEC
 	 * is set to see if someone is setting vlan info on the brigde
 	 */
-	if (!p && ((dev->priv_flags & IFF_EBRIDGE) && !afspec))
+	if (!p && !afspec)
 		return -EINVAL;
 
 	if (p && protinfo) {

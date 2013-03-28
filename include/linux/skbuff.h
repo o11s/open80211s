@@ -32,6 +32,7 @@
 #include <linux/hrtimer.h>
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
+#include <net/flow_keys.h>
 
 /* Don't change this without changing skb_csum_unnecessary! */
 #define CHECKSUM_NONE 0
@@ -316,6 +317,8 @@ enum {
 	SKB_GSO_FCOE = 1 << 5,
 
 	SKB_GSO_GRE = 1 << 6,
+
+	SKB_GSO_UDP_TUNNEL = 1 << 7,
 };
 
 #if BITS_PER_LONG > 32
@@ -387,6 +390,7 @@ typedef unsigned char *sk_buff_data_t;
  *	@vlan_tci: vlan tag control information
  *	@inner_transport_header: Inner transport layer header (encapsulation)
  *	@inner_network_header: Network layer header (encapsulation)
+ *	@inner_mac_header: Link layer header (encapsulation)
  *	@transport_header: Transport layer header
  *	@network_header: Network layer header
  *	@mac_header: Link layer header
@@ -505,6 +509,7 @@ struct sk_buff {
 
 	sk_buff_data_t		inner_transport_header;
 	sk_buff_data_t		inner_network_header;
+	sk_buff_data_t		inner_mac_header;
 	sk_buff_data_t		transport_header;
 	sk_buff_data_t		network_header;
 	sk_buff_data_t		mac_header;
@@ -1471,6 +1476,7 @@ static inline void skb_reserve(struct sk_buff *skb, int len)
 
 static inline void skb_reset_inner_headers(struct sk_buff *skb)
 {
+	skb->inner_mac_header = skb->mac_header;
 	skb->inner_network_header = skb->network_header;
 	skb->inner_transport_header = skb->transport_header;
 }
@@ -1516,6 +1522,22 @@ static inline void skb_set_inner_network_header(struct sk_buff *skb,
 	skb->inner_network_header += offset;
 }
 
+static inline unsigned char *skb_inner_mac_header(const struct sk_buff *skb)
+{
+	return skb->head + skb->inner_mac_header;
+}
+
+static inline void skb_reset_inner_mac_header(struct sk_buff *skb)
+{
+	skb->inner_mac_header = skb->data - skb->head;
+}
+
+static inline void skb_set_inner_mac_header(struct sk_buff *skb,
+					    const int offset)
+{
+	skb_reset_inner_mac_header(skb);
+	skb->inner_mac_header += offset;
+}
 static inline bool skb_transport_header_was_set(const struct sk_buff *skb)
 {
 	return skb->transport_header != ~0U;
@@ -1536,6 +1558,19 @@ static inline void skb_set_transport_header(struct sk_buff *skb,
 {
 	skb_reset_transport_header(skb);
 	skb->transport_header += offset;
+}
+
+static inline void skb_probe_transport_header(struct sk_buff *skb,
+					      const int offset_hint)
+{
+	struct flow_keys keys;
+
+	if (skb_transport_header_was_set(skb))
+		return;
+	else if (skb_flow_dissect(skb, &keys))
+		skb_set_transport_header(skb, keys.thoff);
+	else
+		skb_set_transport_header(skb, offset_hint);
 }
 
 static inline unsigned char *skb_network_header(const struct sk_buff *skb)
@@ -1609,6 +1644,21 @@ static inline void skb_set_inner_network_header(struct sk_buff *skb,
 	skb->inner_network_header = skb->data + offset;
 }
 
+static inline unsigned char *skb_inner_mac_header(const struct sk_buff *skb)
+{
+	return skb->inner_mac_header;
+}
+
+static inline void skb_reset_inner_mac_header(struct sk_buff *skb)
+{
+	skb->inner_mac_header = skb->data;
+}
+
+static inline void skb_set_inner_mac_header(struct sk_buff *skb,
+						const int offset)
+{
+	skb->inner_mac_header = skb->data + offset;
+}
 static inline bool skb_transport_header_was_set(const struct sk_buff *skb)
 {
 	return skb->transport_header != NULL;
@@ -2803,6 +2853,8 @@ static inline void skb_checksum_none_assert(const struct sk_buff *skb)
 }
 
 bool skb_partial_csum_set(struct sk_buff *skb, u16 start, u16 off);
+
+u32 __skb_get_poff(const struct sk_buff *skb);
 
 /**
  * skb_head_is_locked - Determine if the skb->head is locked down
