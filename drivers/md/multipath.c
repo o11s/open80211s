@@ -83,7 +83,8 @@ static void multipath_end_bh_io (struct multipath_bh *mp_bh, int err)
 	mempool_free(mp_bh, conf->pool);
 }
 
-static void multipath_end_request(struct bio *bio, int error)
+static void multipath_end_request(struct bio *bio, int error,
+				  struct batch_complete *batch)
 {
 	int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct multipath_bh *mp_bh = bio->bi_private;

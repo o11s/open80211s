@@ -835,7 +835,8 @@ static ssize_t pscsi_show_configfs_dev_params(struct se_device *dev, char *b)
 	return bl;
 }
 
-static void pscsi_bi_endio(struct bio *bio, int error)
+static void pscsi_bi_endio(struct bio *bio, int error,
+			   struct batch_complete *batch)
 {
 	bio_put(bio);
 }

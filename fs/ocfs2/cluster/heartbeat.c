@@ -372,8 +372,8 @@ static void o2hb_wait_on_io(struct o2hb_region *reg,
 	wait_for_completion(&wc->wc_io_complete);
 }
 
-static void o2hb_bio_end_io(struct bio *bio,
-			   int error)
+static void o2hb_bio_end_io(struct bio *bio, int error,
+			    struct batch_complete *batch)
 {
 	struct o2hb_bio_wait_ctxt *wc = bio->bi_private;
 

@@ -139,7 +139,7 @@ static const struct rtc_class_ops pcap_rtc_ops = {
 	.alarm_irq_enable = pcap_rtc_alarm_irq_enable,
 };
 
-static int pcap_rtc_probe(struct platform_device *pdev)
+static int __init pcap_rtc_probe(struct platform_device *pdev)
 {
 	struct pcap_rtc *pcap_rtc;
 	int timer_irq, alarm_irq;
@@ -183,7 +183,7 @@ fail_rtc:
 	return err;
 }
 
-static int pcap_rtc_remove(struct platform_device *pdev)
+static int __exit pcap_rtc_remove(struct platform_device *pdev)
 {
 	struct pcap_rtc *pcap_rtc = platform_get_drvdata(pdev);
 
@@ -196,25 +196,14 @@ static int pcap_rtc_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver pcap_rtc_driver = {
-	.remove = pcap_rtc_remove,
+	.remove = __exit_p(pcap_rtc_remove),
 	.driver = {
 		.name  = "pcap-rtc",
 		.owner = THIS_MODULE,
 	},
 };
 
-static int __init rtc_pcap_init(void)
-{
-	return platform_driver_probe(&pcap_rtc_driver, pcap_rtc_probe);
-}
-
-static void __exit rtc_pcap_exit(void)
-{
-	platform_driver_unregister(&pcap_rtc_driver);
-}
-
-module_init(rtc_pcap_init);
-module_exit(rtc_pcap_exit);
+module_platform_driver_probe(pcap_rtc_driver, pcap_rtc_probe);
 
 MODULE_DESCRIPTION("Motorola pcap rtc driver");
 MODULE_AUTHOR("guiming zhuo <gmzhuo@gmail.com>");

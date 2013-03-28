@@ -669,7 +669,8 @@ static int btree_io_failed_hook(struct page *page, int failed_mirror)
 	return -EIO;	/* we fixed nothing */
 }
 
-static void end_workqueue_bio(struct bio *bio, int err)
+static void end_workqueue_bio(struct bio *bio, int err,
+			      struct batch_complete *batch)
 {
 	struct end_io_wq *end_io_wq = bio->bi_private;
 	struct btrfs_fs_info *fs_info;
@@ -2951,7 +2952,8 @@ static int write_dev_supers(struct btrfs_device *device,
  * endio for the write_dev_flush, this will wake anyone waiting
  * for the barrier when it is done
  */
-static void btrfs_end_empty_barrier(struct bio *bio, int err)
+static void btrfs_end_empty_barrier(struct bio *bio, int err,
+				    struct batch_complete *batch)
 {
 	if (err) {
 		if (err == -EOPNOTSUPP)

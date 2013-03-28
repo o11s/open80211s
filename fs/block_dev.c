@@ -27,6 +27,7 @@
 #include <linux/namei.h>
 #include <linux/log2.h>
 #include <linux/cleancache.h>
+#include <linux/aio.h>
 #include <asm/uaccess.h>
 #include "internal.h"
 
@@ -616,11 +617,9 @@ void bd_forget(struct inode *inode)
 	struct block_device *bdev = NULL;
 
 	spin_lock(&bdev_lock);
-	if (inode->i_bdev) {
-		if (!sb_is_blkdev_sb(inode->i_sb))
-			bdev = inode->i_bdev;
-		__bd_forget(inode);
-	}
+	if (!sb_is_blkdev_sb(inode->i_sb))
+		bdev = inode->i_bdev;
+	__bd_forget(inode);
 	spin_unlock(&bdev_lock);
 
 	if (bdev)

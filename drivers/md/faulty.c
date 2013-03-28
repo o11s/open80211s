@@ -70,7 +70,8 @@
 #include <linux/seq_file.h>
 
 
-static void faulty_fail(struct bio *bio, int error)
+static void faulty_fail(struct bio *bio, int error,
+			struct batch_complete *batch)
 {
 	struct bio *b = bio->bi_private;
 

@@ -929,7 +929,8 @@ static void crypt_dec_pending(struct dm_crypt_io *io)
  * The work is done per CPU global for all dm-crypt instances.
  * They should not depend on each other and do not block.
  */
-static void crypt_endio(struct bio *clone, int error)
+static void crypt_endio(struct bio *clone, int error,
+			struct batch_complete *batch)
 {
 	struct dm_crypt_io *io = clone->bi_private;
 	struct crypt_config *cc = io->cc;

@@ -164,7 +164,8 @@ static void bcon_advance_console_bytes(struct blockconsole *bc, int bytes)
 	} while (cmpxchg64(&bc->console_bytes, old, new) != old);
 }
 
-static void request_complete(struct bio *bio, int err)
+static void request_complete(struct bio *bio, int err,
+			     struct batch_complete *batch)
 {
 	complete((struct completion *)bio->bi_private);
 }
@@ -289,7 +290,7 @@ static void bcon_unregister(struct work_struct *work)
 }
 
 #define BCON_MAX_ERRORS	10
-static void bcon_end_io(struct bio *bio, int err)
+static void bcon_end_io(struct bio *bio, int err, struct batch_complete *batch)
 {
 	struct bcon_bio *bcon_bio = container_of(bio, struct bcon_bio, bio);
 	struct blockconsole *bc = bio->bi_private;

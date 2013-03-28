@@ -61,8 +61,8 @@
  * - A woken up task may not even touch the semaphore array anymore, it may
  *   have been destroyed already by a semctl(RMID).
  * - The synchronizations between wake-ups due to a timeout/signal and a
- *   wake-up due to a completed semaphore operation is achieved by using an
- *   intermediate state (IN_WAKEUP).
+ *   wake-up due to a completed semaphore operation is achieved by using a
+ *   special wakeup scheme (queuewakeup_wait and support functions)
  * - UNDO values are stored in an array (one per process and per
  *   semaphore array, lazily allocated). For backwards compatibility, multiple
  *   modes for the UNDO variables are supported (per process, per thread)
@@ -90,16 +90,145 @@
 #include <asm/uaccess.h>
 #include "util.h"
 
+
+#ifdef CONFIG_PREEMPT_RT_BASE
+	#define SYSVSEM_COMPLETION 1
+#else
+	#define SYSVSEM_CUSTOM 1
+#endif
+
+#ifdef SYSVSEM_COMPLETION
+	/* Using a completion causes some overhead, but avoids a busy loop
+	 * that increases the worst case latency.
+	 */
+	struct queue_done {
+		struct completion done;
+	};
+
+	static void queuewakeup_prepare(void)
+	{
+		/* no preparation necessary */
+	}
+
+	static void queuewakeup_completed(void)
+	{
+		/* empty */
+	}
+
+	static void queuewakeup_block(struct queue_done *qd)
+	{
+		/* empty */
+	}
+
+	static void queuewakeup_handsoff(struct queue_done *qd)
+	{
+		complete_all(&qd->done);
+	}
+
+	static void queuewakeup_init(struct queue_done *qd)
+	{
+		init_completion(&qd->done);
+	}
+
+	static void queuewakeup_wait(struct queue_done *qd)
+	{
+		wait_for_completion(&qd->done);
+	}
+
+#elif defined(SYSVSEM_SPINLOCK)
+	/* Note: Spinlocks do not work because:
+	 * - lockdep complains [could be fixed]
+	 * - only 255 concurrent spin_lock() calls are permitted, then the
+	 *   preempt-counter overflows
+	 */
+#error SYSVSEM_SPINLOCK is a prove of concept, does not work.
+	struct queue_done {
+		spinlock_t done;
+	};
+
+	static void queuewakeup_prepare(void)
+	{
+		/* empty */
+	}
+
+	static void queuewakeup_completed(void)
+	{
+		/* empty */
+	}
+
+	static void queuewakeup_block(struct queue_done *qd)
+	{
+		BUG_ON(spin_is_locked(&qd->done));
+		spin_lock(&qd->done);
+	}
+
+	static void queuewakeup_handsoff(struct queue_done *qd)
+	{
+		spin_unlock(&qd->done);
+	}
+
+	static void queuewakeup_init(struct queue_done *qd)
+	{
+		spin_lock_init(&qd->done);
+	}
+
+	static void queuewakeup_wait(struct queue_done *qd)
+	{
+		spin_unlock_wait(&qd->done);
+	}
+#else
+	struct queue_done {
+		atomic_t done;
+	};
+
+	static void queuewakeup_prepare(void)
+	{
+		preempt_disable();
+	}
+
+	static void queuewakeup_completed(void)
+	{
+		preempt_enable();
+	}
+
+	static void queuewakeup_block(struct queue_done *qd)
+	{
+		BUG_ON(atomic_read(&qd->done) != 1);
+		atomic_set(&qd->done, 2);
+	}
+
+	static void queuewakeup_handsoff(struct queue_done *qd)
+	{
+		BUG_ON(atomic_read(&qd->done) != 2);
+		smp_mb();
+		atomic_set(&qd->done, 1);
+	}
+
+	static void queuewakeup_init(struct queue_done *qd)
+	{
+		atomic_set(&qd->done, 1);
+	}
+
+	static void queuewakeup_wait(struct queue_done *qd)
+	{
+		while (atomic_read(&qd->done) != 1)
+			cpu_relax();
+
+		smp_mb();
+	}
+#endif
+
+
 /* One semaphore structure for each semaphore in the system. */
 struct sem {
 	int	semval;		/* current value */
 	int	sempid;		/* pid of last operation */
+	spinlock_t	lock;	/* spinlock for fine-grained semtimedop */
 	struct list_head sem_pending; /* pending single-sop operations */
 };
 
 /* One queue for each sleeping process in the system. */
 struct sem_queue {
-	struct list_head	simple_list; /* queue of pending operations */
 	struct list_head	list;	 /* queue of pending operations */
 	struct task_struct	*sleeper; /* this process */
 	struct sem_undo		*undo;	 /* undo structure */
@@ -108,6 +237,7 @@ struct sem_queue {
 	struct sembuf		*sops;	 /* array of pending operations */
 	int			nsops;	 /* number of operations */
 	int			alter;	 /* does *sops alter the array? */
+	struct queue_done	done;	 /* completion synchronization */
 };
 
 /* Each task has a list of undo requests. They are executed automatically
@@ -138,7 +268,6 @@ struct sem_undo_list {
 
 #define sem_ids(ns)	((ns)->ids[IPC_SEM_IDS])
 
-#define sem_unlock(sma)		ipc_unlock(&(sma)->sem_perm)
 #define sem_checkid(sma, semid)	ipc_checkid(&sma->sem_perm, semid)
 
 static int newary(struct ipc_namespace *, struct ipc_params *);
@@ -191,47 +320,147 @@ void __init sem_init (void)
 }
 
 /*
+ * If the sem_array contains just one semaphore, or if multiple
+ * semops are performed in one syscall, or if there are complex
+ * operations pending, the whole sem_array is locked.
+ * If one semop is performed on an array with multiple semaphores,
+ * get a shared lock on the array, and lock the individual semaphore.
+ *
+ * Carefully guard against sma->complex_count changing between zero
+ * and non-zero while we are spinning for the lock. The value of
+ * sma->complex_count cannot change while we are holding the lock,
+ * so sem_unlock should be fine.
+ */
+static inline int sem_lock(struct sem_array *sma, struct sembuf *sops,
+			      int nsops)
+{
+	int locknum;
+	if (nsops == 1 && !sma->complex_count) {
+		struct sem *sem = sma->sem_base + sops->sem_num;
+
+		/* Lock just the semaphore we are interested in. */
+		spin_lock(&sem->lock);
+
+		/*
+		 * If sma->complex_count was set while we were spinning,
+		 * we may need to look at things we did not lock here.
+		 */
+		if (unlikely(sma->complex_count)) {
+			spin_unlock(&sem->lock);
+			goto lock_all;
+		}
+		locknum = sops->sem_num;
+	} else {
+		int i;
+		/* Lock the sem_array, and all the semaphore locks */
+ lock_all:
+		spin_lock(&sma->sem_perm.lock);
+		for (i = 0; i < sma->sem_nsems; i++) {
+			struct sem *sem = sma->sem_base + i;
+			spin_lock(&sem->lock);
+		}
+		locknum = -1;
+	}
+	return locknum;
+}
+
+static inline void sem_unlock(struct sem_array *sma, int locknum)
+{
+	if (locknum == -1) {
+		int i;
+		for (i = 0; i < sma->sem_nsems; i++) {
+			struct sem *sem = sma->sem_base + i;
+			spin_unlock(&sem->lock);
+		}
+		spin_unlock(&sma->sem_perm.lock);
+	} else {
+		struct sem *sem = sma->sem_base + locknum;
+		spin_unlock(&sem->lock);
+	}
+	rcu_read_unlock();
+}
+
+/*
  * sem_lock_(check_) routines are called in the paths where the rw_mutex
  * is not held.
  */
-static inline struct sem_array *sem_lock(struct ipc_namespace *ns, int id)
+static inline struct sem_array *sem_obtain_lock(struct ipc_namespace *ns,
+			int id, struct sembuf *sops, int nsops, int *locknum)
 {
-	struct kern_ipc_perm *ipcp = ipc_lock(&sem_ids(ns), id);
+	struct kern_ipc_perm *ipcp;
+	struct sem_array *sma;
+
+	rcu_read_lock();
+	ipcp = ipc_obtain_object(&sem_ids(ns), id);
+	if (IS_ERR(ipcp)) {
+		sma = ERR_CAST(ipcp);
+		goto err;
+	}
+
+	sma = container_of(ipcp, struct sem_array, sem_perm);
+	*locknum = sem_lock(sma, sops, nsops);
+
+	/* ipc_rmid() may have already freed the ID while sem_lock
+	 * was spinning: verify that the structure is still valid
+	 */
+	if (!ipcp->deleted)
+		return container_of(ipcp, struct sem_array, sem_perm);
+
+	sem_unlock(sma, *locknum);
+	sma = ERR_PTR(-EINVAL);
+err:
+	rcu_read_unlock();
+	return sma;
+}
+
+static inline struct sem_array *sem_obtain_object(struct ipc_namespace *ns, int id)
+{
+	struct kern_ipc_perm *ipcp = ipc_obtain_object(&sem_ids(ns), id);
 
 	if (IS_ERR(ipcp))
-		return (struct sem_array *)ipcp;
+		return ERR_CAST(ipcp);
 
 	return container_of(ipcp, struct sem_array, sem_perm);
 }
 
-static inline struct sem_array *sem_lock_check(struct ipc_namespace *ns,
-						int id)
+static inline struct sem_array *sem_obtain_object_check(struct ipc_namespace *ns,
+							int id)
 {
-	struct kern_ipc_perm *ipcp = ipc_lock_check(&sem_ids(ns), id);
+	struct kern_ipc_perm *ipcp = ipc_obtain_object_check(&sem_ids(ns), id);
 
 	if (IS_ERR(ipcp))
-		return (struct sem_array *)ipcp;
+		return ERR_CAST(ipcp);
 
 	return container_of(ipcp, struct sem_array, sem_perm);
 }
 
 static inline void sem_lock_and_putref(struct sem_array *sma)
 {
-	ipc_lock_by_ptr(&sma->sem_perm);
+	rcu_read_lock();
+	sem_lock(sma, NULL, -1);
 	ipc_rcu_putref(sma);
 }
 
 static inline void sem_getref_and_unlock(struct sem_array *sma)
 {
 	ipc_rcu_getref(sma);
-	ipc_unlock(&(sma)->sem_perm);
+	sem_unlock(sma, -1);
 }
 
 static inline void sem_putref(struct sem_array *sma)
 {
-	ipc_lock_by_ptr(&sma->sem_perm);
-	ipc_rcu_putref(sma);
-	ipc_unlock(&(sma)->sem_perm);
+	sem_lock_and_putref(sma);
+	sem_unlock(sma, -1);
+}
+
+/*
+ * Call inside the rcu read section.
+ */
+static inline void sem_getref(struct sem_array *sma)
+{
+	sem_lock(sma, NULL, -1);
+	ipc_rcu_getref(sma);
+	sem_unlock(sma, -1);
 }
 
 static inline void sem_rmid(struct ipc_namespace *ns, struct sem_array *s)
@@ -245,23 +474,27 @@ static inline void sem_rmid(struct ipc_namespace *ns, struct sem_array *s)
  * - queue.status is initialized to -EINTR before blocking.
  * - wakeup is performed by
  *	* unlinking the queue entry from sma->sem_pending
- *	* setting queue.status to IN_WAKEUP
- *	  This is the notification for the blocked thread that a
- *	  result value is imminent.
+ *	* setting queue.status to the actual result code
+ *	  This is the notification for the blocked thread that someone
+ *	  (usually: update_queue()) completed the semtimedop() operation.
  *	* call wake_up_process
- *	* set queue.status to the final value.
+ *	* queuewakeup_handsoff(&q->done);
  * - the previously blocked thread checks queue.status:
- *   	* if it's IN_WAKEUP, then it must wait until the value changes
- *   	* if it's not -EINTR, then the operation was completed by
- *   	  update_queue. semtimedop can return queue.status without
- *   	  performing any operation on the sem array.
- *   	* otherwise it must acquire the spinlock and check what's up.
+ *	* if it's not -EINTR, then someone completed the operation.
+ *	  First, queuewakeup_wait() must be called. Afterwards,
+ *	  semtimedop must return queue.status without performing any
+ *	  operation on the sem array.
+ *	  - otherwise it must acquire the spinlock and repeat the test
+ *	  - If it is still -EINTR, then no update_queue() completed the
+ *	    operation, thus semtimedop() can proceed normally.
  *
- * The two-stage algorithm is necessary to protect against the following
+ * queuewakeup_wait() is necessary to protect against the following
  * races:
  * - if queue.status is set after wake_up_process, then the woken up idle
  *   thread could race forward and try (and fail) to acquire sma->lock
- *   before update_queue had a chance to set queue.status
+ *   before update_queue had a chance to set queue.status.
+ *   More importantly, it would mean that wake_up_process must be done
+ *   while holding sma->lock, i.e. this would reduce the scalability.
  * - if queue.status is written before wake_up_process and if the
  *   blocked process is woken up by a signal between writing
  *   queue.status and the wake_up_process, then the woken up
@@ -271,7 +504,6 @@ static inline void sem_rmid(struct ipc_namespace *ns, struct sem_array *s)
  *   (yes, this happened on s390 with sysv msg).
  *
  */
-#define IN_WAKEUP	1
 
 /**
  * newary - Create a new semaphore set
@@ -324,15 +556,18 @@ static int newary(struct ipc_namespace *ns, struct ipc_params *params)
 
 	sma->sem_base = (struct sem *) &sma[1];
 
-	for (i = 0; i < nsems; i++)
+	for (i = 0; i < nsems; i++) {
 		INIT_LIST_HEAD(&sma->sem_base[i].sem_pending);
+		spin_lock_init(&sma->sem_base[i].lock);
+		spin_lock(&sma->sem_base[i].lock);
+	}
 
 	sma->complex_count = 0;
 	INIT_LIST_HEAD(&sma->sem_pending);
 	INIT_LIST_HEAD(&sma->list_id);
 	sma->sem_nsems = nsems;
 	sma->sem_ctime = get_seconds();
-	sem_unlock(sma);
+	sem_unlock(sma, -1);
 
 	return sma->sem_perm.id;
 }
@@ -461,17 +696,13 @@ undo:
 static void wake_up_sem_queue_prepare(struct list_head *pt,
 				struct sem_queue *q, int error)
 {
-	if (list_empty(pt)) {
-		/*
-		 * Hold preempt off so that we don't get preempted and have the
-		 * wakee busy-wait until we're scheduled back on.
-		 */
-		preempt_disable();
-	}
-	q->status = IN_WAKEUP;
-	q->pid = error;
+	if (list_empty(pt))
+		queuewakeup_prepare();
 
-	list_add_tail(&q->simple_list, pt);
+	queuewakeup_block(&q->done);
+	q->status = error;
+
+	list_add_tail(&q->list, pt);
 }
 
 /**
@@ -480,8 +711,8 @@ static void wake_up_sem_queue_prepare(struct list_head *pt,
  *
  * Do the actual wake-up.
  * The function is called without any locks held, thus the semaphore array
- * could be destroyed already and the tasks can disappear as soon as the
- * status is set to the actual return code.
+ * could be destroyed already and the tasks can disappear as soon as
+ * queuewakeup_handsoff() is called.
  */
 static void wake_up_sem_queue_do(struct list_head *pt)
 {
@@ -489,22 +720,19 @@ static void wake_up_sem_queue_do(struct list_head *pt)
 	int did_something;
 
 	did_something = !list_empty(pt);
-	list_for_each_entry_safe(q, t, pt, simple_list) {
+	list_for_each_entry_safe(q, t, pt, list) {
 		wake_up_process(q->sleeper);
-		/* q can disappear immediately after writing q->status. */
-		smp_wmb();
-		q->status = q->pid;
+		/* q can disappear immediately after completing q->done */
+		queuewakeup_handsoff(&q->done);
 	}
 	if (did_something)
-		preempt_enable();
+		queuewakeup_completed();
 }
 
 static void unlink_queue(struct sem_array *sma, struct sem_queue *q)
 {
 	list_del(&q->list);
-	if (q->nsops == 1)
-		list_del(&q->simple_list);
-	else
+	if (q->nsops > 1)
 		sma->complex_count--;
 }
 
@@ -557,9 +785,9 @@ static int check_restart(struct sem_array *sma, struct sem_queue *q)
 	}
 	/*
 	 * semval is 0. Check if there are wait-for-zero semops.
-	 * They must be the first entries in the per-semaphore simple queue
+	 * They must be the first entries in the per-semaphore queue
 	 */
-	h = list_first_entry(&curr->sem_pending, struct sem_queue, simple_list);
+	h = list_first_entry(&curr->sem_pending, struct sem_queue, list);
 	BUG_ON(h->nsops != 1);
 	BUG_ON(h->sops[0].sem_num != q->sops[0].sem_num);
 
@@ -579,8 +807,9 @@ static int check_restart(struct sem_array *sma, struct sem_queue *q)
  * @pt: list head for the tasks that must be woken up.
  *
  * update_queue must be called after a semaphore in a semaphore array
- * was modified. If multiple semaphore were modified, then @semnum
- * must be set to -1.
+ * was modified. If multiple semaphores were modified, update_queue must
+ * be called with semnum = -1, as well as with the number of each modified
+ * semaphore.
  * The tasks that must be woken up are added to @pt. The return code
  * is stored in q->pid.
  * The function return 1 if at least one semop was completed successfully.
@@ -590,30 +819,19 @@ static int update_queue(struct sem_array *sma, int semnum, struct list_head *pt)
 	struct sem_queue *q;
 	struct list_head *walk;
 	struct list_head *pending_list;
-	int offset;
 	int semop_completed = 0;
 
-	/* if there are complex operations around, then knowing the semaphore
-	 * that was modified doesn't help us. Assume that multiple semaphores
-	 * were modified.
-	 */
-	if (sma->complex_count)
-		semnum = -1;
-
-	if (semnum == -1) {
+	if (semnum == -1)
 		pending_list = &sma->sem_pending;
-		offset = offsetof(struct sem_queue, list);
-	} else {
+	else
 		pending_list = &sma->sem_base[semnum].sem_pending;
-		offset = offsetof(struct sem_queue, simple_list);
-	}
 
 again:
 	walk = pending_list->next;
 	while (walk != pending_list) {
 		int error, restart;
 
-		q = (struct sem_queue *)((char *)walk - offset);
+		q = container_of(walk, struct sem_queue, list);
 		walk = walk->next;
 
 		/* If we are scanning the single sop, per-semaphore list of
@@ -672,9 +890,18 @@ static void do_smart_update(struct sem_array *sma, struct sembuf *sops, int nsop
 	if (sma->complex_count || sops == NULL) {
 		if (update_queue(sma, -1, pt))
 			otime = 1;
+	}
+
+	if (!sops) {
+		/* No semops; something special is going on. */
+		for (i = 0; i < sma->sem_nsems; i++) {
+			if (update_queue(sma, i, pt))
+				otime = 1;
+		}
 		goto done;
 	}
 
+	/* Check the semaphores that were modified. */
 	for (i = 0; i < nsops; i++) {
 		if (sops[i].sem_op > 0 ||
 			(sops[i].sem_op < 0 &&
@@ -745,6 +972,7 @@ static void freeary(struct ipc_namespace *ns, struct kern_ipc_perm *ipcp)
 	struct sem_queue *q, *tq;
 	struct sem_array *sma = container_of(ipcp, struct sem_array, sem_perm);
 	struct list_head tasks;
+	int i;
 
 	/* Free the existing undo structures for this semaphore set.  */
 	assert_spin_locked(&sma->sem_perm.lock);
@@ -763,10 +991,17 @@ static void freeary(struct ipc_namespace *ns, struct kern_ipc_perm *ipcp)
 		unlink_queue(sma, q);
 		wake_up_sem_queue_prepare(&tasks, q, -EIDRM);
 	}
+	for (i = 0; i < sma->sem_nsems; i++) {
+		struct sem *sem = sma->sem_base + i;
+		list_for_each_entry_safe(q, tq, &sem->sem_pending, list) {
+			unlink_queue(sma, q);
+			wake_up_sem_queue_prepare(&tasks, q, -EIDRM);
+		}
+	}
 
 	/* Remove the semaphore set from the IDR */
 	sem_rmid(ns, sma);
-	sem_unlock(sma);
+	sem_unlock(sma, -1);
 
 	wake_up_sem_queue_do(&tasks);
 	ns->used_sems -= sma->sem_nsems;
@@ -842,18 +1077,25 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 	case SEM_STAT:
 	{
 		struct semid64_ds tbuf;
-		int id;
+		int id = 0;
+
+		memset(&tbuf, 0, sizeof(tbuf));
 
 		if (cmd == SEM_STAT) {
-			sma = sem_lock(ns, semid);
-			if (IS_ERR(sma))
-				return PTR_ERR(sma);
+			rcu_read_lock();
+			sma = sem_obtain_object(ns, semid);
+			if (IS_ERR(sma)) {
+				err = PTR_ERR(sma);
+				goto out_unlock;
+			}
 			id = sma->sem_perm.id;
 		} else {
-			sma = sem_lock_check(ns, semid);
-			if (IS_ERR(sma))
-				return PTR_ERR(sma);
-			id = 0;
+			rcu_read_lock();
+			sma = sem_obtain_object_check(ns, semid);
+			if (IS_ERR(sma)) {
+				err = PTR_ERR(sma);
+				goto out_unlock;
+			}
 		}
 
 		err = -EACCES;
@@ -864,13 +1106,11 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 		if (err)
 			goto out_unlock;
 
-		memset(&tbuf, 0, sizeof(tbuf));
-
 		kernel_to_ipc64_perm(&sma->sem_perm, &tbuf.sem_perm);
 		tbuf.sem_otime  = sma->sem_otime;
 		tbuf.sem_ctime  = sma->sem_ctime;
 		tbuf.sem_nsems  = sma->sem_nsems;
-		sem_unlock(sma);
+		rcu_read_unlock();
 		if (copy_semid_to_user(p, &tbuf, version))
 			return -EFAULT;
 		return id;
@@ -879,7 +1119,7 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 		return -EINVAL;
 	}
 out_unlock:
-	sem_unlock(sma);
+	rcu_read_unlock();
 	return err;
 }
 
@@ -890,7 +1130,6 @@ static int semctl_setval(struct ipc_namespace *ns, int semid, int semnum,
 	struct sem_array *sma;
 	struct sem* curr;
 	int err;
-	int nsems;
 	struct list_head tasks;
 	int val;
 #if defined(CONFIG_64BIT) && defined(__BIG_ENDIAN)
@@ -901,30 +1140,38 @@ static int semctl_setval(struct ipc_namespace *ns, int semid, int semnum,
 	val = arg;
 #endif
 
-	sma = sem_lock_check(ns, semid);
-	if (IS_ERR(sma))
-		return PTR_ERR(sma);
+	if (val > SEMVMX || val < 0)
+		return -ERANGE;
 
 	INIT_LIST_HEAD(&tasks);
-	nsems = sma->sem_nsems;
 
-	err = -EACCES;
-	if (ipcperms(ns, &sma->sem_perm, S_IWUGO))
-		goto out_unlock;
+	rcu_read_lock();
+	sma = sem_obtain_object_check(ns, semid);
+	if (IS_ERR(sma)) {
+		rcu_read_unlock();
+		return PTR_ERR(sma);
+	}
+
+	if (semnum < 0 || semnum >= sma->sem_nsems) {
+		rcu_read_unlock();
+		return -EINVAL;
+	}
+
+
+	if (ipcperms(ns, &sma->sem_perm, S_IWUGO)) {
+		rcu_read_unlock();
+		return -EACCES;
+	}
 
 	err = security_sem_semctl(sma, SETVAL);
-	if (err)
-		goto out_unlock;
+	if (err) {
+		rcu_read_unlock();
+		return -EACCES;
+	}
 
-	err = -EINVAL;
-	if(semnum < 0 || semnum >= nsems)
-		goto out_unlock;
+	sem_lock(sma, NULL, -1);
 
 	curr = &sma->sem_base[semnum];
-
-	err = -ERANGE;
-	if (val > SEMVMX || val < 0)
-		goto out_unlock;
 
 	assert_spin_locked(&sma->sem_perm.lock);
 	list_for_each_entry(un, &sma->list_id, list_id)
@@ -935,11 +1182,9 @@ static int semctl_setval(struct ipc_namespace *ns, int semid, int semnum,
 	sma->sem_ctime = get_seconds();
 	/* maybe some queued-up processes were waiting for this */
 	do_smart_update(sma, NULL, 0, 0, &tasks);
-	err = 0;
-out_unlock:
-	sem_unlock(sma);
+	sem_unlock(sma, -1);
 	wake_up_sem_queue_do(&tasks);
-	return err;
+	return 0;
 }
 
 static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
@@ -947,27 +1192,34 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 {
 	struct sem_array *sma;
 	struct sem* curr;
-	int err;
+	int err, nsems;
 	ushort fast_sem_io[SEMMSL_FAST];
 	ushort* sem_io = fast_sem_io;
-	int nsems;
 	struct list_head tasks;
 
-	sma = sem_lock_check(ns, semid);
-	if (IS_ERR(sma))
-		return PTR_ERR(sma);
-
 	INIT_LIST_HEAD(&tasks);
+
+	rcu_read_lock();
+	sma = sem_obtain_object_check(ns, semid);
+	if (IS_ERR(sma)) {
+		rcu_read_unlock();
+		return PTR_ERR(sma);
+	}
+
 	nsems = sma->sem_nsems;
 
 	err = -EACCES;
 	if (ipcperms(ns, &sma->sem_perm,
-			cmd == SETALL ? S_IWUGO : S_IRUGO))
-		goto out_unlock;
+			cmd == SETALL ? S_IWUGO : S_IRUGO)) {
+		rcu_read_unlock();
+		goto out_wakeup;
+	}
 
 	err = security_sem_semctl(sma, cmd);
-	if (err)
-		goto out_unlock;
+	if (err) {
+		rcu_read_unlock();
+		goto out_wakeup;
+	}
 
 	err = -EACCES;
 	switch (cmd) {
@@ -977,7 +1229,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		int i;
 
 		if(nsems > SEMMSL_FAST) {
-			sem_getref_and_unlock(sma);
+			sem_getref(sma);
 
 			sem_io = ipc_alloc(sizeof(ushort)*nsems);
 			if(sem_io == NULL) {
@@ -987,15 +1239,17 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 
 			sem_lock_and_putref(sma);
 			if (sma->sem_perm.deleted) {
-				sem_unlock(sma);
+				sem_unlock(sma, -1);
 				err = -EIDRM;
 				goto out_free;
 			}
+			sem_unlock(sma, -1);
 		}
 
+		sem_lock(sma, NULL, -1);
 		for (i = 0; i < sma->sem_nsems; i++)
 			sem_io[i] = sma->sem_base[i].semval;
-		sem_unlock(sma);
+		sem_unlock(sma, -1);
 		err = 0;
 		if(copy_to_user(array, sem_io, nsems*sizeof(ushort)))
 			err = -EFAULT;
@@ -1006,7 +1260,8 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		int i;
 		struct sem_undo *un;
 
-		sem_getref_and_unlock(sma);
+		ipc_rcu_getref(sma);
+		rcu_read_unlock();
 
 		if(nsems > SEMMSL_FAST) {
 			sem_io = ipc_alloc(sizeof(ushort)*nsems);
@@ -1031,7 +1286,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		}
 		sem_lock_and_putref(sma);
 		if (sma->sem_perm.deleted) {
-			sem_unlock(sma);
+			sem_unlock(sma, -1);
 			err = -EIDRM;
 			goto out_free;
 		}
@@ -1056,6 +1311,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 	if(semnum < 0 || semnum >= nsems)
 		goto out_unlock;
 
+	sem_lock(sma, NULL, -1);
 	curr = &sma->sem_base[semnum];
 
 	switch (cmd) {
@@ -1072,10 +1328,11 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		err = count_semzcnt(sma,semnum);
 		goto out_unlock;
 	}
-out_unlock:
-	sem_unlock(sma);
-	wake_up_sem_queue_do(&tasks);
 
+out_unlock:
+	sem_unlock(sma, -1);
+out_wakeup:
+	wake_up_sem_queue_do(&tasks);
 out_free:
 	if(sem_io != fast_sem_io)
 		ipc_free(sem_io, sizeof(ushort)*nsems);
@@ -1126,33 +1383,39 @@ static int semctl_down(struct ipc_namespace *ns, int semid,
 			return -EFAULT;
 	}
 
-	ipcp = ipcctl_pre_down(ns, &sem_ids(ns), semid, cmd,
-			       &semid64.sem_perm, 0);
+	ipcp = ipcctl_pre_down_nolock(ns, &sem_ids(ns), semid, cmd,
+				      &semid64.sem_perm, 0);
 	if (IS_ERR(ipcp))
 		return PTR_ERR(ipcp);
 
 	sma = container_of(ipcp, struct sem_array, sem_perm);
 
 	err = security_sem_semctl(sma, cmd);
-	if (err)
+	if (err) {
+		rcu_read_unlock();
 		goto out_unlock;
+	}
 
 	switch(cmd){
 	case IPC_RMID:
+		sem_lock(sma, NULL, -1);
 		freeary(ns, ipcp);
 		goto out_up;
 	case IPC_SET:
+		sem_lock(sma, NULL, -1);
 		err = ipc_update_perm(&semid64.sem_perm, ipcp);
 		if (err)
 			goto out_unlock;
 		sma->sem_ctime = get_seconds();
 		break;
 	default:
+		rcu_read_unlock();
 		err = -EINVAL;
+		goto out_up;
 	}
 
 out_unlock:
-	sem_unlock(sma);
+	sem_unlock(sma, -1);
 out_up:
 	up_write(&sem_ids(ns).rw_mutex);
 	return err;
@@ -1277,16 +1540,18 @@ static struct sem_undo *find_alloc_undo(struct ipc_namespace *ns, int semid)
 	spin_unlock(&ulp->lock);
 	if (likely(un!=NULL))
 		goto out;
-	rcu_read_unlock();
 
 	/* no undo structure around - allocate one. */
 	/* step 1: figure out the size of the semaphore array */
-	sma = sem_lock_check(ns, semid);
-	if (IS_ERR(sma))
+	sma = sem_obtain_object_check(ns, semid);
+	if (IS_ERR(sma)) {
+		rcu_read_unlock();
 		return ERR_CAST(sma);
+	}
 
 	nsems = sma->sem_nsems;
-	sem_getref_and_unlock(sma);
+	ipc_rcu_getref(sma);
+	rcu_read_unlock();
 
 	/* step 2: allocate new undo structure */
 	new = kzalloc(sizeof(struct sem_undo) + sizeof(short)*nsems, GFP_KERNEL);
@@ -1298,7 +1563,7 @@ static struct sem_undo *find_alloc_undo(struct ipc_namespace *ns, int semid)
 	/* step 3: Acquire the lock on semaphore array */
 	sem_lock_and_putref(sma);
 	if (sma->sem_perm.deleted) {
-		sem_unlock(sma);
+		sem_unlock(sma, -1);
 		kfree(new);
 		un = ERR_PTR(-EIDRM);
 		goto out;
@@ -1326,37 +1591,10 @@ static struct sem_undo *find_alloc_undo(struct ipc_namespace *ns, int semid)
 success:
 	spin_unlock(&ulp->lock);
 	rcu_read_lock();
-	sem_unlock(sma);
+	sem_unlock(sma, -1);
 out:
 	return un;
 }
-
-
-/**
- * get_queue_result - Retrieve the result code from sem_queue
- * @q: Pointer to queue structure
- *
- * Retrieve the return code from the pending queue. If IN_WAKEUP is found in
- * q->status, then we must loop until the value is replaced with the final
- * value: This may happen if a task is woken up by an unrelated event (e.g.
- * signal) and in parallel the task is woken up by another task because it got
- * the requested semaphores.
- *
- * The function can be called with or without holding the semaphore spinlock.
- */
-static int get_queue_result(struct sem_queue *q)
-{
-	int error;
-
-	error = q->status;
-	while (unlikely(error == IN_WAKEUP)) {
-		cpu_relax();
-		error = q->status;
-	}
-
-	return error;
-}
-
 
 SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 		unsigned, nsops, const struct timespec __user *, timeout)
@@ -1366,7 +1604,7 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	struct sembuf fast_sops[SEMOPM_FAST];
 	struct sembuf* sops = fast_sops, *sop;
 	struct sem_undo *un;
-	int undos = 0, alter = 0, max;
+	int undos = 0, alter = 0, max, locknum;
 	struct sem_queue queue;
 	unsigned long jiffies_left = 0;
 	struct ipc_namespace *ns;
@@ -1421,12 +1659,31 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 
 	INIT_LIST_HEAD(&tasks);
 
-	sma = sem_lock_check(ns, semid);
+	rcu_read_lock();
+	sma = sem_obtain_object_check(ns, semid);
 	if (IS_ERR(sma)) {
 		if (un)
 			rcu_read_unlock();
 		error = PTR_ERR(sma);
 		goto out_free;
+	}
+
+	error = -EFBIG;
+	if (max >= sma->sem_nsems) {
+		rcu_read_unlock();
+		goto out_wakeup;
+	}
+
+	error = -EACCES;
+	if (ipcperms(ns, &sma->sem_perm, alter ? S_IWUGO : S_IRUGO)) {
+		rcu_read_unlock();
+		goto out_wakeup;
+	}
+
+	error = security_sem_semop(sma, sops, nsops, alter);
+	if (error) {
+		rcu_read_unlock();
+		goto out_wakeup;
 	}
 
 	/*
@@ -1437,6 +1694,7 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	 * "un" itself is guaranteed by rcu.
 	 */
 	error = -EIDRM;
+	locknum = sem_lock(sma, sops, nsops);
 	if (un) {
 		if (un->semid == -1) {
 			rcu_read_unlock();
@@ -1453,18 +1711,6 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 			rcu_read_unlock();
 		}
 	}
-
-	error = -EFBIG;
-	if (max >= sma->sem_nsems)
-		goto out_unlock_free;
-
-	error = -EACCES;
-	if (ipcperms(ns, &sma->sem_perm, alter ? S_IWUGO : S_IRUGO))
-		goto out_unlock_free;
-
-	error = security_sem_semop(sma, sops, nsops, alter);
-	if (error)
-		goto out_unlock_free;
 
 	error = try_atomic_semop (sma, sops, nsops, un, task_tgid_vnr(current));
 	if (error <= 0) {
@@ -1483,73 +1729,63 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	queue.undo = un;
 	queue.pid = task_tgid_vnr(current);
 	queue.alter = alter;
-	if (alter)
-		list_add_tail(&queue.list, &sma->sem_pending);
-	else
-		list_add(&queue.list, &sma->sem_pending);
 
 	if (nsops == 1) {
 		struct sem *curr;
 		curr = &sma->sem_base[sops->sem_num];
 
 		if (alter)
-			list_add_tail(&queue.simple_list, &curr->sem_pending);
+			list_add_tail(&queue.list, &curr->sem_pending);
 		else
-			list_add(&queue.simple_list, &curr->sem_pending);
+			list_add(&queue.list, &curr->sem_pending);
 	} else {
-		INIT_LIST_HEAD(&queue.simple_list);
+		if (alter)
+			list_add_tail(&queue.list, &sma->sem_pending);
+		else
+			list_add(&queue.list, &sma->sem_pending);
 		sma->complex_count++;
 	}
 
 	queue.status = -EINTR;
 	queue.sleeper = current;
+	queuewakeup_init(&queue.done);
 
 sleep_again:
 	current->state = TASK_INTERRUPTIBLE;
-	sem_unlock(sma);
+	sem_unlock(sma, locknum);
 
 	if (timeout)
 		jiffies_left = schedule_timeout(jiffies_left);
 	else
 		schedule();
 
-	error = get_queue_result(&queue);
+	error = queue.status;
 
 	if (error != -EINTR) {
 		/* fast path: update_queue already obtained all requested
-		 * resources.
-		 * Perform a smp_mb(): User space could assume that semop()
-		 * is a memory barrier: Without the mb(), the cpu could
-		 * speculatively read in user space stale data that was
-		 * overwritten by the previous owner of the semaphore.
+		 * resources. Just ensure that update_queue completed
+		 * it's access to &queue.
 		 */
-		smp_mb();
+		queuewakeup_wait(&queue.done);
 
 		goto out_free;
 	}
 
-	sma = sem_lock(ns, semid);
+	sma = sem_obtain_lock(ns, semid, sops, nsops, &locknum);
 
 	/*
 	 * Wait until it's guaranteed that no wakeup_sem_queue_do() is ongoing.
 	 */
-	error = get_queue_result(&queue);
-
-	/*
-	 * Array removed? If yes, leave without sem_unlock().
-	 */
-	if (IS_ERR(sma)) {
-		goto out_free;
-	}
-
-
-	/*
-	 * If queue.status != -EINTR we are woken up by another process.
-	 * Leave without unlink_queue(), but with sem_unlock().
-	 */
-
+	error = queue.status;
 	if (error != -EINTR) {
-		goto out_unlock_free;
+		/* If there is a return code, then we can leave immediately. */
+		if (!IS_ERR(sma)) {
+			/* sem_lock() succeeded - then unlock */
+			sem_unlock(sma, locknum);
+		}
+		/* Except that we must wait for the hands-off */
+		queuewakeup_wait(&queue.done);
+		goto out_free;
 	}
 
 	/*
@@ -1567,8 +1803,8 @@ sleep_again:
 	unlink_queue(sma, &queue);
 
 out_unlock_free:
-	sem_unlock(sma);
-
+	sem_unlock(sma, locknum);
+out_wakeup:
 	wake_up_sem_queue_do(&tasks);
 out_free:
 	if(sops != fast_sops)
@@ -1641,12 +1877,14 @@ void exit_sem(struct task_struct *tsk)
 			semid = -1;
 		 else
 			semid = un->semid;
-		rcu_read_unlock();
 
-		if (semid == -1)
+		if (semid == -1) {
+			rcu_read_unlock();
 			break;
+		}
 
-		sma = sem_lock_check(tsk->nsproxy->ipc_ns, un->semid);
+		sma = sem_obtain_object_check(tsk->nsproxy->ipc_ns, un->semid);
+		sem_lock(sma, NULL, -1);
 
 		/* exit_sem raced with IPC_RMID, nothing to do */
 		if (IS_ERR(sma))
@@ -1657,7 +1895,7 @@ void exit_sem(struct task_struct *tsk)
 			/* exit_sem raced with IPC_RMID+semget() that created
 			 * exactly the same semid. Nothing to do.
 			 */
-			sem_unlock(sma);
+			sem_unlock(sma, -1);
 			continue;
 		}
 
@@ -1697,7 +1935,7 @@ void exit_sem(struct task_struct *tsk)
 		/* maybe some queued-up processes were waiting for this */
 		INIT_LIST_HEAD(&tasks);
 		do_smart_update(sma, NULL, 0, 1, &tasks);
-		sem_unlock(sma);
+		sem_unlock(sma, -1);
 		wake_up_sem_queue_do(&tasks);
 
 		kfree_rcu(un, rcu);

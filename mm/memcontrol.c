@@ -152,8 +152,13 @@ struct mem_cgroup_stat_cpu {
 };
 
 struct mem_cgroup_reclaim_iter {
-	/* css_id of the last scanned hierarchy member */
-	int position;
+	/*
+	 * last scanned hierarchy member. Valid only if last_dead_count
+	 * matches memcg->dead_count of the hierarchy root group.
+	 */
+	struct mem_cgroup *last_visited;
+	unsigned long last_dead_count;
+
 	/* scan generation, increased every round-trip */
 	unsigned int generation;
 };
@@ -310,14 +315,31 @@ struct mem_cgroup {
 	/* thresholds for mem+swap usage. RCU-protected */
 	struct mem_cgroup_thresholds memsw_thresholds;
 
-	/* For oom notifier event fd */
-	struct list_head oom_notify;
+	union {
+		/* For oom notifier event fd */
+		struct list_head oom_notify;
+		/*
+		 * we can only trigger an oom event if the memcg is alive.
+		 * so we will reuse this field to hook the memcg in the list
+		 * of dead memcgs.
+		 */
+		struct list_head dead;
+	};
 
-	/*
-	 * Should we move charges of a task when a task is moved into this
-	 * mem_cgroup ? And what type of charges should we move ?
-	 */
-	unsigned long 	move_charge_at_immigrate;
+	union {
+		/*
+		 * Should we move charges of a task when a task is moved into
+		 * this mem_cgroup ? And what type of charges should we move ?
+		 */
+		unsigned long move_charge_at_immigrate;
+
+		/*
+		 * We are no longer concerned about moving charges after memcg
+		 * is dead. So we will fill this up with its name, to aid
+		 * debugging.
+		 */
+		char *memcg_name;
+	};
 	/*
 	 * set > 0 if pages under this cgroup are moving to other cgroup.
 	 */
@@ -335,6 +357,7 @@ struct mem_cgroup {
 	struct mem_cgroup_stat_cpu nocpu_base;
 	spinlock_t pcp_counter_lock;
 
+	atomic_t	dead_count;
 #if defined(CONFIG_MEMCG_KMEM) && defined(CONFIG_INET)
 	struct tcp_memcontrol tcp_mem;
 #endif
@@ -368,6 +391,55 @@ static size_t memcg_size(void)
 	return sizeof(struct mem_cgroup) +
 		nr_node_ids * sizeof(struct mem_cgroup_per_node);
 }
+
+#ifdef CONFIG_MEMCG_DEBUG_ASYNC_DESTROY
+static LIST_HEAD(dangling_memcgs);
+static DEFINE_MUTEX(dangling_memcgs_mutex);
+
+static inline void memcg_dangling_free(struct mem_cgroup *memcg)
+{
+	mutex_lock(&dangling_memcgs_mutex);
+	list_del(&memcg->dead);
+	mutex_unlock(&dangling_memcgs_mutex);
+	free_pages((unsigned long)memcg->memcg_name, 0);
+}
+
+static inline void memcg_dangling_add(struct mem_cgroup *memcg)
+{
+	/*
+	 * cgroup.c will do page-sized allocations most of the time,
+	 * so we'll just follow the pattern. Also, __get_free_pages
+	 * is a better interface than kmalloc for us here, because
+	 * we'd like this memory to be always billed to the root cgroup,
+	 * not to the process removing the memcg. While kmalloc would
+	 * require us to wrap it into memcg_stop/resume_kmem_account,
+	 * with __get_free_pages we just don't pass the memcg flag.
+	 */
+	memcg->memcg_name = (char *)__get_free_pages(GFP_KERNEL, 0);
+
+	/*
+	 * we will, in general, just ignore failures. No need to go crazy,
+	 * being this just a debugging interface. It is nice to copy a memcg
+	 * name over, but if we (unlikely) can't, just the address will do
+	 */
+	if (!memcg->memcg_name)
+		goto add_list;
+
+	if (cgroup_path(memcg->css.cgroup, memcg->memcg_name, PAGE_SIZE) < 0) {
+		free_pages((unsigned long)memcg->memcg_name, 0);
+		memcg->memcg_name = NULL;
+	}
+
+add_list:
+	INIT_LIST_HEAD(&memcg->dead);
+	mutex_lock(&dangling_memcgs_mutex);
+	list_add(&memcg->dead, &dangling_memcgs);
+	mutex_unlock(&dangling_memcgs_mutex);
+}
+#else
+static inline void memcg_dangling_free(struct mem_cgroup *memcg) {}
+static inline void memcg_dangling_add(struct mem_cgroup *memcg) {}
+#endif
 
 /* internal only representation about the status of kmem accounting. */
 enum {
@@ -1067,6 +1139,51 @@ struct mem_cgroup *try_get_mem_cgroup_from_mm(struct mm_struct *mm)
 	return memcg;
 }
 
+/*
+ * Returns a next (in a pre-order walk) alive memcg (with elevated css
+ * ref. count) or NULL if the whole root's subtree has been visited.
+ *
+ * helper function to be used by mem_cgroup_iter
+ */
+static struct mem_cgroup *__mem_cgroup_iter_next(struct mem_cgroup *root,
+		struct mem_cgroup *last_visited)
+{
+	struct cgroup *prev_cgroup, *next_cgroup;
+
+	/*
+	 * Root is not visited by cgroup iterators so it needs an
+	 * explicit visit.
+	 */
+	if (!last_visited)
+		return root;
+
+	prev_cgroup = (last_visited == root) ? NULL
+		: last_visited->css.cgroup;
+skip_node:
+	next_cgroup = cgroup_next_descendant_pre(
+			prev_cgroup, root->css.cgroup);
+
+	/*
+	 * Even if we found a group we have to make sure it is
+	 * alive. css && !memcg means that the groups should be
+	 * skipped and we should continue the tree walk.
+	 * last_visited css is safe to use because it is
+	 * protected by css_get and the tree walk is rcu safe.
+	 */
+	if (next_cgroup) {
+		struct mem_cgroup *mem = mem_cgroup_from_cont(
+				next_cgroup);
+		if (css_tryget(&mem->css))
+			return mem;
+		else {
+			prev_cgroup = next_cgroup;
+			goto skip_node;
+		}
+	}
+
+	return NULL;
+}
+
 /**
  * mem_cgroup_iter - iterate over memory cgroup hierarchy
  * @root: hierarchy root
@@ -1089,7 +1206,8 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 				   struct mem_cgroup_reclaim_cookie *reclaim)
 {
 	struct mem_cgroup *memcg = NULL;
-	int id = 0;
+	struct mem_cgroup *last_visited = NULL;
+	unsigned long uninitialized_var(dead_count);
 
 	if (mem_cgroup_disabled())
 		return NULL;
@@ -1098,20 +1216,17 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 		root = root_mem_cgroup;
 
 	if (prev && !reclaim)
-		id = css_id(&prev->css);
-
-	if (prev && prev != root)
-		css_put(&prev->css);
+		last_visited = prev;
 
 	if (!root->use_hierarchy && root != root_mem_cgroup) {
 		if (prev)
-			return NULL;
+			goto out_css_put;
 		return root;
 	}
 
+	rcu_read_lock();
 	while (!memcg) {
 		struct mem_cgroup_reclaim_iter *uninitialized_var(iter);
-		struct cgroup_subsys_state *css;
 
 		if (reclaim) {
 			int nid = zone_to_nid(reclaim->zone);
@@ -1120,31 +1235,60 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 
 			mz = mem_cgroup_zoneinfo(root, nid, zid);
 			iter = &mz->reclaim_iter[reclaim->priority];
-			if (prev && reclaim->generation != iter->generation)
-				return NULL;
-			id = iter->position;
+			last_visited = iter->last_visited;
+			if (prev && reclaim->generation != iter->generation) {
+				iter->last_visited = NULL;
+				goto out_unlock;
+			}
+
+			/*
+			 * If the dead_count mismatches, a destruction
+			 * has happened or is happening concurrently.
+			 * If the dead_count matches, a destruction
+			 * might still happen concurrently, but since
+			 * we checked under RCU, that destruction
+			 * won't free the object until we release the
+			 * RCU reader lock.  Thus, the dead_count
+			 * check verifies the pointer is still valid,
+			 * css_tryget() verifies the cgroup pointed to
+			 * is alive.
+			 */
+			dead_count = atomic_read(&root->dead_count);
+			smp_rmb();
+			last_visited = iter->last_visited;
+			if (last_visited) {
+				if ((dead_count != iter->last_dead_count) ||
+					!css_tryget(&last_visited->css)) {
+					last_visited = NULL;
+				}
+			}
 		}
 
-		rcu_read_lock();
-		css = css_get_next(&mem_cgroup_subsys, id + 1, &root->css, &id);
-		if (css) {
-			if (css == &root->css || css_tryget(css))
-				memcg = mem_cgroup_from_css(css);
-		} else
-			id = 0;
-		rcu_read_unlock();
+		memcg = __mem_cgroup_iter_next(root, last_visited);
 
 		if (reclaim) {
-			iter->position = id;
-			if (!css)
+			if (last_visited)
+				css_put(&last_visited->css);
+
+			iter->last_visited = memcg;
+			smp_wmb();
+			iter->last_dead_count = dead_count;
+
+			if (!memcg)
 				iter->generation++;
 			else if (!prev && memcg)
 				reclaim->generation = iter->generation;
 		}
 
-		if (prev && !css)
-			return NULL;
+		if (prev && !memcg)
+			goto out_unlock;
 	}
+out_unlock:
+	rcu_read_unlock();
+out_css_put:
+	if (prev && prev != root)
+		css_put(&prev->css);
+
 	return memcg;
 }
 
@@ -4947,9 +5091,6 @@ static ssize_t mem_cgroup_read(struct cgroup *cont, struct cftype *cft,
 	type = MEMFILE_TYPE(cft->private);
 	name = MEMFILE_ATTR(cft->private);
 
-	if (!do_swap_account && type == _MEMSWAP)
-		return -EOPNOTSUPP;
-
 	switch (type) {
 	case _MEM:
 		if (name == RES_USAGE)
@@ -4973,6 +5114,107 @@ static ssize_t mem_cgroup_read(struct cgroup *cont, struct cftype *cft,
 	len = scnprintf(str, sizeof(str), "%llu\n", (unsigned long long)val);
 	return simple_read_from_buffer(buf, nbytes, ppos, str, len);
 }
+
+#ifdef CONFIG_MEMCG_DEBUG_ASYNC_DESTROY
+static void
+mem_cgroup_dangling_swap(struct mem_cgroup *memcg, struct seq_file *m)
+{
+#ifdef CONFIG_MEMCG_SWAP
+	u64 kmem;
+	u64 memsw;
+
+	/*
+	 * kmem will also propagate here, so we are only interested in the
+	 * difference.  See comment in mem_cgroup_reparent_charges for details.
+	 *
+	 * We could save this value for later consumption by kmem reports, but
+	 * there is not a lot of problem if the figures differ slightly.
+	 */
+	kmem = res_counter_read_u64(&memcg->kmem, RES_USAGE);
+	memsw = res_counter_read_u64(&memcg->memsw, RES_USAGE) - kmem;
+	seq_printf(m, "\t%llu swap bytes\n", memsw);
+#endif
+}
+
+
+static void
+mem_cgroup_dangling_tcp(struct mem_cgroup *memcg, struct seq_file *m)
+{
+#if defined(CONFIG_INET) && defined(CONFIG_MEMCG_KMEM)
+	struct tcp_memcontrol *tcp = &memcg->tcp_mem;
+	s64 tcp_socks;
+	u64 tcp_bytes;
+
+	tcp_socks = percpu_counter_sum_positive(&tcp->tcp_sockets_allocated);
+	tcp_bytes = res_counter_read_u64(&tcp->tcp_memory_allocated, RES_USAGE);
+	seq_printf(m, "\t%llu tcp bytes", tcp_bytes);
+	/*
+	 * if tcp_bytes == 0, tcp_socks != 0 is a bug. One more reason to print
+	 * it!
+	 */
+	if (tcp_bytes || tcp_socks)
+		seq_printf(m, ", in %lld sockets", tcp_socks);
+	seq_printf(m, "\n");
+
+#endif
+}
+
+static void
+mem_cgroup_dangling_kmem(struct mem_cgroup *memcg, struct seq_file *m)
+{
+#ifdef CONFIG_MEMCG_KMEM
+	u64 kmem;
+	struct memcg_cache_params *params;
+
+	kmem = res_counter_read_u64(&memcg->kmem, RES_USAGE);
+	seq_printf(m, "\t%llu kmem bytes", kmem);
+
+	/* list below may not be initialized, so not even try */
+	if (!kmem)
+		return;
+
+	seq_printf(m, " in caches");
+	mutex_lock(&memcg->slab_caches_mutex);
+	list_for_each_entry(params, &memcg->memcg_slab_caches, list) {
+			struct kmem_cache *s = memcg_params_to_cache(params);
+
+		seq_printf(m, " %s", s->name);
+	}
+	mutex_unlock(&memcg->slab_caches_mutex);
+	seq_printf(m, "\n");
+#endif
+}
+
+/*
+ * After a memcg is destroyed, it may still be kept around in memory.
+ * Currently, the two main reasons for it are swap entries, and kernel memory.
+ * Because they will be freed assynchronously, they will pin the memcg structure
+ * and its resources until the last reference goes away.
+ *
+ * This root-only file will show information about which users
+ */
+static int mem_cgroup_dangling_read(struct cgroup *cont, struct cftype *cft,
+					struct seq_file *m)
+{
+	struct mem_cgroup *memcg;
+
+	mutex_lock(&dangling_memcgs_mutex);
+
+	list_for_each_entry(memcg, &dangling_memcgs, dead) {
+		if (memcg->memcg_name)
+			seq_printf(m, "%s:\n", memcg->memcg_name);
+		else
+			seq_printf(m, "%p (name lost):\n", memcg);
+
+		mem_cgroup_dangling_swap(memcg, m);
+		mem_cgroup_dangling_tcp(memcg, m);
+		mem_cgroup_dangling_kmem(memcg, m);
+	}
+
+	mutex_unlock(&dangling_memcgs_mutex);
+	return 0;
+}
+#endif
 
 static int memcg_update_kmem_limit(struct cgroup *cont, u64 val)
 {
@@ -5084,9 +5326,6 @@ static int mem_cgroup_write(struct cgroup *cont, struct cftype *cft,
 	type = MEMFILE_TYPE(cft->private);
 	name = MEMFILE_ATTR(cft->private);
 
-	if (!do_swap_account && type == _MEMSWAP)
-		return -EOPNOTSUPP;
-
 	switch (name) {
 	case RES_LIMIT:
 		if (mem_cgroup_is_root(memcg)) { /* Can't set limit on root */
@@ -5162,9 +5401,6 @@ static int mem_cgroup_reset(struct cgroup *cont, unsigned int event)
 
 	type = MEMFILE_TYPE(event);
 	name = MEMFILE_ATTR(event);
-
-	if (!do_swap_account && type == _MEMSWAP)
-		return -EOPNOTSUPP;
 
 	switch (name) {
 	case RES_MAX_USAGE:
@@ -5875,6 +6111,14 @@ static struct cftype mem_cgroup_files[] = {
 	},
 #endif
 #endif
+
+#ifdef CONFIG_MEMCG_DEBUG_ASYNC_DESTROY
+	{
+		.name = "dangling_memcgs",
+		.read_seq_string = mem_cgroup_dangling_read,
+		.flags = CFTYPE_ONLY_ON_ROOT,
+	},
+#endif
 	{ },	/* terminate */
 };
 
@@ -6024,6 +6268,8 @@ static void free_work(struct work_struct *work)
 	struct mem_cgroup *memcg;
 
 	memcg = container_of(work, struct mem_cgroup, work_freeing);
+
+	memcg_dangling_free(memcg);
 	__mem_cgroup_free(memcg);
 }
 
@@ -6184,10 +6430,29 @@ mem_cgroup_css_online(struct cgroup *cont)
 	return error;
 }
 
+/*
+ * Announce all parents that a group from their hierarchy is gone.
+ */
+static void mem_cgroup_invalidate_reclaim_iterators(struct mem_cgroup *memcg)
+{
+	struct mem_cgroup *parent = memcg;
+
+	while ((parent = parent_mem_cgroup(parent)))
+		atomic_inc(&parent->dead_count);
+
+	/*
+	 * if the root memcg is not hierarchical we have to check it
+	 * explicitely.
+	 */
+	if (!root_mem_cgroup->use_hierarchy)
+		atomic_inc(&root_mem_cgroup->dead_count);
+}
+
 static void mem_cgroup_css_offline(struct cgroup *cont)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_cont(cont);
 
+	mem_cgroup_invalidate_reclaim_iterators(memcg);
 	mem_cgroup_reparent_charges(memcg);
 	mem_cgroup_destroy_all_caches(memcg);
 }
@@ -6198,6 +6463,7 @@ static void mem_cgroup_css_free(struct cgroup *cont)
 
 	kmem_cgroup_destroy(memcg);
 
+	memcg_dangling_add(memcg);
 	mem_cgroup_put(memcg);
 }
 

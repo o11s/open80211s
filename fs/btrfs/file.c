@@ -24,6 +24,7 @@
 #include <linux/string.h>
 #include <linux/backing-dev.h>
 #include <linux/mpage.h>
+#include <linux/aio.h>
 #include <linux/falloc.h>
 #include <linux/swap.h>
 #include <linux/writeback.h>
@@ -1514,7 +1515,8 @@ static ssize_t btrfs_file_aio_write(struct kiocb *iocb,
 	size_t count, ocount;
 	bool sync = (file->f_flags & O_DSYNC) || IS_SYNC(file->f_mapping->host);
 
-	sb_start_write(inode->i_sb);
+	if (!sb_start_file_write(file))
+		return -EAGAIN;
 
 	mutex_lock(&inode->i_mutex);
 

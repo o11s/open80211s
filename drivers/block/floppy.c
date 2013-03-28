@@ -3748,7 +3748,8 @@ static unsigned int floppy_check_events(struct gendisk *disk,
  * a disk in the drive, and whether that disk is writable.
  */
 
-static void floppy_rb0_complete(struct bio *bio, int err)
+static void floppy_rb0_complete(struct bio *bio, int err,
+				struct batch_complete *batch)
 {
 	complete((struct completion *)bio->bi_private);
 }

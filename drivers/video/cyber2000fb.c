@@ -518,6 +518,9 @@ static void cyber2000fb_set_timing(struct cfb_info *cfb, struct par_info *hw)
 	cyber2000_grphw(0xb9, 0x00, cfb);
 	spin_unlock(&cfb->reg_b0_lock);
 
+	/* wait (for the PLL?) to avoid palette corruption at higher clocks */
+	msleep(1000);
+
 	cfb->ramdac_ctrl = hw->ramdac;
 	cyber2000fb_write_ramdac_ctrl(cfb);
 

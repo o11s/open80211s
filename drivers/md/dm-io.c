@@ -136,7 +136,7 @@ static void dec_count(struct io *io, unsigned int region, int error)
 	}
 }
 
-static void endio(struct bio *bio, int error)
+static void endio(struct bio *bio, int error, struct batch_complete *batch)
 {
 	struct io *io;
 	unsigned region;

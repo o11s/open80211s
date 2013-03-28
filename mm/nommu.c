@@ -228,8 +228,7 @@ int follow_pfn(struct vm_area_struct *vma, unsigned long address,
 }
 EXPORT_SYMBOL(follow_pfn);
 
-DEFINE_RWLOCK(vmlist_lock);
-struct vm_struct *vmlist;
+LIST_HEAD(vmap_area_list);
 
 void vfree(const void *addr)
 {
@@ -1856,10 +1855,6 @@ unsigned long arch_get_unmapped_area(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long pgoff, unsigned long flags)
 {
 	return -ENOMEM;
-}
-
-void arch_unmap_area(struct mm_struct *mm, unsigned long addr)
-{
 }
 
 void unmap_mapping_range(struct address_space *mapping,

@@ -27,6 +27,7 @@ struct cgroup_subsys;
 struct inode;
 struct cgroup;
 struct css_id;
+struct eventfd_ctx;
 
 extern int cgroup_init_early(void);
 extern int cgroup_init(void);
@@ -719,13 +720,6 @@ void free_css_id(struct cgroup_subsys *ss, struct cgroup_subsys_state *css);
 /* Find a cgroup_subsys_state which has given ID */
 
 struct cgroup_subsys_state *css_lookup(struct cgroup_subsys *ss, int id);
-
-/*
- * Get a cgroup whose id is greater than or equal to id under tree of root.
- * Returning a cgroup_subsys_state or NULL.
- */
-struct cgroup_subsys_state *css_get_next(struct cgroup_subsys *ss, int id,
-		struct cgroup_subsys_state *root, int *foundid);
 
 /* Returns true if root is ancestor of cg */
 bool css_is_ancestor(struct cgroup_subsys_state *cg,

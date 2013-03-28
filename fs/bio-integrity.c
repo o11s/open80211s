@@ -510,7 +510,8 @@ static void bio_integrity_verify_fn(struct work_struct *work)
  * in process context.	This function postpones completion
  * accordingly.
  */
-void bio_integrity_endio(struct bio *bio, int error)
+void bio_integrity_endio(struct bio *bio, int error,
+			 struct batch_complete *batch)
 {
 	struct bio_integrity_payload *bip = bio->bi_integrity;
 

@@ -553,7 +553,8 @@ static void copy_complete(int read_err, unsigned long write_err, void *context)
 	spin_unlock_irqrestore(&pool->lock, flags);
 }
 
-static void overwrite_endio(struct bio *bio, int err)
+static void overwrite_endio(struct bio *bio, int err,
+			    struct batch_complete *batch)
 {
 	unsigned long flags;
 	struct dm_thin_endio_hook *h = dm_per_bio_data(bio, sizeof(struct dm_thin_endio_hook));

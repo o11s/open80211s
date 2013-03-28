@@ -556,9 +556,11 @@ static int use_new_offset(struct r5conf *conf, struct stripe_head *sh)
 }
 
 static void
-raid5_end_read_request(struct bio *bi, int error);
+raid5_end_read_request(struct bio *bi, int error,
+		       struct batch_complete *batch);
 static void
-raid5_end_write_request(struct bio *bi, int error);
+raid5_end_write_request(struct bio *bi, int error,
+			struct batch_complete *batch);
 
 static void ops_run_io(struct stripe_head *sh, struct stripe_head_state *s)
 {
@@ -1737,7 +1739,8 @@ static void shrink_stripes(struct r5conf *conf)
 	conf->slab_cache = NULL;
 }
 
-static void raid5_end_read_request(struct bio * bi, int error)
+static void raid5_end_read_request(struct bio *bi, int error,
+				   struct batch_complete *batch)
 {
 	struct stripe_head *sh = bi->bi_private;
 	struct r5conf *conf = sh->raid_conf;
@@ -1857,7 +1860,8 @@ static void raid5_end_read_request(struct bio * bi, int error)
 	release_stripe(sh);
 }
 
-static void raid5_end_write_request(struct bio *bi, int error)
+static void raid5_end_write_request(struct bio *bi, int error,
+				    struct batch_complete *batch)
 {
 	struct stripe_head *sh = bi->bi_private;
 	struct r5conf *conf = sh->raid_conf;
@@ -3935,7 +3939,8 @@ static struct bio *remove_bio_from_retry(struct r5conf *conf)
  *  first).
  *  If the read failed..
  */
-static void raid5_align_endio(struct bio *bi, int error)
+static void raid5_align_endio(struct bio *bi, int error,
+			      struct batch_complete *batch)
 {
 	struct bio* raid_bi  = bi->bi_private;
 	struct mddev *mddev;

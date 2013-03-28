@@ -316,10 +316,17 @@ static void __init do_add_efi_memmap(void)
 		int e820_type;
 
 		switch (md->type) {
-		case EFI_LOADER_CODE:
-		case EFI_LOADER_DATA:
 		case EFI_BOOT_SERVICES_CODE:
 		case EFI_BOOT_SERVICES_DATA:
+			/* EFI_BOOT_SERVICES_{CODE,DATA} needs to be mapped */
+			if (md->attribute & EFI_MEMORY_WB)
+				e820_type = E820_RAM;
+			else
+				e820_type = E820_RESERVED;
+			e820_add_region(start, size, e820_type);
+			continue;
+		case EFI_LOADER_CODE:
+		case EFI_LOADER_DATA:
 		case EFI_CONVENTIONAL_MEMORY:
 			if (md->attribute & EFI_MEMORY_WB)
 				e820_type = E820_RAM;
@@ -344,7 +351,7 @@ static void __init do_add_efi_memmap(void)
 			e820_type = E820_RESERVED;
 			break;
 		}
-		e820_add_region(start, size, e820_type);
+		e820_add_limit_region(start, size, e820_type);
 	}
 	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
 }
@@ -450,6 +457,8 @@ void __init efi_free_boot_services(void)
 		if (md->type != EFI_BOOT_SERVICES_CODE &&
 		    md->type != EFI_BOOT_SERVICES_DATA)
 			continue;
+
+		e820_adjust_region(&start, &size);
 
 		/* Could not reserve boot area */
 		if (!size)

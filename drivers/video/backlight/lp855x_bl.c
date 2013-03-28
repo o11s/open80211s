@@ -35,7 +35,6 @@
 #define LP8557_EPROM_START		0x10
 #define LP8557_EPROM_END		0x1E
 
-#define BUF_SIZE		20
 #define DEFAULT_BL_NAME		"lcd-backlight"
 #define MAX_BRIGHTNESS		255
 
@@ -304,7 +303,7 @@ static ssize_t lp855x_get_chip_id(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
 	struct lp855x *lp = dev_get_drvdata(dev);
-	return scnprintf(buf, BUF_SIZE, "%s\n", lp->chipname);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", lp->chipname);
 }
 
 static ssize_t lp855x_get_bl_ctl_mode(struct device *dev,
@@ -319,7 +318,7 @@ static ssize_t lp855x_get_bl_ctl_mode(struct device *dev,
 	else if (mode == REGISTER_BASED)
 		strmode = "register based";
 
-	return scnprintf(buf, BUF_SIZE, "%s\n", strmode);
+	return scnprintf(buf, PAGE_SIZE, "%s\n", strmode);
 }
 
 static DEVICE_ATTR(chip_id, S_IRUGO, lp855x_get_chip_id, NULL);
@@ -339,7 +338,6 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 {
 	struct lp855x *lp;
 	struct lp855x_platform_data *pdata = cl->dev.platform_data;
-	enum lp855x_brightness_ctrl_mode mode;
 	int ret;
 
 	if (!pdata) {
@@ -354,7 +352,6 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 	if (!lp)
 		return -ENOMEM;
 
-	mode = pdata->mode;
 	lp->client = cl;
 	lp->dev = &cl->dev;
 	lp->pdata = pdata;

@@ -155,7 +155,8 @@ static int gfs2_check_sb(struct gfs2_sbd *sdp, int silent)
 	return -EINVAL;
 }
 
-static void end_bio_io_page(struct bio *bio, int error)
+static void end_bio_io_page(struct bio *bio, int error,
+			    struct batch_complete *batch)
 {
 	struct page *page = bio->bi_private;
 

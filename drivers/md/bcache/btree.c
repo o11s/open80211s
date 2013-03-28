@@ -133,7 +133,8 @@ static uint64_t btree_csum_set(struct btree *b, struct bset *i)
 	return crc ^ 0xffffffffffffffff;
 }
 
-static void btree_bio_endio(struct bio *bio, int error)
+static void btree_bio_endio(struct bio *bio, int error,
+			    struct batch_complete *batch)
 {
 	struct closure *cl = bio->bi_private;
 	struct btree *b = container_of(cl, struct btree, io.cl);

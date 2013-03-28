@@ -2248,7 +2248,8 @@ static ssize_t ocfs2_file_aio_write(struct kiocb *iocb,
 	if (iocb->ki_left == 0)
 		return 0;
 
-	sb_start_write(inode->i_sb);
+	if (!sb_start_file_write(file))
+		return -EAGAIN;
 
 	appending = file->f_flags & O_APPEND ? 1 : 0;
 	direct_io = file->f_flags & O_DIRECT ? 1 : 0;
@@ -2468,6 +2469,9 @@ static ssize_t ocfs2_file_splice_write(struct pipe_inode_info *pipe,
 			out->f_path.dentry->d_name.len,
 			out->f_path.dentry->d_name.name, len);
 
+	if (!sb_start_file_write(out))
+		return -EAGAIN;
+
 	if (pipe->inode)
 		mutex_lock_nested(&pipe->inode->i_mutex, I_MUTEX_PARENT);
 
@@ -2506,6 +2510,7 @@ static ssize_t ocfs2_file_splice_write(struct pipe_inode_info *pipe,
 
 		balance_dirty_pages_ratelimited(mapping);
 	}
+	sb_end_write(inode->i_sb);
 
 	return ret;
 }

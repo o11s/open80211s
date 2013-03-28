@@ -222,7 +222,7 @@ static struct rtc_class_ops nuc900_rtc_ops = {
 	.alarm_irq_enable = nuc900_alarm_irq_enable,
 };
 
-static int nuc900_rtc_probe(struct platform_device *pdev)
+static int __init nuc900_rtc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct nuc900_rtc *nuc900_rtc;
@@ -284,7 +284,7 @@ fail1:	kfree(nuc900_rtc);
 	return err;
 }
 
-static int nuc900_rtc_remove(struct platform_device *pdev)
+static int __exit nuc900_rtc_remove(struct platform_device *pdev)
 {
 	struct nuc900_rtc *nuc900_rtc = platform_get_drvdata(pdev);
 	struct resource *res;
@@ -304,25 +304,14 @@ static int nuc900_rtc_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver nuc900_rtc_driver = {
-	.remove		= nuc900_rtc_remove,
+	.remove		= __exit_p(nuc900_rtc_remove),
 	.driver		= {
 		.name	= "nuc900-rtc",
 		.owner	= THIS_MODULE,
 	},
 };
 
-static int __init nuc900_rtc_init(void)
-{
-	return platform_driver_probe(&nuc900_rtc_driver, nuc900_rtc_probe);
-}
-
-static void __exit nuc900_rtc_exit(void)
-{
-	platform_driver_unregister(&nuc900_rtc_driver);
-}
-
-module_init(nuc900_rtc_init);
-module_exit(nuc900_rtc_exit);
+module_platform_driver_probe(nuc900_rtc_driver, nuc900_rtc_probe);
 
 MODULE_AUTHOR("Wan ZongShun <mcuos.com@gmail.com>");
 MODULE_DESCRIPTION("nuc910/nuc920 RTC driver");

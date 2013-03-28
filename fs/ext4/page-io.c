@@ -18,6 +18,7 @@
 #include <linux/pagevec.h>
 #include <linux/mpage.h>
 #include <linux/namei.h>
+#include <linux/aio.h>
 #include <linux/uio.h>
 #include <linux/bio.h>
 #include <linux/workqueue.h>
@@ -238,7 +239,8 @@ static void buffer_io_error(struct buffer_head *bh)
 			(unsigned long long)bh->b_blocknr);
 }
 
-static void ext4_end_bio(struct bio *bio, int error)
+static void ext4_end_bio(struct bio *bio, int error,
+			 struct batch_complete *batch)
 {
 	ext4_io_end_t *io_end = bio->bi_private;
 	struct inode *inode;

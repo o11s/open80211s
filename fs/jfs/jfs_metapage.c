@@ -283,7 +283,8 @@ static void last_read_complete(struct page *page)
 	unlock_page(page);
 }
 
-static void metapage_read_end_io(struct bio *bio, int err)
+static void metapage_read_end_io(struct bio *bio, int err,
+				 struct batch_complete *batch)
 {
 	struct page *page = bio->bi_private;
 
@@ -338,7 +339,8 @@ static void last_write_complete(struct page *page)
 	end_page_writeback(page);
 }
 
-static void metapage_write_end_io(struct bio *bio, int err)
+static void metapage_write_end_io(struct bio *bio, int err,
+				  struct batch_complete *batch)
 {
 	struct page *page = bio->bi_private;
 

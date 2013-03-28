@@ -155,7 +155,6 @@ static int __exit coh901331_remove(struct platform_device *pdev)
 	struct coh901331_port *rtap = dev_get_drvdata(&pdev->dev);
 
 	if (rtap) {
-		rtc_device_unregister(rtap->rtc);
 		clk_unprepare(rtap->clk);
 		platform_set_drvdata(pdev, NULL);
 	}
@@ -211,8 +210,8 @@ static int __init coh901331_probe(struct platform_device *pdev)
 	clk_disable(rtap->clk);
 
 	platform_set_drvdata(pdev, rtap);
-	rtap->rtc = rtc_device_register("coh901331", &pdev->dev, &coh901331_ops,
-					 THIS_MODULE);
+	rtap->rtc = devm_rtc_device_register(&pdev->dev, "coh901331",
+					&coh901331_ops, THIS_MODULE);
 	if (IS_ERR(rtap->rtc)) {
 		ret = PTR_ERR(rtap->rtc);
 		goto out_no_rtc;
@@ -287,18 +286,7 @@ static struct platform_driver coh901331_driver = {
 	.shutdown = coh901331_shutdown,
 };
 
-static int __init coh901331_init(void)
-{
-	return platform_driver_probe(&coh901331_driver, coh901331_probe);
-}
-
-static void __exit coh901331_exit(void)
-{
-	platform_driver_unregister(&coh901331_driver);
-}
-
-module_init(coh901331_init);
-module_exit(coh901331_exit);
+module_platform_driver_probe(coh901331_driver, coh901331_probe);
 
 MODULE_AUTHOR("Linus Walleij <linus.walleij@stericsson.com>");
 MODULE_DESCRIPTION("ST-Ericsson AB COH 901 331 RTC Driver");

@@ -143,7 +143,7 @@ bl_submit_bio(int rw, struct bio *bio)
 
 static struct bio *bl_alloc_init_bio(int npg, sector_t isect,
 				     struct pnfs_block_extent *be,
-				     void (*end_io)(struct bio *, int err),
+				     bio_end_io_t *end_io,
 				     struct parallel_io *par)
 {
 	struct bio *bio;
@@ -167,7 +167,7 @@ static struct bio *bl_alloc_init_bio(int npg, sector_t isect,
 static struct bio *do_add_page_to_bio(struct bio *bio, int npg, int rw,
 				      sector_t isect, struct page *page,
 				      struct pnfs_block_extent *be,
-				      void (*end_io)(struct bio *, int err),
+				      bio_end_io_t *end_io,
 				      struct parallel_io *par,
 				      unsigned int offset, int len)
 {
@@ -190,7 +190,7 @@ retry:
 static struct bio *bl_add_page_to_bio(struct bio *bio, int npg, int rw,
 				      sector_t isect, struct page *page,
 				      struct pnfs_block_extent *be,
-				      void (*end_io)(struct bio *, int err),
+				      bio_end_io_t *end_io,
 				      struct parallel_io *par)
 {
 	return do_add_page_to_bio(bio, npg, rw, isect, page, be,
@@ -198,7 +198,8 @@ static struct bio *bl_add_page_to_bio(struct bio *bio, int npg, int rw,
 }
 
 /* This is basically copied from mpage_end_io_read */
-static void bl_end_io_read(struct bio *bio, int err)
+static void bl_end_io_read(struct bio *bio, int err,
+			   struct batch_complete *batch)
 {
 	struct parallel_io *par = bio->bi_private;
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
@@ -380,7 +381,8 @@ static void mark_extents_written(struct pnfs_block_layout *bl,
 	}
 }
 
-static void bl_end_io_write_zero(struct bio *bio, int err)
+static void bl_end_io_write_zero(struct bio *bio, int err,
+				 struct batch_complete *batch)
 {
 	struct parallel_io *par = bio->bi_private;
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
@@ -408,7 +410,8 @@ static void bl_end_io_write_zero(struct bio *bio, int err)
 	put_parallel(par);
 }
 
-static void bl_end_io_write(struct bio *bio, int err)
+static void bl_end_io_write(struct bio *bio, int err,
+			    struct batch_complete *batch)
 {
 	struct parallel_io *par = bio->bi_private;
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
@@ -487,7 +490,7 @@ map_block(struct buffer_head *bh, sector_t isect, struct pnfs_block_extent *be)
 }
 
 static void
-bl_read_single_end_io(struct bio *bio, int error)
+bl_read_single_end_io(struct bio *bio, int error, struct batch_complete *batch)
 {
 	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;
 	struct page *page = bvec->bv_page;

@@ -652,7 +652,8 @@ static void defer_writethrough_bio(struct cache *cache, struct bio *bio)
 	wake_worker(cache);
 }
 
-static void writethrough_endio(struct bio *bio, int err)
+static void writethrough_endio(struct bio *bio, int err,
+			       struct batch_complete *batch)
 {
 	struct per_bio_data *pb = get_per_bio_data(bio, PB_DATA_SIZE_WT);
 	bio->bi_end_io = pb->saved_bi_end_io;

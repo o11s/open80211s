@@ -1,5 +1,8 @@
 TARGETS = breakpoints
+TARGETS += epoll
 TARGETS += kcmp
+TARGETS += timers
+TARGETS += ptrace
 TARGETS += mqueue
 TARGETS += vm
 TARGETS += cpu-hotplug

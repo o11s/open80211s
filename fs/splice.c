@@ -1001,7 +1001,8 @@ generic_file_splice_write(struct pipe_inode_info *pipe, struct file *out,
 	};
 	ssize_t ret;
 
-	sb_start_write(inode->i_sb);
+	if (!sb_start_file_write(out))
+		return -EAGAIN;
 
 	pipe_lock(pipe);
 

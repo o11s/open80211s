@@ -70,6 +70,7 @@ Brief summary of control files.
  memory.move_charge_at_immigrate # set/show controls of moving charges
  memory.oom_control		 # set/show oom controls.
  memory.numa_stat		 # show the number of memory usage per numa node
+ memory.dangling_memcgs          # show debugging information about dangling groups
 
  memory.kmem.limit_in_bytes      # set/show hard limit for kernel memory
  memory.kmem.usage_in_bytes      # show current kernel memory allocation
@@ -576,6 +577,21 @@ anon=<total anon pages> N0=<node 0 pages> N1=<node 1 pages> ...
 unevictable=<total anon pages> N0=<node 0 pages> N1=<node 1 pages> ...
 
 And we have total = file + anon + unevictable.
+
+5.7 dangling_memcgs
+
+This file will only be ever present in the root cgroup, if the option
+CONFIG_MEMCG_DEBUG_ASYNC_DESTROY is set. When a memcg is destroyed, the memory
+consumed by it may not be immediately freed. This is because when some
+extensions are used, such as swap or kernel memory, objects can outlive the
+group and hold a reference to it.
+
+If this is the case, the dangling_memcgs file will show information about what
+are the memcgs still alive, and which references are still preventing it to be
+freed. There is nothing wrong with that, but it is very useful when debugging,
+to know where this memory is being held. This is a developer-oriented debugging
+facility only, and no guarantees of interface stability will be given. The file
+is read-only, and has the sole purpose of displaying information.
 
 6. Hierarchy support
 

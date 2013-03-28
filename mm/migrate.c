@@ -736,7 +736,7 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 
 	if (PageWriteback(page)) {
 		/*
-		 * Only in the case of a full syncronous migration is it
+		 * Only in the case of a full synchronous migration is it
 		 * necessary to wait for PageWriteback. In the async case,
 		 * the retry loop is too short and in the sync-light case,
 		 * the overhead of stalling is too much
@@ -876,6 +876,7 @@ static int unmap_and_move(new_page_t get_new_page, unsigned long private,
 		dec_zone_page_state(page, NR_ISOLATED_ANON +
 				    page_is_file_cache(page));
 		balloon_page_free(page);
+		balloon_event_count(COMPACTBALLOONMIGRATED);
 		return MIGRATEPAGE_SUCCESS;
 	}
 out:

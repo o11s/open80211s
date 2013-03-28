@@ -628,6 +628,13 @@ sub sanitise_line {
 	return $res;
 }
 
+sub get_quoted_string {
+	my ($line, $rawline) = @_;
+
+	return "" if ($line !~ m/(\"[X]+\")/g);
+	return substr($rawline, $-[0], $+[0] - $-[0]);
+}
+
 sub ctx_statement_block {
 	my ($linenr, $remain, $off) = @_;
 	my $line = $linenr - 1;
@@ -1576,7 +1583,8 @@ sub process {
 # Check for incorrect file permissions
 		if ($line =~ /^new (file )?mode.*[7531]\d{0,2}$/) {
 			my $permhere = $here . "FILE: $realfile\n";
-			if ($realfile =~ /(Makefile|Kconfig|\.c|\.h|\.S|\.tmpl)$/) {
+			if ($realfile !~ m@scripts/@ &&
+			    $realfile !~ /\.(py|pl|awk|sh)$/) {
 				ERROR("EXECUTE_PERMISSIONS",
 				      "do not set execute permissions for source files\n" . $permhere);
 			}
@@ -3372,6 +3380,15 @@ sub process {
 			     "struct spinlock should be spinlock_t\n" . $herecurr);
 		}
 
+# check for seq_printf uses that could be seq_puts
+		if ($line =~ /\bseq_printf\s*\(/) {
+			my $fmt = get_quoted_string($line, $rawline);
+			if ($fmt !~ /[^\\]\%/) {
+				WARN("PREFER_SEQ_PUTS",
+				     "Prefer seq_puts to seq_printf\n" . $herecurr);
+			}
+		}
+
 # Check for misused memsets
 		if ($^V && $^V ge 5.10.0 &&
 		    defined $stat &&
@@ -3474,6 +3491,13 @@ sub process {
 		if ($line =~ /\*\s*\)\s*[kv][czm]alloc(_node){0,1}\b/) {
 			WARN("UNNECESSARY_CASTS",
 			     "unnecessary cast may hide bugs, see http://c-faq.com/malloc/mallocnocast.html\n" . $herecurr);
+		}
+
+# check for krealloc arg reuse
+		if ($^V && $^V ge 5.10.0 &&
+		    $line =~ /\b($Lval)\s*\=\s*(?:$balanced_parens)?\s*krealloc\s*\(\s*\1\s*,/) {
+			WARN("KREALLOC_ARG_REUSE",
+			     "Reusing the krealloc arg is almost always a bug\n" . $herecurr);
 		}
 
 # check for alloc argument mismatch
