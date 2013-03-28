@@ -120,7 +120,7 @@ source "drivers/staging/gdm72xx/Kconfig"
 
 source "drivers/staging/csr/Kconfig"
 
-source "drivers/staging/omap-thermal/Kconfig"
+source "drivers/staging/ti-soc-thermal/Kconfig"
 
 source "drivers/staging/silicom/Kconfig"
 
@@ -137,5 +137,9 @@ source "drivers/staging/fwserial/Kconfig"
 source "drivers/staging/zcache/Kconfig"
 
 source "drivers/staging/goldfish/Kconfig"
+
+source "drivers/staging/netlogic/Kconfig"
+
+source "drivers/staging/dwc2/Kconfig"
 
 endif # STAGING

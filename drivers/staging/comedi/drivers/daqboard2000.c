@@ -709,10 +709,9 @@ static int daqboard2000_auto_attach(struct comedi_device *dev,
 		return -ENOMEM;
 	dev->private = devpriv;
 
-	result = comedi_pci_enable(pcidev, dev->driver->driver_name);
-	if (result < 0)
+	result = comedi_pci_enable(dev);
+	if (result)
 		return result;
-	dev->iobase = 1;	/* the "detach" needs this */
 
 	devpriv->plx = ioremap(pci_resource_start(pcidev, 0),
 			       pci_resource_len(pcidev, 0));
@@ -767,7 +766,6 @@ static int daqboard2000_auto_attach(struct comedi_device *dev,
 
 static void daqboard2000_detach(struct comedi_device *dev)
 {
-	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 	struct daqboard2000_private *devpriv = dev->private;
 
 	if (dev->subdevices)
@@ -780,11 +778,7 @@ static void daqboard2000_detach(struct comedi_device *dev)
 		if (devpriv->plx)
 			iounmap(devpriv->plx);
 	}
-	if (pcidev) {
-		if (dev->iobase)
-			comedi_pci_disable(pcidev);
-		pci_dev_put(pcidev);
-	}
+	comedi_pci_disable(dev);
 }
 
 static struct comedi_driver daqboard2000_driver = {
@@ -795,9 +789,10 @@ static struct comedi_driver daqboard2000_driver = {
 };
 
 static int daqboard2000_pci_probe(struct pci_dev *dev,
-					    const struct pci_device_id *ent)
+				  const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &daqboard2000_driver);
+	return comedi_pci_auto_config(dev, &daqboard2000_driver,
+				      id->driver_data);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(daqboard2000_pci_table) = {

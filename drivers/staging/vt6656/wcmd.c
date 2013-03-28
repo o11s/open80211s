@@ -38,7 +38,6 @@
  *
  */
 
-#include "ttype.h"
 #include "tmacro.h"
 #include "device.h"
 #include "mac.h"
@@ -56,17 +55,13 @@
 #include "channel.h"
 #include "iowpa.h"
 
-/*---------------------  Static Definitions -------------------------*/
 
 
 
 
-/*---------------------  Static Classes  ----------------------------*/
 
-/*---------------------  Static Variables  --------------------------*/
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
-/*---------------------  Static Functions  --------------------------*/
 
 static void s_vProbeChannel(struct vnt_private *);
 
@@ -80,9 +75,7 @@ static int s_bCommandComplete(struct vnt_private *);
 
 static int s_bClearBSSID_SCAN(struct vnt_private *);
 
-/*---------------------  Export Variables  --------------------------*/
 
-/*---------------------  Export Functions  --------------------------*/
 
 /*
  * Description:
@@ -260,7 +253,7 @@ struct vnt_tx_mgmt *s_MgrMakeProbeRequest(struct vnt_private *pDevice,
 		+ WLAN_PROBEREQ_FR_MAXLEN);
 	pTxPacket->p80211Header = (PUWLAN_80211HDR)((u8 *)pTxPacket
 		+ sizeof(struct vnt_tx_mgmt));
-    sFrame.pBuf = (PBYTE)pTxPacket->p80211Header;
+    sFrame.pBuf = (u8 *)pTxPacket->p80211Header;
     sFrame.len = WLAN_PROBEREQ_FR_MAXLEN;
     vMgrEncodeProbeRequest(&sFrame);
     sFrame.pHdr->sA3.wFrameCtl = cpu_to_le16(
@@ -347,29 +340,7 @@ void vRunCommand(struct vnt_private *pDevice)
                 pMgmt->uScanChannel = pDevice->byMinChannel;
             }
             if (pMgmt->uScanChannel > pDevice->byMaxChannel) {
-                pMgmt->eScanState = WMAC_NO_SCANNING;
-
-                if (pDevice->byBBType != pDevice->byScanBBType) {
-                    pDevice->byBBType = pDevice->byScanBBType;
-                    CARDvSetBSSMode(pDevice);
-                }
-
-                if (pDevice->bUpdateBBVGA) {
-                    BBvSetShortSlotTime(pDevice);
-                    BBvSetVGAGainOffset(pDevice, pDevice->byBBVGACurrent);
-                    BBvUpdatePreEDThreshold(pDevice, false);
-                }
-                // Set channel back
-                vAdHocBeaconRestart(pDevice);
-                // Set channel back
-                CARDbSetMediaChannel(pDevice, pMgmt->uCurrChannel);
-                // Set Filter
-                if (pMgmt->bCurrBSSIDFilterOn) {
-                    MACvRegBitsOn(pDevice, MAC_REG_RCR, RCR_BSSID);
-                    pDevice->byRxMode |= RCR_BSSID;
-                }
-                DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Scanning, set back to channel: [%d]\n", pMgmt->uCurrChannel);
-                pDevice->bStopDataPkt = false;
+		pDevice->eCommandState = WLAN_CMD_SCAN_END;
                 s_bCommandComplete(pDevice);
                 spin_unlock_irq(&pDevice->lock);
                 return;
@@ -377,6 +348,7 @@ void vRunCommand(struct vnt_private *pDevice)
             } else {
                 if (!ChannelValid(pDevice->byZoneType, pMgmt->uScanChannel)) {
                     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Invalid channel pMgmt->uScanChannel = %d \n",pMgmt->uScanChannel);
+			pMgmt->uScanChannel++;
                     s_bCommandComplete(pDevice);
                     spin_unlock_irq(&pDevice->lock);
                     return;
@@ -473,6 +445,7 @@ void vRunCommand(struct vnt_private *pDevice)
                 pDevice->byRxMode |= RCR_BSSID;
             }
             DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Scanning, set back to channel: [%d]\n", pMgmt->uCurrChannel);
+		pMgmt->uScanChannel = 0;
             pMgmt->eScanState = WMAC_NO_SCANNING;
             pDevice->bStopDataPkt = false;
 
@@ -845,7 +818,7 @@ void vRunCommand(struct vnt_private *pDevice)
 
        {
 	       int ntStatus = STATUS_SUCCESS;
-        BYTE            byTmp;
+        u8            byTmp;
 
         ntStatus = CONTROLnsRequestIn(pDevice,
                                     MESSAGE_TYPE_READ,
@@ -1147,7 +1120,7 @@ int bScheduleCommand(struct vnt_private *pDevice,
                 break;
 /*
             case WLAN_CMD_DEAUTH:
-                pDevice->eCmdQueue[pDevice->uCmdEnqueueIdx].wDeAuthenReason = *((PWORD)pbyItem0);
+                pDevice->eCmdQueue[pDevice->uCmdEnqueueIdx].wDeAuthenReason = *((u16 *)pbyItem0);
                 break;
 */
 

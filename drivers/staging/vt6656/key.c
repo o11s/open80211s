@@ -42,24 +42,15 @@
 #include "rndis.h"
 #include "control.h"
 
-/*---------------------  Static Definitions -------------------------*/
 
-/*---------------------  Static Classes  ----------------------------*/
 
-/*---------------------  Static Variables  --------------------------*/
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
-/*---------------------  Static Functions  --------------------------*/
 
-/*---------------------  Export Variables  --------------------------*/
 
-/*---------------------  Static Definitions -------------------------*/
 
-/*---------------------  Static Classes  ----------------------------*/
 
-/*---------------------  Static Variables  --------------------------*/
 
-/*---------------------  Static Functions  --------------------------*/
 static void s_vCheckKeyTableValid(struct vnt_private *pDevice,
 	PSKeyManagement pTable)
 {
@@ -79,7 +70,7 @@ static void s_vCheckKeyTableValid(struct vnt_private *pDevice,
             pTable->KeyTable[i].bInUse = false;
             pTable->KeyTable[i].wKeyCtl = 0;
             pTable->KeyTable[i].bSoftWEP = false;
-            pbyData[wLength++] = (BYTE) i;
+            pbyData[wLength++] = (u8) i;
             //MACvDisableKeyEntry(pDevice, i);
         }
     }
@@ -96,7 +87,6 @@ static void s_vCheckKeyTableValid(struct vnt_private *pDevice,
 }
 
 
-/*---------------------  Export Functions  --------------------------*/
 
 
 /*
@@ -130,9 +120,9 @@ void KeyvInitTable(struct vnt_private *pDevice, PSKeyManagement pTable)
         pTable->KeyTable[i].wKeyCtl = 0;
         pTable->KeyTable[i].dwGTKeyIndex = 0;
         pTable->KeyTable[i].bSoftWEP = false;
-        pbyData[i] = (BYTE) i;
+        pbyData[i] = (u8) i;
     }
-    pbyData[i] = (BYTE) i;
+    pbyData[i] = (u8) i;
     CONTROLnsRequestOut(pDevice,
                         MESSAGE_TYPE_CLRKEYENTRY,
                         0,
@@ -272,7 +262,7 @@ int KeybSetKey(struct vnt_private *pDevice, PSKeyManagement pTable,
                 if (uKeyLength == WLAN_WEP104_KEYLEN)
                     pKey->abyKey[15] |= 0x80;
             }
-            MACvSetKeyEntry(pDevice, pTable->KeyTable[i].wKeyCtl, i, uKeyIdx, pbyBSSID, (PDWORD)pKey->abyKey);
+            MACvSetKeyEntry(pDevice, pTable->KeyTable[i].wKeyCtl, i, uKeyIdx, pbyBSSID, (u32 *)pKey->abyKey);
 
 		if ((dwKeyIndex & USE_KEYRSC) == 0)
 			pKey->KeyRSC = 0; /* RSC set by NIC */
@@ -340,7 +330,7 @@ int KeybSetKey(struct vnt_private *pDevice, PSKeyManagement pTable,
             if (uKeyLength == WLAN_WEP104_KEYLEN)
                 pKey->abyKey[15] |= 0x80;
         }
-        MACvSetKeyEntry(pDevice, pTable->KeyTable[j].wKeyCtl, j, uKeyIdx, pbyBSSID, (PDWORD)pKey->abyKey);
+        MACvSetKeyEntry(pDevice, pTable->KeyTable[j].wKeyCtl, j, uKeyIdx, pbyBSSID, (u32 *)pKey->abyKey);
 
 		if ((dwKeyIndex & USE_KEYRSC) == 0)
 			pKey->KeyRSC = 0; /* RSC set by NIC */
@@ -483,45 +473,6 @@ int KeybRemoveAllKey(struct vnt_private *pDevice, PSKeyManagement pTable,
 }
 
 /*
- * Description: Remove WEP Key from table
- *
- * Parameters:
- *  In:
- *      pTable          - Pointer to Key table
- *  Out:
- *      none
- *
- * Return Value: true if success otherwise false
- *
- */
-void KeyvRemoveWEPKey(struct vnt_private *pDevice, PSKeyManagement pTable,
-	u32 dwKeyIndex)
-{
-
-   if ((dwKeyIndex & 0x000000FF) < MAX_GROUP_KEY) {
-        if (pTable->KeyTable[MAX_KEY_TABLE-1].bInUse == true) {
-            if (pTable->KeyTable[MAX_KEY_TABLE-1].GroupKey[dwKeyIndex & 0x000000FF].byCipherSuite == KEY_CTL_WEP) {
-                pTable->KeyTable[MAX_KEY_TABLE-1].GroupKey[dwKeyIndex & 0x000000FF].bKeyValid = false;
-                if ((dwKeyIndex & 0x7FFFFFFF) == (pTable->KeyTable[MAX_KEY_TABLE-1].dwGTKeyIndex & 0x7FFFFFFF)) {
-                    // remove Group transmit key
-                    pTable->KeyTable[MAX_KEY_TABLE-1].dwGTKeyIndex = 0;
-                }
-            }
-        }
-        s_vCheckKeyTableValid(pDevice, pTable);
-    }
-    return;
-}
-
-void KeyvRemoveAllWEPKey(struct vnt_private *pDevice, PSKeyManagement pTable)
-{
-	int i;
-
-	for (i = 0; i < MAX_GROUP_KEY; i++)
-		KeyvRemoveWEPKey(pDevice, pTable, i);
-}
-
-/*
  * Description: Get Transmit Key from table
  *
  * Parameters:
@@ -596,35 +547,6 @@ int KeybGetTransmitKey(PSKeyManagement pTable, u8 *pbyBSSID, u32 dwKeyType,
         DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"%02x ", *(pbyBSSID+ii));
     }
     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"\n");
-    return (false);
-}
-
-
-/*
- * Description: Check Pairwise Key
- *
- * Parameters:
- *  In:
- *      pTable          - Pointer to Key table
- *  Out:
- *      none
- *
- * Return Value: true if found otherwise false
- *
- */
-int KeybCheckPairewiseKey(PSKeyManagement pTable, PSKeyItem *pKey)
-{
-	int i;
-
-	*pKey = NULL;
-
-    for (i=0;i<MAX_KEY_TABLE;i++) {
-        if ((pTable->KeyTable[i].bInUse == true) &&
-            (pTable->KeyTable[i].PairwiseKey.bKeyValid == true)) {
-            *pKey = &(pTable->KeyTable[i].PairwiseKey);
-            return (true);
-        }
-    }
     return (false);
 }
 
@@ -707,7 +629,7 @@ int KeybSetDefaultKey(struct vnt_private *pDevice, PSKeyManagement pTable,
             pKey->abyKey[15] |= 0x80;
     }
 
-    MACvSetKeyEntry(pDevice, pTable->KeyTable[MAX_KEY_TABLE-1].wKeyCtl, MAX_KEY_TABLE-1, uKeyIdx, pTable->KeyTable[MAX_KEY_TABLE-1].abyBSSID, (PDWORD) pKey->abyKey);
+    MACvSetKeyEntry(pDevice, pTable->KeyTable[MAX_KEY_TABLE-1].wKeyCtl, MAX_KEY_TABLE-1, uKeyIdx, pTable->KeyTable[MAX_KEY_TABLE-1].abyBSSID, (u32 *) pKey->abyKey);
 
 		if ((dwKeyIndex & USE_KEYRSC) == 0)
 			pKey->KeyRSC = 0; /* RSC set by NIC */
@@ -805,7 +727,7 @@ int KeybSetAllGroupKey(struct vnt_private *pDevice, PSKeyManagement pTable,
                     pKey->abyKey[15] |= 0x80;
             }
 
-            MACvSetKeyEntry(pDevice, pTable->KeyTable[i].wKeyCtl, i, uKeyIdx, pTable->KeyTable[i].abyBSSID, (PDWORD) pKey->abyKey);
+            MACvSetKeyEntry(pDevice, pTable->KeyTable[i].wKeyCtl, i, uKeyIdx, pTable->KeyTable[i].abyBSSID, (u32 *) pKey->abyKey);
 
 		if ((dwKeyIndex & USE_KEYRSC) == 0)
 			pKey->KeyRSC = 0; /* RSC set by NIC */

@@ -110,6 +110,7 @@ static void cleanup_device(struct comedi_device *dev)
 	dev->board_name = NULL;
 	dev->board_ptr = NULL;
 	dev->iobase = 0;
+	dev->ioenabled = false;
 	dev->irq = 0;
 	dev->read_subdev = NULL;
 	dev->write_subdev = NULL;
@@ -120,7 +121,7 @@ static void cleanup_device(struct comedi_device *dev)
 
 static void __comedi_device_detach(struct comedi_device *dev)
 {
-	dev->attached = 0;
+	dev->attached = false;
 	if (dev->driver)
 		dev->driver->detach(dev);
 	else
@@ -290,7 +291,7 @@ static int comedi_device_postconfig(struct comedi_device *dev)
 		dev->board_name = "BUG";
 	}
 	smp_wmb();
-	dev->attached = 1;
+	dev->attached = true;
 	return 0;
 }
 

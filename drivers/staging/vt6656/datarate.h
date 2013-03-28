@@ -30,7 +30,6 @@
 #define __DATARATE_H__
 
 
-/*---------------------  Export Definitions -------------------------*/
 
 #define FALLBACK_PKT_COLLECT_TR_H  50   /* pkts */
 #define FALLBACK_PKT_COLLECT_TR_L  10   /* pkts */
@@ -57,15 +56,11 @@
 #define RATE_AUTO      12
 #define MAX_RATE       12
 
-/*---------------------  Export Classes  ----------------------------*/
-
-/*---------------------  Export Variables  --------------------------*/
 
 
-/*---------------------  Export Types  ------------------------------*/
 
 
-/*---------------------  Export Functions  --------------------------*/
+
 
 
 
@@ -77,22 +72,16 @@ void RATEvParseMaxRate(struct vnt_private *, PWLAN_IE_SUPP_RATES pItemRates,
 void RATEvTxRateFallBack(struct vnt_private *pDevice,
 	PKnownNodeDB psNodeDBTable);
 
-BYTE
+u8
 RATEuSetIE(
      PWLAN_IE_SUPP_RATES pSrcRates,
      PWLAN_IE_SUPP_RATES pDstRates,
      unsigned int                uRateLen
     );
 
-WORD
+u16
 RATEwGetRateIdx(
-     BYTE byRate
-    );
-
-
-BYTE
-DATARATEbyGetRateIdx(
-     BYTE byRate
+     u8 byRate
     );
 
 #endif /* __DATARATE_H__ */

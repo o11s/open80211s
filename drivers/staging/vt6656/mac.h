@@ -34,11 +34,9 @@
 #ifndef __MAC_H__
 #define __MAC_H__
 
-#include "ttype.h"
 #include "device.h"
 #include "tmacro.h"
 
-/*---------------------  Export Definitions -------------------------*/
 
 #define REV_ID_VT3253_A0    0x00
 #define REV_ID_VT3253_A1    0x01
@@ -410,21 +408,14 @@
 #define MAC_REVISION_A1     0x01
 
 
-/*---------------------  Export Types  ------------------------------*/
 
-/*---------------------  Export Macros ------------------------------*/
 
-/*---------------------  Export Classes  ----------------------------*/
 
-/*---------------------  Export Variables  --------------------------*/
 
-/*---------------------  Export Functions  --------------------------*/
 
-void MACvSetMultiAddrByHash(struct vnt_private *, u8);
 void MACvWriteMultiAddr(struct vnt_private *, u32, u8);
 void MACbShutdown(struct vnt_private *);
 void MACvSetBBType(struct vnt_private *, u8);
-void MACvSetMISCFifo(struct vnt_private *pDevice, u16, u32);
 void MACvDisableKeyEntry(struct vnt_private *, u32);
 void MACvSetKeyEntry(struct vnt_private *, u16, u32, u32, u8 *, u32 *);
 void MACvRegBitsOff(struct vnt_private *, u8, u8);

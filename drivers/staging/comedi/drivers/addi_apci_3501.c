@@ -346,7 +346,7 @@ static int apci3501_auto_attach(struct comedi_device *dev,
 		return -ENOMEM;
 	dev->private = devpriv;
 
-	ret = comedi_pci_enable(pcidev, dev->board_name);
+	ret = comedi_pci_enable(dev);
 	if (ret)
 		return ret;
 
@@ -423,16 +423,11 @@ static int apci3501_auto_attach(struct comedi_device *dev,
 
 static void apci3501_detach(struct comedi_device *dev)
 {
-	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
-
 	if (dev->iobase)
 		apci3501_reset(dev);
 	if (dev->irq)
 		free_irq(dev->irq, dev);
-	if (pcidev) {
-		if (dev->iobase)
-			comedi_pci_disable(pcidev);
-	}
+	comedi_pci_disable(dev);
 }
 
 static struct comedi_driver apci3501_driver = {
@@ -443,9 +438,9 @@ static struct comedi_driver apci3501_driver = {
 };
 
 static int apci3501_pci_probe(struct pci_dev *dev,
-					const struct pci_device_id *ent)
+			      const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &apci3501_driver);
+	return comedi_pci_auto_config(dev, &apci3501_driver, id->driver_data);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(apci3501_pci_table) = {

@@ -194,7 +194,7 @@ static int dyna_pci10xx_auto_attach(struct comedi_device *dev,
 		return -ENOMEM;
 	dev->private = devpriv;
 
-	ret = comedi_pci_enable(pcidev, dev->board_name);
+	ret = comedi_pci_enable(dev);
 	if (ret)
 		return ret;
 	dev->iobase = pci_resource_start(pcidev, 2);
@@ -254,15 +254,11 @@ static int dyna_pci10xx_auto_attach(struct comedi_device *dev,
 
 static void dyna_pci10xx_detach(struct comedi_device *dev)
 {
-	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 	struct dyna_pci10xx_private *devpriv = dev->private;
 
 	if (devpriv)
 		mutex_destroy(&devpriv->mutex);
-	if (pcidev) {
-		if (dev->iobase)
-			comedi_pci_disable(pcidev);
-	}
+	comedi_pci_disable(dev);
 }
 
 static struct comedi_driver dyna_pci10xx_driver = {
@@ -273,9 +269,10 @@ static struct comedi_driver dyna_pci10xx_driver = {
 };
 
 static int dyna_pci10xx_pci_probe(struct pci_dev *dev,
-					    const struct pci_device_id *ent)
+				  const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &dyna_pci10xx_driver);
+	return comedi_pci_auto_config(dev, &dyna_pci10xx_driver,
+				      id->driver_data);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(dyna_pci10xx_pci_table) = {

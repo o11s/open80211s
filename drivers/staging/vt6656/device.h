@@ -66,7 +66,6 @@
  */
 
 #include "device_cfg.h"
-#include "ttype.h"
 #include "80211hdr.h"
 #include "tether.h"
 #include "wmgr.h"
@@ -78,7 +77,6 @@
 #include "key.h"
 #include "card.h"
 
-/*---------------------  Export Definitions -------------------------*/
 #define VNT_USB_VENDOR_ID                     0x160a
 #define VNT_USB_PRODUCT_ID                    0x3184
 
@@ -142,7 +140,6 @@
 
 #define PRIVATE_Message                 0
 
-/*---------------------  Export Types  ------------------------------*/
 
 #define DBG_PRT(l, p, args...) { if (l <= msglevel) printk(p, ##args); }
 #define PRINT_K(p, args...) { if (PRIVATE_Message) printk(p, ##args); }
@@ -191,7 +188,7 @@ typedef struct _USB_SEND_CONTEXT {
     struct urb      *pUrb;
     unsigned int            uBufLen;
     CONTEXT_TYPE    Type;
-    SEthernetHeader sEthHeader;
+    struct ethhdr sEthHeader;
     void *Next;
     bool            bBoolInUse;
     unsigned char           Data[MAX_TOTAL_SIZE_WITH_ALL_HEADERS];
@@ -212,7 +209,7 @@ typedef struct _DEFAULT_CONFIG {
  */
 typedef struct {
     unsigned int            uDataLen;
-    PBYTE           pDataBuf;
+    u8 *           pDataBuf;
   /* struct urb *pUrb; */
     bool            bInUse;
 } INT_BUFFER, *PINT_BUFFER;
@@ -309,16 +306,16 @@ typedef struct tagSPMKIDCandidateEvent {
 
 typedef struct tagSQuietControl {
     bool        bEnable;
-    DWORD       dwStartTime;
-    BYTE        byPeriod;
-    WORD        wDuration;
+    u32       dwStartTime;
+    u8        byPeriod;
+    u16        wDuration;
 } SQuietControl, *PSQuietControl;
 
 /* The receive duplicate detection cache entry */
 typedef struct tagSCacheEntry{
-    WORD        wFmSequence;
-    BYTE        abyAddr2[ETH_ALEN];
-    WORD        wFrameCtl;
+    u16        wFmSequence;
+    u8        abyAddr2[ETH_ALEN];
+    u16        wFrameCtl;
 } SCacheEntry, *PSCacheEntry;
 
 typedef struct tagSCache{
@@ -335,12 +332,12 @@ typedef struct tagSCache{
  */
 typedef struct tagSDeFragControlBlock
 {
-    WORD            wSequence;
-    WORD            wFragNum;
-    BYTE            abyAddr2[ETH_ALEN];
+    u16            wSequence;
+    u16            wFragNum;
+    u8            abyAddr2[ETH_ALEN];
 	unsigned int            uLifetime;
     struct sk_buff* skb;
-    PBYTE           pbyRxBuffer;
+    u8 *           pbyRxBuffer;
     unsigned int            cbFrameLength;
     bool            bInUse;
 } SDeFragControlBlock, *PSDeFragControlBlock;
@@ -747,8 +744,8 @@ struct vnt_private {
 	u8 byReAssocCount;
 	u8 byLinkWaitCount;
 
-	SEthernetHeader sTxEthHeader;
-	SEthernetHeader sRxEthHeader;
+	struct ethhdr sTxEthHeader;
+	struct ethhdr sRxEthHeader;
 	u8 abyBroadcastAddr[ETH_ALEN];
 	u8 abySNAP_RFC1042[ETH_ALEN];
 	u8 abySNAP_Bridgetunnel[ETH_ALEN];
@@ -841,7 +838,6 @@ struct vnt_private {
 #define MP_IS_READY(_M)        (((_M)->Flags & \
                                  (fMP_DISCONNECTED | fMP_RESET_IN_PROGRESS | fMP_HALT_IN_PROGRESS | fMP_INIT_IN_PROGRESS | fMP_SURPRISE_REMOVED)) == 0)
 
-/*---------------------  Export Functions  --------------------------*/
 
 int device_alloc_frag_buf(struct vnt_private *, PSDeFragControlBlock pDeF);
 

@@ -249,13 +249,11 @@ static int pc263_pci_common_attach(struct comedi_device *dev,
 
 	comedi_set_hw_dev(dev, &pci_dev->dev);
 
-	ret = comedi_pci_enable(pci_dev, PC263_DRIVER_NAME);
-	if (ret < 0) {
-		dev_err(dev->class_dev,
-			"error! cannot enable PCI device and request regions!\n");
+	ret = comedi_pci_enable(dev);
+	if (ret)
 		return ret;
-	}
 	iobase = pci_resource_start(pci_dev, 2);
+
 	return pc263_common_attach(dev, iobase);
 }
 
@@ -335,11 +333,9 @@ static void pc263_detach(struct comedi_device *dev)
 			release_region(dev->iobase, PC263_IO_SIZE);
 	} else if (is_pci_board(thisboard)) {
 		struct pci_dev *pcidev = comedi_to_pci_dev(dev);
-		if (pcidev) {
-			if (dev->iobase)
-				comedi_pci_disable(pcidev);
+		comedi_pci_disable(dev);
+		if (pcidev)
 			pci_dev_put(pcidev);
-		}
 	}
 }
 
@@ -368,10 +364,10 @@ static DEFINE_PCI_DEVICE_TABLE(pc263_pci_table) = {
 MODULE_DEVICE_TABLE(pci, pc263_pci_table);
 
 static int amplc_pc263_pci_probe(struct pci_dev *dev,
-						  const struct pci_device_id
-						  *ent)
+				 const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &amplc_pc263_driver);
+	return comedi_pci_auto_config(dev, &amplc_pc263_driver,
+				      id->driver_data);
 }
 
 static struct pci_driver amplc_pc263_pci_driver = {

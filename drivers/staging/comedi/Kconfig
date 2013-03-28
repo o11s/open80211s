@@ -728,6 +728,16 @@ config COMEDI_ADV_PCI1723
 	  To compile this driver as a module, choose M here: the module will be
 	  called adv_pci1723.
 
+config COMEDI_ADV_PCI1724
+	tristate "Advantech PCI-1724U support"
+	---help---
+	  Enable support for Advantech PCI-1724U cards.  These are 32-channel
+	  analog output cards with voltage and current loop output ranges and
+	  14-bit resolution.
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called adv_pci1724.
+
 config COMEDI_ADV_PCI_DIO
 	tristate "Advantech PCI DIO card support"
 	select COMEDI_8255
@@ -748,7 +758,7 @@ config COMEDI_AMPLC_DIO200_PCI
 	  and PCIe296 DIO boards.
 
 	  To compile this driver as a module, choose M here: the module will be
-	  called amplc_dio200.
+	  called amplc_dio200_pci.
 
 config COMEDI_AMPLC_PC236_PCI
 	tristate "Amplicon PCI236 DIO board support"
@@ -983,7 +993,7 @@ config COMEDI_NI_660X
 	select COMEDI_NI_TIOCMD
 	---help---
 	  Enable support for National Instruments PCI-6601 (ni_660x), PCI-6602,
-	  PXI-6602 and PXI-6608.
+	  PXI-6602, PXI-6608 and PXI-6624.
 
 	  To compile this driver as a module, choose M here: the module will be
 	  called ni_660x.

@@ -73,7 +73,7 @@ NI manuals:
 #include <pcmcia/cisreg.h>
 #include <pcmcia/ds.h>
 
-static const struct labpc_board_struct labpc_cs_boards[] = {
+static const struct labpc_boardinfo labpc_cs_boards[] = {
 	{
 		.name			= "daqcard-1200",
 		.device_id		= 0x103,
@@ -83,7 +83,6 @@ static const struct labpc_board_struct labpc_cs_boards[] = {
 		.has_ao			= 1,
 		.ai_range_table		= &range_labpc_1200_ai,
 		.ai_range_code		= labpc_1200_ai_gain_bits,
-		.ai_range_is_unipolar	= labpc_1200_is_unipolar,
 	},
 };
 

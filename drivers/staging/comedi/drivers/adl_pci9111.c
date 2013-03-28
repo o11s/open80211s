@@ -872,7 +872,7 @@ static int pci9111_auto_attach(struct comedi_device *dev,
 		return -ENOMEM;
 	dev->private = dev_private;
 
-	ret = comedi_pci_enable(pcidev, dev->board_name);
+	ret = comedi_pci_enable(dev);
 	if (ret)
 		return ret;
 	dev_private->lcr_io_base = pci_resource_start(pcidev, 1);
@@ -939,16 +939,11 @@ static int pci9111_auto_attach(struct comedi_device *dev,
 
 static void pci9111_detach(struct comedi_device *dev)
 {
-	struct pci_dev *pcidev = comedi_to_pci_dev(dev);
-
 	if (dev->iobase)
 		pci9111_reset(dev);
 	if (dev->irq != 0)
 		free_irq(dev->irq, dev);
-	if (pcidev) {
-		if (dev->iobase)
-			comedi_pci_disable(pcidev);
-	}
+	comedi_pci_disable(dev);
 }
 
 static struct comedi_driver adl_pci9111_driver = {
@@ -959,9 +954,10 @@ static struct comedi_driver adl_pci9111_driver = {
 };
 
 static int pci9111_pci_probe(struct pci_dev *dev,
-				       const struct pci_device_id *ent)
+			     const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &adl_pci9111_driver);
+	return comedi_pci_auto_config(dev, &adl_pci9111_driver,
+				      id->driver_data);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(pci9111_pci_table) = {

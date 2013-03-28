@@ -34,7 +34,6 @@
 #ifndef __WMGR_H__
 #define __WMGR_H__
 
-#include "ttype.h"
 #include "80211mgr.h"
 #include "80211hdr.h"
 #include "wcmd.h"
@@ -42,7 +41,6 @@
 #include "wpa2.h"
 #include "card.h"
 
-/*---------------------  Export Definitions -------------------------*/
 
 
 
@@ -76,11 +74,8 @@
 #define DEFAULT_IBSS_CHANNEL            6  //2.4G
 
 
-/*---------------------  Export Classes  ----------------------------*/
 
-/*---------------------  Export Variables  --------------------------*/
 
-/*---------------------  Export Types  ------------------------------*/
 //mike define: make timer  to expire after desired times
 #define timer_expire(timer, next_tick) mod_timer(&timer, RUN_AT(next_tick))
 
@@ -384,9 +379,7 @@ struct vnt_manager {
 
 };
 
-/*---------------------  Export Macros ------------------------------*/
 
-/*---------------------  Export Functions  --------------------------*/
 
 void vMgrObjectInit(struct vnt_private *pDevice);
 

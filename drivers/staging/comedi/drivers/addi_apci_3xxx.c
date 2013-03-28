@@ -10,11 +10,37 @@
 #include "addi-data/hwdrv_apci3xxx.c"
 #include "addi-data/addi_common.c"
 
+enum apci3xxx_boardid {
+	BOARD_APCI3000_16,
+	BOARD_APCI3000_8,
+	BOARD_APCI3000_4,
+	BOARD_APCI3006_16,
+	BOARD_APCI3006_8,
+	BOARD_APCI3006_4,
+	BOARD_APCI3010_16,
+	BOARD_APCI3010_8,
+	BOARD_APCI3010_4,
+	BOARD_APCI3016_16,
+	BOARD_APCI3016_8,
+	BOARD_APCI3016_4,
+	BOARD_APCI3100_16_4,
+	BOARD_APCI3100_8_4,
+	BOARD_APCI3106_16_4,
+	BOARD_APCI3106_8_4,
+	BOARD_APCI3110_16_4,
+	BOARD_APCI3110_8_4,
+	BOARD_APCI3116_16_4,
+	BOARD_APCI3116_8_4,
+	BOARD_APCI3003,
+	BOARD_APCI3002_16,
+	BOARD_APCI3002_8,
+	BOARD_APCI3002_4,
+	BOARD_APCI3500,
+};
+
 static const struct addi_board apci3xxx_boardtypes[] = {
-	{
+	[BOARD_APCI3000_16] = {
 		.pc_DriverName		= "apci3000-16",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3010,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -37,10 +63,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3000_8] = {
 		.pc_DriverName		= "apci3000-8",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x300F,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -63,10 +88,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3000_4] = {
 		.pc_DriverName		= "apci3000-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x300E,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -89,10 +113,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3006_16] = {
 		.pc_DriverName		= "apci3006-16",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3013,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -115,10 +138,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3006_8] = {
 		.pc_DriverName		= "apci3006-8",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3014,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -141,10 +163,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3006_4] = {
 		.pc_DriverName		= "apci3006-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3015,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -167,10 +188,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3010_16] = {
 		.pc_DriverName		= "apci3010-16",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3016,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -198,10 +218,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3010_8] = {
 		.pc_DriverName		= "apci3010-8",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3017,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -229,10 +248,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3010_4] = {
 		.pc_DriverName		= "apci3010-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3018,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -260,10 +278,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3016_16] = {
 		.pc_DriverName		= "apci3016-16",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3019,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -291,10 +308,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3016_8] = {
 		.pc_DriverName		= "apci3016-8",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301A,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -322,10 +338,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3016_4] = {
 		.pc_DriverName		= "apci3016-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301B,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -353,10 +368,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3100_16_4] = {
 		.pc_DriverName		= "apci3100-16-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301C,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -383,10 +397,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3100_8_4] = {
 		.pc_DriverName		= "apci3100-8-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301D,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -413,10 +426,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3106_16_4] = {
 		.pc_DriverName		= "apci3106-16-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301E,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -443,10 +455,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3106_8_4] = {
 		.pc_DriverName		= "apci3106-8-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x301F,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -473,10 +484,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3110_16_4] = {
 		.pc_DriverName		= "apci3110-16-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3020,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -508,10 +518,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3110_8_4] = {
 		.pc_DriverName		= "apci3110-8-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3021,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -543,10 +552,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3116_16_4] = {
 		.pc_DriverName		= "apci3116-16-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3022,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -578,10 +586,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3116_8_4] = {
 		.pc_DriverName		= "apci3116-8-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3023,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -613,10 +620,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ttl_bits		= i_APCI3XXX_InsnBitsTTLIO,
 		.ttl_read		= i_APCI3XXX_InsnReadTTLIO,
 		.ttl_write		= i_APCI3XXX_InsnWriteTTLIO,
-	}, {
+	},
+	[BOARD_APCI3003] = {
 		.pc_DriverName		= "apci3003",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x300B,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -638,10 +644,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ai_read		= i_APCI3XXX_InsnReadAnalogInput,
 		.di_bits		= apci3xxx_di_insn_bits,
 		.do_bits		= apci3xxx_do_insn_bits,
-	}, {
+	},
+	[BOARD_APCI3002_16] = {
 		.pc_DriverName		= "apci3002-16",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3002,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -663,10 +668,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ai_read		= i_APCI3XXX_InsnReadAnalogInput,
 		.di_bits		= apci3xxx_di_insn_bits,
 		.do_bits		= apci3xxx_do_insn_bits,
-	}, {
+	},
+	[BOARD_APCI3002_8] = {
 		.pc_DriverName		= "apci3002-8",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3003,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -688,10 +692,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ai_read		= i_APCI3XXX_InsnReadAnalogInput,
 		.di_bits		= apci3xxx_di_insn_bits,
 		.do_bits		= apci3xxx_do_insn_bits,
-	}, {
+	},
+	[BOARD_APCI3002_4] = {
 		.pc_DriverName		= "apci3002-4",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3004,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -713,10 +716,9 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 		.ai_read		= i_APCI3XXX_InsnReadAnalogInput,
 		.di_bits		= apci3xxx_di_insn_bits,
 		.do_bits		= apci3xxx_do_insn_bits,
-	}, {
+	},
+	[BOARD_APCI3500] = {
 		.pc_DriverName		= "apci3500",
-		.i_VendorId		= PCI_VENDOR_ID_ADDIDATA,
-		.i_DeviceId		= 0x3024,
 		.i_IorangeBase0		= 256,
 		.i_IorangeBase1		= 256,
 		.i_IorangeBase2		= 256,
@@ -737,48 +739,59 @@ static const struct addi_board apci3xxx_boardtypes[] = {
 	},
 };
 
+static int apci3xxx_auto_attach(struct comedi_device *dev,
+				unsigned long context)
+{
+	const struct addi_board *board = NULL;
+
+	if (context < ARRAY_SIZE(apci3xxx_boardtypes))
+		board = &apci3xxx_boardtypes[context];
+	if (!board)
+		return -ENODEV;
+	dev->board_ptr = board;
+
+	return addi_auto_attach(dev, context);
+}
+
 static struct comedi_driver apci3xxx_driver = {
 	.driver_name	= "addi_apci_3xxx",
 	.module		= THIS_MODULE,
-	.auto_attach	= addi_auto_attach,
+	.auto_attach	= apci3xxx_auto_attach,
 	.detach		= i_ADDI_Detach,
-	.num_names	= ARRAY_SIZE(apci3xxx_boardtypes),
-	.board_name	= &apci3xxx_boardtypes[0].pc_DriverName,
-	.offset		= sizeof(struct addi_board),
 };
 
 static int apci3xxx_pci_probe(struct pci_dev *dev,
-					const struct pci_device_id *ent)
+			      const struct pci_device_id *id)
 {
-	return comedi_pci_auto_config(dev, &apci3xxx_driver);
+	return comedi_pci_auto_config(dev, &apci3xxx_driver, id->driver_data);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(apci3xxx_pci_table) = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3010) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x300f) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x300e) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3013) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3014) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3015) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3016) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3017) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3018) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3019) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301a) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301b) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301c) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301d) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301e) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x301f) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3020) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3021) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3022) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3023) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x300B) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3002) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3003) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3004) },
-	{ PCI_DEVICE(PCI_VENDOR_ID_ADDIDATA, 0x3024) },
+	{ PCI_VDEVICE(ADDIDATA, 0x3010), BOARD_APCI3000_16 },
+	{ PCI_VDEVICE(ADDIDATA, 0x300f), BOARD_APCI3000_8 },
+	{ PCI_VDEVICE(ADDIDATA, 0x300e), BOARD_APCI3000_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3013), BOARD_APCI3006_16 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3014), BOARD_APCI3006_8 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3015), BOARD_APCI3006_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3016), BOARD_APCI3010_16 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3017), BOARD_APCI3010_8 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3018), BOARD_APCI3010_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3019), BOARD_APCI3016_16 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301a), BOARD_APCI3016_8 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301b), BOARD_APCI3016_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301c), BOARD_APCI3100_16_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301d), BOARD_APCI3100_8_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301e), BOARD_APCI3106_16_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x301f), BOARD_APCI3106_8_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3020), BOARD_APCI3110_16_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3021), BOARD_APCI3110_8_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3022), BOARD_APCI3116_16_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3023), BOARD_APCI3116_8_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x300B), BOARD_APCI3003 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3002), BOARD_APCI3002_16 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3003), BOARD_APCI3002_8 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3004), BOARD_APCI3002_4 },
+	{ PCI_VDEVICE(ADDIDATA, 0x3024), BOARD_APCI3500 },
 	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, apci3xxx_pci_table);

@@ -39,7 +39,6 @@
  *
  */
 
-#include "ttype.h"
 #include "tmacro.h"
 #include "tether.h"
 #include "device.h"
@@ -59,27 +58,24 @@
 #include "rndis.h"
 #include "iowpa.h"
 
-/*---------------------  Static Definitions -------------------------*/
 
 
 
 
-/*---------------------  Static Classes  ----------------------------*/
 
-/*---------------------  Static Variables  --------------------------*/
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
 
 
 
-const WORD             awHWRetry0[5][5] = {
+const u16             awHWRetry0[5][5] = {
                                             {RATE_18M, RATE_18M, RATE_12M, RATE_12M, RATE_12M},
                                             {RATE_24M, RATE_24M, RATE_18M, RATE_12M, RATE_12M},
                                             {RATE_36M, RATE_36M, RATE_24M, RATE_18M, RATE_18M},
                                             {RATE_48M, RATE_48M, RATE_36M, RATE_24M, RATE_24M},
                                             {RATE_54M, RATE_54M, RATE_48M, RATE_36M, RATE_36M}
                                            };
-const WORD             awHWRetry1[5][5] = {
+const u16             awHWRetry1[5][5] = {
                                             {RATE_18M, RATE_18M, RATE_12M, RATE_6M, RATE_6M},
                                             {RATE_24M, RATE_24M, RATE_18M, RATE_6M, RATE_6M},
                                             {RATE_36M, RATE_36M, RATE_24M, RATE_12M, RATE_12M},
@@ -89,16 +85,13 @@ const WORD             awHWRetry1[5][5] = {
 
 
 
-/*---------------------  Static Functions  --------------------------*/
 
 static void s_vCheckSensitivity(struct vnt_private *pDevice);
 static void s_vCheckPreEDThreshold(struct vnt_private *pDevice);
 static void s_uCalculateLinkQual(struct vnt_private *pDevice);
 
-/*---------------------  Export Variables  --------------------------*/
 
 
-/*---------------------  Export Functions  --------------------------*/
 
 
 
@@ -430,7 +423,7 @@ int BSSbInsertToBSSList(struct vnt_private *pDevice,
 	unsigned int uLen = pRSNWPA->len + 2;
 
 	if (uLen <= (uIELength -
-		     (unsigned int) (ULONG_PTR) ((PBYTE) pRSNWPA - pbyIEs))) {
+		     (unsigned int) (u32) ((u8 *) pRSNWPA - pbyIEs))) {
 		pBSSList->wWPALen = uLen;
 		memcpy(pBSSList->byWPAIE, pRSNWPA, uLen);
 		WPA_ParseRSN(pBSSList, pRSNWPA);
@@ -443,7 +436,7 @@ int BSSbInsertToBSSList(struct vnt_private *pDevice,
 	unsigned int uLen = pRSN->len + 2;
 
 	if (uLen <= (uIELength -
-		     (unsigned int) (ULONG_PTR) ((PBYTE) pRSN - pbyIEs))) {
+		     (unsigned int) (u32) ((u8 *) pRSN - pbyIEs))) {
 		pBSSList->wRSNLen = uLen;
 		memcpy(pBSSList->byRSNIE, pRSN, uLen);
 		WPA2vParseRSN(pBSSList, pRSN);
@@ -483,7 +476,7 @@ int BSSbInsertToBSSList(struct vnt_private *pDevice,
     if (pDevice->bUpdateBBVGA) {
         // Monitor if RSSI is too strong.
         pBSSList->byRSSIStatCnt = 0;
-        RFvRSSITodBm(pDevice, (BYTE)(pRxPacket->uRSSI), &pBSSList->ldBmMAX);
+        RFvRSSITodBm(pDevice, (u8)(pRxPacket->uRSSI), &pBSSList->ldBmMAX);
         pBSSList->ldBmAverage[0] = pBSSList->ldBmMAX;
         pBSSList->ldBmAverRange = pBSSList->ldBmMAX;
         for (ii = 1; ii < RSSI_STAT_COUNT; ii++)
@@ -592,7 +585,7 @@ int BSSbUpdateToBSSList(struct vnt_private *pDevice,
    if (pRSNWPA != NULL) {
 	unsigned int uLen = pRSNWPA->len + 2;
 	if (uLen <= (uIELength -
-		     (unsigned int) (ULONG_PTR) ((PBYTE) pRSNWPA - pbyIEs))) {
+		     (unsigned int) (u32) ((u8 *) pRSNWPA - pbyIEs))) {
 		pBSSList->wWPALen = uLen;
 		memcpy(pBSSList->byWPAIE, pRSNWPA, uLen);
 		WPA_ParseRSN(pBSSList, pRSNWPA);
@@ -604,7 +597,7 @@ int BSSbUpdateToBSSList(struct vnt_private *pDevice,
     if (pRSN != NULL) {
 	unsigned int uLen = pRSN->len + 2;
 	if (uLen <= (uIELength -
-			(unsigned int) (ULONG_PTR) ((PBYTE) pRSN - pbyIEs))) {
+			(unsigned int) (u32) ((u8 *) pRSN - pbyIEs))) {
 		pBSSList->wRSNLen = uLen;
 		memcpy(pBSSList->byRSNIE, pRSN, uLen);
 		WPA2vParseRSN(pBSSList, pRSN);
@@ -612,7 +605,7 @@ int BSSbUpdateToBSSList(struct vnt_private *pDevice,
     }
 
     if (pRxPacket->uRSSI != 0) {
-        RFvRSSITodBm(pDevice, (BYTE)(pRxPacket->uRSSI), &ldBm);
+        RFvRSSITodBm(pDevice, (u8)(pRxPacket->uRSSI), &ldBm);
         // Monitor if RSSI is too strong.
         pBSSList->byRSSIStatCnt++;
         pBSSList->byRSSIStatCnt %= RSSI_STAT_COUNT;
@@ -1205,9 +1198,9 @@ void BSSvUpdateNodeTxCounter(struct vnt_private *pDevice,
 
     byPktNum = (byPktNO & 0x0F) >> 4;
     byTxRetry = (byTSR & 0xF0) >> 4;
-    wRate = (WORD) (byPktNO & 0xF0) >> 4;
+    wRate = (u16) (byPktNO & 0xF0) >> 4;
     wFIFOCtl = pStatistic->abyTxPktInfo[byPktNum].wFIFOCtl;
-    pbyDestAddr = (PBYTE) &( pStatistic->abyTxPktInfo[byPktNum].abyDestAddr[0]);
+    pbyDestAddr = (u8 *) &( pStatistic->abyTxPktInfo[byPktNum].abyDestAddr[0]);
 
     if (wFIFOCtl & FIFOCTL_AUTO_FB_0) {
         byFallBack = AUTO_FB_0;
@@ -1433,7 +1426,7 @@ if(pDevice->bLinkPass !=true)
 }
 else
 {
-   RFvRSSITodBm(pDevice, (BYTE)(pDevice->uCurrRSSI), &ldBm);
+   RFvRSSITodBm(pDevice, (u8)(pDevice->uCurrRSSI), &ldBm);
    if(-ldBm < 50)  {
    	RssiRatio = 4000;
      }
@@ -1473,7 +1466,7 @@ static void s_vCheckPreEDThreshold(struct vnt_private *pDevice)
         ((pMgmt->eCurrMode == WMAC_MODE_IBSS_STA) && (pMgmt->eCurrState == WMAC_STATE_JOINTED))) {
         pBSSList = BSSpAddrIsInBSSList(pDevice, pMgmt->abyCurrBSSID, (PWLAN_IE_SSID)pMgmt->abyCurrSSID);
         if (pBSSList != NULL) {
-            pDevice->byBBPreEDRSSI = (BYTE) (~(pBSSList->ldBmAverRange) + 1);
+            pDevice->byBBPreEDRSSI = (u8) (~(pBSSList->ldBmAverRange) + 1);
             BBvUpdatePreEDThreshold(pDevice, false);
         }
     }

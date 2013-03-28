@@ -41,7 +41,6 @@
 
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
-/*---------------------  Static Definitions -------------------------*/
 #define BY_AL2230_REG_LEN     23 //24bit
 #define CB_AL2230_INIT_SEQ    15
 #define AL2230_PWR_IDX_LEN    64
@@ -62,9 +61,7 @@ static int          msglevel                =MSG_LEVEL_INFO;
 #define VT3342_PWR_IDX_LEN    64
 //}}
 
-/*---------------------  Static Classes  ----------------------------*/
 
-/*---------------------  Static Variables  --------------------------*/
 
 
 
@@ -673,9 +670,7 @@ const u32 dwAL2230PowerTable[AL2230_PWR_IDX_LEN] = {
     0x0407F900+(BY_AL2230_REG_LEN<<3)+IFREGCTL_REGW
     };
 
-/*---------------------  Static Functions  --------------------------*/
 
-/*---------------------  Export Variables  --------------------------*/
 
 //{{ RobertYu:20050103, Channel 11a Number To Index
 // 4.9G => Ch 183, 184, 185, 187, 188, 189, 192, 196  (Value:15 ~ 22)
@@ -708,7 +703,6 @@ const u8 RFaby11aChannelIndex[200] = {
 };
 //}} RobertYu
 
-/*---------------------  Export Functions  --------------------------*/
 
 /*
  * Description: Write to IF/RF, by embedded programming
@@ -842,7 +836,7 @@ int RFbRawSetPower(struct vnt_private *pDevice, u8 byPwr, u32 uRATE)
 
         case RF_AIROHA7230:
             {
-                DWORD       dwMax7230Pwr;
+                u32       dwMax7230Pwr;
 
                 if (uRATE <= RATE_11M) { //RobertYu:20060426, for better 11b mask
                     bResult &= IFRFbWriteEmbedded(pDevice, 0x111BB900+(BY_AL7230_REG_LEN<<3)+IFREGCTL_REGW);
@@ -864,7 +858,7 @@ int RFbRawSetPower(struct vnt_private *pDevice, u8 byPwr, u32 uRATE)
 
         case RF_VT3226: //RobertYu:20051111, VT3226C0 and before
         {
-            DWORD       dwVT3226Pwr;
+            u32       dwVT3226Pwr;
 
             if (pDevice->byCurPwr >= VT3226_PWR_IDX_LEN)
                 return false;
@@ -876,7 +870,7 @@ int RFbRawSetPower(struct vnt_private *pDevice, u8 byPwr, u32 uRATE)
 
         case RF_VT3226D0: //RobertYu:20051228
         {
-            DWORD       dwVT3226Pwr;
+            u32       dwVT3226Pwr;
 
             if (pDevice->byCurPwr >= VT3226_PWR_IDX_LEN)
                 return false;
@@ -921,7 +915,7 @@ int RFbRawSetPower(struct vnt_private *pDevice, u8 byPwr, u32 uRATE)
         //{{RobertYu:20060609
         case RF_VT3342A0:
         {
-            DWORD       dwVT3342Pwr;
+            u32       dwVT3342Pwr;
 
             if (pDevice->byCurPwr >= VT3342_PWR_IDX_LEN)
                 return false;
@@ -1121,20 +1115,3 @@ void RFbRFTableDownload(struct vnt_private *pDevice)
     }
 
 }
-
-int s_bVT3226D0_11bLoCurrentAdjust(struct vnt_private *pDevice, u8 byChannel,
-	int b11bMode)
-{
-	int bResult = true;
-
-	if (b11bMode)
-		bResult &= IFRFbWriteEmbedded(pDevice,
-			dwVT3226D0LoCurrentTable[byChannel-1]);
-	else
-		bResult &= IFRFbWriteEmbedded(pDevice, 0x016bc600 +
-			(BY_VT3226_REG_LEN << 3) + IFREGCTL_REGW);
-
-	return bResult;
-}
-
-

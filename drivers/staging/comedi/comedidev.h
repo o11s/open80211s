@@ -207,10 +207,11 @@ struct comedi_device {
 
 	const char *board_name;
 	const void *board_ptr;
-	int attached;
+	bool attached:1;
+	bool in_request_module:1;
+	bool ioenabled:1;
 	spinlock_t spinlock;
 	struct mutex mutex;
-	int in_request_module;
 
 	int n_subdevices;
 	struct comedi_subdevice *subdevices;
@@ -384,10 +385,11 @@ struct pci_driver;
 
 struct pci_dev *comedi_to_pci_dev(struct comedi_device *);
 
-int comedi_pci_enable(struct pci_dev *, const char *);
-void comedi_pci_disable(struct pci_dev *);
+int comedi_pci_enable(struct comedi_device *);
+void comedi_pci_disable(struct comedi_device *);
 
-int comedi_pci_auto_config(struct pci_dev *, struct comedi_driver *);
+int comedi_pci_auto_config(struct pci_dev *, struct comedi_driver *,
+			   unsigned long context);
 void comedi_pci_auto_unconfig(struct pci_dev *);
 
 int comedi_pci_driver_register(struct comedi_driver *, struct pci_driver *);
@@ -420,12 +422,12 @@ static inline struct pci_dev *comedi_to_pci_dev(struct comedi_device *dev)
 	return NULL;
 }
 
-static inline int comedi_pci_enable(struct pci_dev *dev, const char *name)
+static inline int comedi_pci_enable(struct comedi_device *dev)
 {
 	return -ENOSYS;
 }
 
-static inline void comedi_pci_disable(struct pci_dev *dev)
+static inline void comedi_pci_disable(struct comedi_device *dev)
 {
 }
 

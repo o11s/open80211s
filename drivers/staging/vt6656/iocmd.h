@@ -29,9 +29,6 @@
 #ifndef __IOCMD_H__
 #define __IOCMD_H__
 
-#include "ttype.h"
-
-/*---------------------  Export Definitions -------------------------*/
 
 // ioctl Command code
 #define MAGIC_CODE	                 0x3142
@@ -432,12 +429,8 @@ struct viawget_hostapd_param {
 	} u;
 } __packed;
 
-/*---------------------  Export Classes  ----------------------------*/
 
-/*---------------------  Export Variables  --------------------------*/
 
-/*---------------------  Export Types  ------------------------------*/
 
-/*---------------------  Export Functions  --------------------------*/
 
 #endif /* __IOCMD_H__ */
