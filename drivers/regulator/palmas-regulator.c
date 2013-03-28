@@ -1,7 +1,7 @@
 /*
  * Driver for Regulator part of Palmas PMIC Chips
  *
- * Copyright 2011-2012 Texas Instruments Inc.
+ * Copyright 2011-2013 Texas Instruments Inc.
  *
  * Author: Graeme Gregory <gg@slimlogic.co.uk>
  * Author: Ian Lartey <ian@slimlogic.co.uk>
@@ -553,18 +553,16 @@ static void palmas_dt_to_pdata(struct device *dev,
 		pdata->reg_init[idx] = devm_kzalloc(dev,
 				sizeof(struct palmas_reg_init), GFP_KERNEL);
 
-		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,warm_reset", &prop);
-		if (!ret)
-			pdata->reg_init[idx]->warm_reset = prop;
+		pdata->reg_init[idx]->warm_reset =
+			of_property_read_bool(palmas_matches[idx].of_node,
+					     "ti,warm-reset");
+
+		pdata->reg_init[idx]->roof_floor =
+			of_property_read_bool(palmas_matches[idx].of_node,
+					      "ti,roof-floor");
 
 		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,roof_floor", &prop);
-		if (!ret)
-			pdata->reg_init[idx]->roof_floor = prop;
-
-		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,mode_sleep", &prop);
+				"ti,mode-sleep", &prop);
 		if (!ret)
 			pdata->reg_init[idx]->mode_sleep = prop;
 
@@ -573,19 +571,18 @@ static void palmas_dt_to_pdata(struct device *dev,
 		if (!ret)
 			pdata->reg_init[idx]->tstep = prop;
 
-		ret = of_property_read_u32(palmas_matches[idx].of_node,
-				"ti,vsel", &prop);
-		if (!ret)
-			pdata->reg_init[idx]->vsel = prop;
+		ret = of_property_read_bool(palmas_matches[idx].of_node,
+					    "ti,smps-range");
+		if (ret)
+			pdata->reg_init[idx]->vsel =
+				PALMAS_SMPS12_VOLTAGE_RANGE;
 	}
 
-	ret = of_property_read_u32(node, "ti,ldo6_vibrator", &prop);
-	if (!ret)
-		pdata->ldo6_vibrator = prop;
+	pdata->ldo6_vibrator = of_property_read_bool(node, "ti,ldo6-vibrator");
 }
 
 
-static int palmas_probe(struct platform_device *pdev)
+static int palmas_regulators_probe(struct platform_device *pdev)
 {
 	struct palmas *palmas = dev_get_drvdata(pdev->dev.parent);
 	struct palmas_pmic_platform_data *pdata = pdev->dev.platform_data;
@@ -794,7 +791,7 @@ err_unregister_regulator:
 	return ret;
 }
 
-static int palmas_remove(struct platform_device *pdev)
+static int palmas_regulators_remove(struct platform_device *pdev)
 {
 	struct palmas_pmic *pmic = platform_get_drvdata(pdev);
 	int id;
@@ -806,6 +803,12 @@ static int palmas_remove(struct platform_device *pdev)
 
 static struct of_device_id of_palmas_match_tbl[] = {
 	{ .compatible = "ti,palmas-pmic", },
+	{ .compatible = "ti,twl6035-pmic", },
+	{ .compatible = "ti,twl6036-pmic", },
+	{ .compatible = "ti,twl6037-pmic", },
+	{ .compatible = "ti,tps65913-pmic", },
+	{ .compatible = "ti,tps65914-pmic", },
+	{ .compatible = "ti,tps80036-pmic", },
 	{ /* end */ }
 };
 
@@ -815,8 +818,8 @@ static struct platform_driver palmas_driver = {
 		.of_match_table = of_palmas_match_tbl,
 		.owner = THIS_MODULE,
 	},
-	.probe = palmas_probe,
-	.remove = palmas_remove,
+	.probe = palmas_regulators_probe,
+	.remove = palmas_regulators_remove,
 };
 
 static int __init palmas_init(void)
