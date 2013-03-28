@@ -1,0 +1,17 @@
+Importing jdelvare-hwmon based on 10b38669d64c757cfd927e3820292c580ed70aae
+Unchanged quilt series jdelvare-hwmon
+Importing device-mapper based on v3.9-rc4
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 8bb9660418e05bb1845ac1a2428444d78e322cc7
+HEAD is now at 8bb9660 Linux 3.9-rc4
+$ git am ../quilt/device-mapper/dm-cache-fix-writes-to-cache-device-in-writethrough-mode.patch
+Applying: The dm-cache writethrough strategy introduced by commit e2e74d617eadc15
+$ git am ../quilt/device-mapper/dm-cache-reduce-bio-front_pad-size-in-writeback-mode.patch
+Applying: A recent patch to fix the dm cache target's writethrough mode extended
+$ git am ../quilt/device-mapper/dm-cache-policy-fix-description-of-lookup-fn.patch
+Applying: Correct the documented requirement on the return code from dm cache policy
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:device-mapper/master
+From ../quilt-tmp
+ + 9dbb48d...5fc3c92 master     -> device-mapper/master  (forced update)
