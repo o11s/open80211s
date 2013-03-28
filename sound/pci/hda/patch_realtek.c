@@ -34,7 +34,6 @@
 #include "hda_codec.h"
 #include "hda_local.h"
 #include "hda_auto_parser.h"
-#include "hda_beep.h"
 #include "hda_jack.h"
 #include "hda_generic.h"
 
@@ -85,6 +84,8 @@ struct alc_spec {
 	/* mute LED for HP laptops, see alc269_fixup_mic_mute_hook() */
 	int mute_led_polarity;
 	hda_nid_t mute_led_nid;
+
+	unsigned int gpio_led; /* used for alc269_fixup_hp_gpio_led() */
 
 	/* hooks */
 	void (*init_hook)(struct hda_codec *codec);
@@ -805,17 +806,7 @@ static inline void alc_shutup(struct hda_codec *codec)
 	snd_hda_shutup_pins(codec);
 }
 
-static void alc_free(struct hda_codec *codec)
-{
-	struct alc_spec *spec = codec->spec;
-
-	if (!spec)
-		return;
-
-	snd_hda_gen_spec_free(&spec->gen);
-	snd_hda_detach_beep_device(codec);
-	kfree(spec);
-}
+#define alc_free	snd_hda_gen_free
 
 #ifdef CONFIG_PM
 static void alc_power_eapd(struct hda_codec *codec)
@@ -1401,6 +1392,7 @@ static int patch_alc880(struct hda_codec *codec)
 
 	spec = codec->spec;
 	spec->gen.need_dac_fix = 1;
+	spec->gen.beep_nid = 0x01;
 
 	snd_hda_pick_fixup(codec, alc880_fixup_models, alc880_fixup_tbl,
 		       alc880_fixups);
@@ -1411,12 +1403,8 @@ static int patch_alc880(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog)
 		set_beep_amp(spec, 0x0b, 0x05, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 	codec->patch_ops.unsol_event = alc880_unsol_event;
@@ -1455,6 +1443,7 @@ enum {
 	ALC260_FIXUP_HP_B1900,
 	ALC260_FIXUP_KN1,
 	ALC260_FIXUP_FSC_S7020,
+	ALC260_FIXUP_FSC_S7020_JWSE,
 };
 
 static void alc260_gpio1_automute(struct hda_codec *codec)
@@ -1516,14 +1505,17 @@ static void alc260_fixup_fsc_s7020(struct hda_codec *codec,
 				   const struct hda_fixup *fix, int action)
 {
 	struct alc_spec *spec = codec->spec;
-
-	switch (action) {
-	case HDA_FIXUP_ACT_PRE_PROBE:
-		spec->gen.add_out_jack_modes = 1;
-		break;
-	case HDA_FIXUP_ACT_PROBE:
+	if (action == HDA_FIXUP_ACT_PROBE)
 		spec->init_amp = ALC_INIT_NONE;
-		break;
+}
+
+static void alc260_fixup_fsc_s7020_jwse(struct hda_codec *codec,
+				   const struct hda_fixup *fix, int action)
+{
+	struct alc_spec *spec = codec->spec;
+	if (action == HDA_FIXUP_ACT_PRE_PROBE) {
+		spec->gen.add_jack_modes = 1;
+		spec->gen.hp_mic = 1;
 	}
 }
 
@@ -1586,6 +1578,12 @@ static const struct hda_fixup alc260_fixups[] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = alc260_fixup_fsc_s7020,
 	},
+	[ALC260_FIXUP_FSC_S7020_JWSE] = {
+		.type = HDA_FIXUP_FUNC,
+		.v.func = alc260_fixup_fsc_s7020_jwse,
+		.chained = true,
+		.chain_id = ALC260_FIXUP_FSC_S7020,
+	},
 };
 
 static const struct snd_pci_quirk alc260_fixup_tbl[] = {
@@ -1599,6 +1597,14 @@ static const struct snd_pci_quirk alc260_fixup_tbl[] = {
 	SND_PCI_QUIRK(0x152d, 0x0729, "Quanta KN1", ALC260_FIXUP_KN1),
 	SND_PCI_QUIRK(0x161f, 0x2057, "Replacer 672V", ALC260_FIXUP_REPLACER),
 	SND_PCI_QUIRK(0x1631, 0xc017, "PB V7900", ALC260_FIXUP_COEF),
+	{}
+};
+
+static const struct hda_model_fixup alc260_fixup_models[] = {
+	{.id = ALC260_FIXUP_GPIO1, .name = "gpio1"},
+	{.id = ALC260_FIXUP_COEF, .name = "coef"},
+	{.id = ALC260_FIXUP_FSC_S7020, .name = "fujitsu"},
+	{.id = ALC260_FIXUP_FSC_S7020_JWSE, .name = "fujitsu-jwse"},
 	{}
 };
 
@@ -1619,8 +1625,10 @@ static int patch_alc260(struct hda_codec *codec)
 	 * it's almost harmless.
 	 */
 	spec->gen.prefer_hp_amp = 1;
+	spec->gen.beep_nid = 0x01;
 
-	snd_hda_pick_fixup(codec, NULL, alc260_fixup_tbl, alc260_fixups);
+	snd_hda_pick_fixup(codec, alc260_fixup_models, alc260_fixup_tbl,
+			   alc260_fixups);
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PRE_PROBE);
 
 	/* automatic parse from the BIOS config */
@@ -1628,12 +1636,8 @@ static int patch_alc260(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog)
 		set_beep_amp(spec, 0x07, 0x05, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 	spec->shutup = alc_eapd_shutup;
@@ -2132,17 +2136,16 @@ static int patch_alc882(struct hda_codec *codec)
 
 	alc_auto_parse_customize_define(codec);
 
+	if (has_cdefine_beep(codec))
+		spec->gen.beep_nid = 0x01;
+
 	/* automatic parse from the BIOS config */
 	err = alc882_parse_auto_config(codec);
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog && has_cdefine_beep(codec)) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog && spec->gen.beep_nid)
 		set_beep_amp(spec, 0x0b, 0x05, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 
@@ -2295,17 +2298,16 @@ static int patch_alc262(struct hda_codec *codec)
 
 	alc_auto_parse_customize_define(codec);
 
+	if (has_cdefine_beep(codec))
+		spec->gen.beep_nid = 0x01;
+
 	/* automatic parse from the BIOS config */
 	err = alc262_parse_auto_config(codec);
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog && has_cdefine_beep(codec)) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog && spec->gen.beep_nid)
 		set_beep_amp(spec, 0x0b, 0x05, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 	spec->shutup = alc_eapd_shutup;
@@ -2386,16 +2388,7 @@ static const struct snd_pci_quirk alc268_fixup_tbl[] = {
 static int alc268_parse_auto_config(struct hda_codec *codec)
 {
 	static const hda_nid_t alc268_ssids[] = { 0x15, 0x1b, 0x14, 0 };
-	struct alc_spec *spec = codec->spec;
-	int err = alc_parse_auto_config(codec, NULL, alc268_ssids);
-	if (err > 0) {
-		if (!spec->gen.no_analog &&
-		    spec->gen.autocfg.speaker_pins[0] != 0x1d) {
-			add_mixer(spec, alc268_beep_mixer);
-			snd_hda_add_verbs(codec, alc268_beep_init_verbs);
-		}
-	}
-	return err;
+	return alc_parse_auto_config(codec, NULL, alc268_ssids);
 }
 
 /*
@@ -2403,7 +2396,7 @@ static int alc268_parse_auto_config(struct hda_codec *codec)
 static int patch_alc268(struct hda_codec *codec)
 {
 	struct alc_spec *spec;
-	int i, has_beep, err;
+	int err;
 
 	/* ALC268 has no aa-loopback mixer */
 	err = alc_alloc_spec(codec, 0);
@@ -2411,6 +2404,7 @@ static int patch_alc268(struct hda_codec *codec)
 		return err;
 
 	spec = codec->spec;
+	spec->gen.beep_nid = 0x01;
 
 	snd_hda_pick_fixup(codec, alc268_fixup_models, alc268_fixup_tbl, alc268_fixups);
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PRE_PROBE);
@@ -2420,18 +2414,10 @@ static int patch_alc268(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	has_beep = 0;
-	for (i = 0; i < spec->num_mixers; i++) {
-		if (spec->mixers[i] == alc268_beep_mixer) {
-			has_beep = 1;
-			break;
-		}
-	}
-
-	if (has_beep) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (err > 0 && !spec->gen.no_analog &&
+	    spec->gen.autocfg.speaker_pins[0] != 0x1d) {
+		add_mixer(spec, alc268_beep_mixer);
+		snd_hda_add_verbs(codec, alc268_beep_init_verbs);
 		if (!query_amp_caps(codec, 0x1d, HDA_INPUT))
 			/* override the amp caps for beep generator */
 			snd_hda_override_amp_caps(codec, 0x1d, HDA_INPUT,
@@ -2757,6 +2743,60 @@ static void alc269_fixup_hp_mute_led_mic2(struct hda_codec *codec,
 	}
 }
 
+/* turn on/off mute LED per vmaster hook */
+static void alc269_fixup_hp_gpio_mute_hook(void *private_data, int enabled)
+{
+	struct hda_codec *codec = private_data;
+	struct alc_spec *spec = codec->spec;
+	unsigned int oldval = spec->gpio_led;
+
+	if (enabled)
+		spec->gpio_led &= ~0x08;
+	else
+		spec->gpio_led |= 0x08;
+	if (spec->gpio_led != oldval)
+		snd_hda_codec_write(codec, 0x01, 0, AC_VERB_SET_GPIO_DATA,
+				    spec->gpio_led);
+}
+
+/* turn on/off mic-mute LED per capture hook */
+static void alc269_fixup_hp_gpio_mic_mute_hook(struct hda_codec *codec,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct alc_spec *spec = codec->spec;
+	unsigned int oldval = spec->gpio_led;
+
+	if (!ucontrol)
+		return;
+
+	if (ucontrol->value.integer.value[0] ||
+	    ucontrol->value.integer.value[1])
+		spec->gpio_led &= ~0x10;
+	else
+		spec->gpio_led |= 0x10;
+	if (spec->gpio_led != oldval)
+		snd_hda_codec_write(codec, 0x01, 0, AC_VERB_SET_GPIO_DATA,
+				    spec->gpio_led);
+}
+
+static void alc269_fixup_hp_gpio_led(struct hda_codec *codec,
+				const struct hda_fixup *fix, int action)
+{
+	struct alc_spec *spec = codec->spec;
+	static const struct hda_verb gpio_init[] = {
+		{ 0x01, AC_VERB_SET_GPIO_MASK, 0x18 },
+		{ 0x01, AC_VERB_SET_GPIO_DIRECTION, 0x18 },
+		{}
+	};
+
+	if (action == HDA_FIXUP_ACT_PRE_PROBE) {
+		spec->gen.vmaster_mute.hook = alc269_fixup_hp_gpio_mute_hook;
+		spec->gen.cap_sync_hook = alc269_fixup_hp_gpio_mic_mute_hook;
+		spec->gpio_led = 0;
+		snd_hda_add_verbs(codec, gpio_init);
+	}
+}
+
 static void alc271_hp_gate_mic_jack(struct hda_codec *codec,
 				    const struct hda_fixup *fix,
 				    int action)
@@ -2792,6 +2832,7 @@ enum {
 	ALC269_FIXUP_HP_MUTE_LED,
 	ALC269_FIXUP_HP_MUTE_LED_MIC1,
 	ALC269_FIXUP_HP_MUTE_LED_MIC2,
+	ALC269_FIXUP_HP_GPIO_LED,
 	ALC269_FIXUP_INV_DMIC,
 	ALC269_FIXUP_LENOVO_DOCK,
 	ALC269_FIXUP_PINCFG_NO_HP_TO_LINEOUT,
@@ -2931,6 +2972,10 @@ static const struct hda_fixup alc269_fixups[] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = alc269_fixup_hp_mute_led_mic2,
 	},
+	[ALC269_FIXUP_HP_GPIO_LED] = {
+		.type = HDA_FIXUP_FUNC,
+		.v.func = alc269_fixup_hp_gpio_led,
+	},
 	[ALC269_FIXUP_INV_DMIC] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = alc_fixup_inv_dmic_0x12,
@@ -2971,6 +3016,7 @@ static const struct snd_pci_quirk alc269_fixup_tbl[] = {
 	SND_PCI_QUIRK(0x1025, 0x029b, "Acer 1810TZ", ALC269_FIXUP_INV_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x0349, "Acer AOD260", ALC269_FIXUP_INV_DMIC),
 	SND_PCI_QUIRK(0x103c, 0x1586, "HP", ALC269_FIXUP_HP_MUTE_LED_MIC2),
+	SND_PCI_QUIRK(0x103c, 0x18e6, "HP", ALC269_FIXUP_HP_GPIO_LED),
 	SND_PCI_QUIRK(0x103c, 0x1973, "HP Pavilion", ALC269_FIXUP_HP_MUTE_LED_MIC1),
 	SND_PCI_QUIRK(0x103c, 0x1983, "HP Pavilion", ALC269_FIXUP_HP_MUTE_LED_MIC1),
 	SND_PCI_QUIRK_VENDOR(0x103c, "HP", ALC269_FIXUP_HP_MUTE_LED),
@@ -3063,6 +3109,7 @@ static const struct hda_model_fixup alc269_fixup_models[] = {
 	{.id = ALC271_FIXUP_DMIC, .name = "alc271-dmic"},
 	{.id = ALC269_FIXUP_INV_DMIC, .name = "inv-dmic"},
 	{.id = ALC269_FIXUP_LENOVO_DOCK, .name = "lenovo-dock"},
+	{.id = ALC269_FIXUP_HP_GPIO_LED, .name = "hp-gpio-led"},
 	{}
 };
 
@@ -3131,6 +3178,9 @@ static int patch_alc269(struct hda_codec *codec)
 
 	alc_auto_parse_customize_define(codec);
 
+	if (has_cdefine_beep(codec))
+		spec->gen.beep_nid = 0x01;
+
 	switch (codec->vendor_id) {
 	case 0x10ec0269:
 		spec->codec_variant = ALC269_TYPE_ALC269VA;
@@ -3179,12 +3229,8 @@ static int patch_alc269(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog && has_cdefine_beep(codec)) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog && spec->gen.beep_nid)
 		set_beep_amp(spec, 0x0b, 0x04, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 #ifdef CONFIG_PM
@@ -3292,6 +3338,7 @@ static int patch_alc861(struct hda_codec *codec)
 		return err;
 
 	spec = codec->spec;
+	spec->gen.beep_nid = 0x23;
 
 	snd_hda_pick_fixup(codec, NULL, alc861_fixup_tbl, alc861_fixups);
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PRE_PROBE);
@@ -3301,12 +3348,8 @@ static int patch_alc861(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog) {
-		err = snd_hda_attach_beep_device(codec, 0x23);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog)
 		set_beep_amp(spec, 0x23, 0, HDA_OUTPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 #ifdef CONFIG_PM
@@ -3387,6 +3430,7 @@ static int patch_alc861vd(struct hda_codec *codec)
 		return err;
 
 	spec = codec->spec;
+	spec->gen.beep_nid = 0x23;
 
 	snd_hda_pick_fixup(codec, NULL, alc861vd_fixup_tbl, alc861vd_fixups);
 	snd_hda_apply_fixup(codec, HDA_FIXUP_ACT_PRE_PROBE);
@@ -3396,12 +3440,8 @@ static int patch_alc861vd(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog) {
-		err = snd_hda_attach_beep_device(codec, 0x23);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog)
 		set_beep_amp(spec, 0x0b, 0x05, HDA_INPUT);
-	}
 
 	codec->patch_ops = alc_patch_ops;
 
@@ -3783,6 +3823,9 @@ static int patch_alc662(struct hda_codec *codec)
 
 	alc_auto_parse_customize_define(codec);
 
+	if (has_cdefine_beep(codec))
+		spec->gen.beep_nid = 0x01;
+
 	if ((alc_get_coef0(codec) & (1 << 14)) &&
 	    codec->bus->pci->subsystem_vendor == 0x1025 &&
 	    spec->cdefine.platform_type == 1) {
@@ -3795,10 +3838,7 @@ static int patch_alc662(struct hda_codec *codec)
 	if (err < 0)
 		goto error;
 
-	if (!spec->gen.no_analog && has_cdefine_beep(codec)) {
-		err = snd_hda_attach_beep_device(codec, 0x1);
-		if (err < 0)
-			goto error;
+	if (!spec->gen.no_analog && spec->gen.beep_nid) {
 		switch (codec->vendor_id) {
 		case 0x10ec0662:
 			set_beep_amp(spec, 0x0b, 0x05, HDA_INPUT);

@@ -165,8 +165,10 @@ static int create_fixed_stream_quirk(struct snd_usb_audio *chip,
 		return -EINVAL;
 	}
 	alts = &iface->altsetting[fp->altset_idx];
-	fp->datainterval = snd_usb_parse_datainterval(chip, alts);
-	fp->maxpacksize = le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize);
+	if (fp->datainterval == 0)
+		fp->datainterval = snd_usb_parse_datainterval(chip, alts);
+	if (fp->maxpacksize == 0)
+		fp->maxpacksize = le16_to_cpu(get_endpoint(alts, 0)->wMaxPacketSize);
 	usb_set_interface(chip->dev, fp->iface, 0);
 	snd_usb_init_pitch(chip, fp->iface, alts, fp);
 	snd_usb_init_sample_rate(chip, fp->iface, alts, fp, fp->rate_max);
@@ -443,6 +445,17 @@ static int snd_usb_cm6206_boot_quirk(struct usb_device *dev)
 	}
 
 	return err;
+}
+
+/*
+ * Novation Twitch DJ controller
+ */
+static int snd_usb_twitch_boot_quirk(struct usb_device *dev)
+{
+	/* preemptively set up the device because otherwise the
+	 * raw MIDI endpoints are not active */
+	usb_set_interface(dev, 0, 1);
+	return 0;
 }
 
 /*
@@ -745,6 +758,10 @@ int snd_usb_apply_boot_quirk(struct usb_device *dev,
 	case USB_ID(0x0dba, 0x3000):
 		/* Digidesign Mbox 2 */
 		return snd_usb_mbox2_boot_quirk(dev);
+
+	case USB_ID(0x1235, 0x0018):
+		/* Focusrite Novation Twitch */
+		return snd_usb_twitch_boot_quirk(dev);
 
 	case USB_ID(0x133e, 0x0815):
 		/* Access Music VirusTI Desktop */
