@@ -159,6 +159,9 @@ static inline xpaddr_t machine_to_phys(xmaddr_t machine)
 static inline unsigned long mfn_to_local_pfn(unsigned long mfn)
 {
 	unsigned long pfn = mfn_to_pfn(mfn);
+
+	if (xen_feature(XENFEAT_auto_translated_physmap))
+		return mfn;
 	if (get_phys_to_machine(pfn) != mfn)
 		return -1; /* force !pfn_valid() */
 	return pfn;
