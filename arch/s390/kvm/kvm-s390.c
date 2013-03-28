@@ -142,6 +142,7 @@ int kvm_dev_ioctl_check_extension(long ext)
 	case KVM_CAP_ONE_REG:
 	case KVM_CAP_ENABLE_CAP:
 	case KVM_CAP_S390_CSS_SUPPORT:
+	case KVM_CAP_IOEVENTFD:
 		r = 1;
 		break;
 	case KVM_CAP_NR_VCPUS:
@@ -974,9 +975,8 @@ int kvm_arch_create_memslot(struct kvm_memory_slot *slot, unsigned long npages)
 /* Section: memory related */
 int kvm_arch_prepare_memory_region(struct kvm *kvm,
 				   struct kvm_memory_slot *memslot,
-				   struct kvm_memory_slot old,
 				   struct kvm_userspace_memory_region *mem,
-				   bool user_alloc)
+				   enum kvm_mr_change change)
 {
 	/* A few sanity checks. We can have exactly one memory slot which has
 	   to start at guest virtual zero and which has to be located at a
@@ -997,16 +997,13 @@ int kvm_arch_prepare_memory_region(struct kvm *kvm,
 	if (mem->memory_size & 0xffffful)
 		return -EINVAL;
 
-	if (!user_alloc)
-		return -EINVAL;
-
 	return 0;
 }
 
 void kvm_arch_commit_memory_region(struct kvm *kvm,
 				struct kvm_userspace_memory_region *mem,
-				struct kvm_memory_slot old,
-				bool user_alloc)
+				const struct kvm_memory_slot *old,
+				enum kvm_mr_change change)
 {
 	int rc;
 

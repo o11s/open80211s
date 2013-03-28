@@ -14,6 +14,7 @@
 #include <linux/kvm.h>
 #include <linux/gfp.h>
 #include <linux/errno.h>
+#include <asm/asm-offsets.h>
 #include <asm/current.h>
 #include <asm/debug.h>
 #include <asm/ebcdic.h>
@@ -41,7 +42,7 @@ static int handle_set_prefix(struct kvm_vcpu *vcpu)
 	}
 
 	/* get the value */
-	if (get_guest_u32(vcpu, operand2, &address)) {
+	if (get_guest(vcpu, address, (u32 __user *) operand2)) {
 		kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 		goto out;
 	}
@@ -82,7 +83,7 @@ static int handle_store_prefix(struct kvm_vcpu *vcpu)
 	address = address & 0x7fffe000u;
 
 	/* get the value */
-	if (put_guest_u32(vcpu, operand2, address)) {
+	if (put_guest(vcpu, address, (u32 __user *)operand2)) {
 		kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 		goto out;
 	}
@@ -107,8 +108,8 @@ static int handle_store_cpu_address(struct kvm_vcpu *vcpu)
 		goto out;
 	}
 
-	rc = put_guest_u16(vcpu, useraddr, vcpu->vcpu_id);
-	if (rc == -EFAULT) {
+	rc = put_guest(vcpu, vcpu->vcpu_id, (u16 __user *)useraddr);
+	if (rc) {
 		kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 		goto out;
 	}
@@ -129,39 +130,44 @@ static int handle_skey(struct kvm_vcpu *vcpu)
 
 static int handle_tpi(struct kvm_vcpu *vcpu)
 {
-	u64 addr;
 	struct kvm_s390_interrupt_info *inti;
+	u64 addr;
 	int cc;
 
 	addr = kvm_s390_get_base_disp_s(vcpu);
-
+	if (addr & 3) {
+		kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
+		goto out;
+	}
+	cc = 0;
 	inti = kvm_s390_get_io_int(vcpu->kvm, vcpu->run->s.regs.crs[6], 0);
-	if (inti) {
-		if (addr) {
-			/*
-			 * Store the two-word I/O interruption code into the
-			 * provided area.
-			 */
-			put_guest_u16(vcpu, addr, inti->io.subchannel_id);
-			put_guest_u16(vcpu, addr + 2, inti->io.subchannel_nr);
-			put_guest_u32(vcpu, addr + 4, inti->io.io_int_parm);
-		} else {
-			/*
-			 * Store the three-word I/O interruption code into
-			 * the appropriate lowcore area.
-			 */
-			put_guest_u16(vcpu, 184, inti->io.subchannel_id);
-			put_guest_u16(vcpu, 186, inti->io.subchannel_nr);
-			put_guest_u32(vcpu, 188, inti->io.io_int_parm);
-			put_guest_u32(vcpu, 192, inti->io.io_int_word);
-		}
-		cc = 1;
-	} else
-		cc = 0;
+	if (!inti)
+		goto no_interrupt;
+	cc = 1;
+	if (addr) {
+		/*
+		 * Store the two-word I/O interruption code into the
+		 * provided area.
+		 */
+		put_guest(vcpu, inti->io.subchannel_id, (u16 __user *) addr);
+		put_guest(vcpu, inti->io.subchannel_nr, (u16 __user *) (addr + 2));
+		put_guest(vcpu, inti->io.io_int_parm, (u32 __user *) (addr + 4));
+	} else {
+		/*
+		 * Store the three-word I/O interruption code into
+		 * the appropriate lowcore area.
+		 */
+		put_guest(vcpu, inti->io.subchannel_id, (u16 __user *) __LC_SUBCHANNEL_ID);
+		put_guest(vcpu, inti->io.subchannel_nr, (u16 __user *) __LC_SUBCHANNEL_NR);
+		put_guest(vcpu, inti->io.io_int_parm, (u32 __user *) __LC_IO_INT_PARM);
+		put_guest(vcpu, inti->io.io_int_word, (u32 __user *) __LC_IO_INT_WORD);
+	}
 	kfree(inti);
+no_interrupt:
 	/* Set condition code and we're done. */
 	vcpu->arch.sie_block->gpsw.mask &= ~(3ul << 44);
 	vcpu->arch.sie_block->gpsw.mask |= (cc & 3ul) << 44;
+out:
 	return 0;
 }
 
@@ -230,7 +236,7 @@ static int handle_stfl(struct kvm_vcpu *vcpu)
 
 	rc = copy_to_guest(vcpu, offsetof(struct _lowcore, stfl_fac_list),
 			   &facility_list, sizeof(facility_list));
-	if (rc == -EFAULT)
+	if (rc)
 		kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 	else {
 		VCPU_EVENT(vcpu, 5, "store facility list value %x",
@@ -347,8 +353,8 @@ static int handle_stidp(struct kvm_vcpu *vcpu)
 		goto out;
 	}
 
-	rc = put_guest_u64(vcpu, operand2, vcpu->arch.stidp_data);
-	if (rc == -EFAULT) {
+	rc = put_guest(vcpu, vcpu->arch.stidp_data, (u64 __user *)operand2);
+	if (rc) {
 		kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 		goto out;
 	}
@@ -575,20 +581,13 @@ static int handle_tprot(struct kvm_vcpu *vcpu)
 	if (vcpu->arch.sie_block->gpsw.mask & PSW_MASK_DAT)
 		return -EOPNOTSUPP;
 
-
-	/* we must resolve the address without holding the mmap semaphore.
-	 * This is ok since the userspace hypervisor is not supposed to change
-	 * the mapping while the guest queries the memory. Otherwise the guest
-	 * might crash or get wrong info anyway. */
-	user_address = (unsigned long) __guestaddr_to_user(vcpu, address1);
-
 	down_read(&current->mm->mmap_sem);
+	user_address = __gmap_translate(address1, vcpu->arch.gmap);
+	if (IS_ERR_VALUE(user_address))
+		goto out_inject;
 	vma = find_vma(current->mm, user_address);
-	if (!vma) {
-		up_read(&current->mm->mmap_sem);
-		return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
-	}
-
+	if (!vma)
+		goto out_inject;
 	vcpu->arch.sie_block->gpsw.mask &= ~(3ul << 44);
 	if (!(vma->vm_flags & VM_WRITE) && (vma->vm_flags & VM_READ))
 		vcpu->arch.sie_block->gpsw.mask |= (1ul << 44);
@@ -597,6 +596,10 @@ static int handle_tprot(struct kvm_vcpu *vcpu)
 
 	up_read(&current->mm->mmap_sem);
 	return 0;
+
+out_inject:
+	up_read(&current->mm->mmap_sem);
+	return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
 }
 
 int kvm_s390_handle_e5(struct kvm_vcpu *vcpu)

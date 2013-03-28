@@ -149,6 +149,7 @@ struct kvm_io_bus {
 enum kvm_bus {
 	KVM_MMIO_BUS,
 	KVM_PIO_BUS,
+	KVM_VIRTIO_CCW_NOTIFY_BUS,
 	KVM_NR_BUSES
 };
 
@@ -252,6 +253,7 @@ struct kvm_vcpu {
 		bool dy_eligible;
 	} spin_loop;
 #endif
+	bool preempted;
 	struct kvm_vcpu_arch arch;
 };
 
@@ -424,6 +426,19 @@ void kvm_vcpu_uninit(struct kvm_vcpu *vcpu);
 int __must_check vcpu_load(struct kvm_vcpu *vcpu);
 void vcpu_put(struct kvm_vcpu *vcpu);
 
+#ifdef __KVM_HAVE_IOAPIC
+int kvm_irqfd_init(void);
+void kvm_irqfd_exit(void);
+#else
+static inline int kvm_irqfd_init(void)
+{
+	return 0;
+}
+
+static inline void kvm_irqfd_exit(void)
+{
+}
+#endif
 int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 		  struct module *module);
 void kvm_exit(void);
@@ -452,24 +467,39 @@ id_to_memslot(struct kvm_memslots *slots, int id)
 	return slot;
 }
 
+/*
+ * KVM_SET_USER_MEMORY_REGION ioctl allows the following operations:
+ * - create a new memory slot
+ * - delete an existing memory slot
+ * - modify an existing memory slot
+ *   -- move it in the guest physical memory space
+ *   -- just change its flags
+ *
+ * Since flags can be changed by some of these operations, the following
+ * differentiation is the best we can do for __kvm_set_memory_region():
+ */
+enum kvm_mr_change {
+	KVM_MR_CREATE,
+	KVM_MR_DELETE,
+	KVM_MR_MOVE,
+	KVM_MR_FLAGS_ONLY,
+};
+
 int kvm_set_memory_region(struct kvm *kvm,
-			  struct kvm_userspace_memory_region *mem,
-			  bool user_alloc);
+			  struct kvm_userspace_memory_region *mem);
 int __kvm_set_memory_region(struct kvm *kvm,
-			    struct kvm_userspace_memory_region *mem,
-			    bool user_alloc);
+			    struct kvm_userspace_memory_region *mem);
 void kvm_arch_free_memslot(struct kvm_memory_slot *free,
 			   struct kvm_memory_slot *dont);
 int kvm_arch_create_memslot(struct kvm_memory_slot *slot, unsigned long npages);
 int kvm_arch_prepare_memory_region(struct kvm *kvm,
 				struct kvm_memory_slot *memslot,
-				struct kvm_memory_slot old,
 				struct kvm_userspace_memory_region *mem,
-				bool user_alloc);
+				enum kvm_mr_change change);
 void kvm_arch_commit_memory_region(struct kvm *kvm,
 				struct kvm_userspace_memory_region *mem,
-				struct kvm_memory_slot old,
-				bool user_alloc);
+				const struct kvm_memory_slot *old,
+				enum kvm_mr_change change);
 bool kvm_largepages_enabled(void);
 void kvm_disable_largepages(void);
 /* flush all memory translations */
@@ -555,9 +585,7 @@ int kvm_vm_ioctl_get_dirty_log(struct kvm *kvm,
 				struct kvm_dirty_log *log);
 
 int kvm_vm_ioctl_set_memory_region(struct kvm *kvm,
-				   struct
-				   kvm_userspace_memory_region *mem,
-				   bool user_alloc);
+				   struct kvm_userspace_memory_region *mem);
 int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_level);
 long kvm_arch_vm_ioctl(struct file *filp,
 		       unsigned int ioctl, unsigned long arg);
