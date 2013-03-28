@@ -168,6 +168,7 @@ struct intel_encoder {
 	 * it is connected to in the pipe parameter. */
 	bool (*get_hw_state)(struct intel_encoder *, enum pipe *pipe);
 	int crtc_mask;
+	enum hpd_pin hpd_pin;
 };
 
 struct intel_panel {
@@ -247,6 +248,10 @@ struct intel_plane {
 	bool can_scale;
 	int max_downscale;
 	u32 lut_r[1024], lut_g[1024], lut_b[1024];
+	int crtc_x, crtc_y;
+	unsigned int crtc_w, crtc_h;
+	uint32_t src_x, src_y;
+	uint32_t src_w, src_h;
 	void (*update_plane)(struct drm_plane *plane,
 			     struct drm_framebuffer *fb,
 			     struct drm_i915_gem_object *obj,
@@ -347,7 +352,7 @@ struct dip_infoframe {
 } __attribute__((packed));
 
 struct intel_hdmi {
-	u32 sdvox_reg;
+	u32 hdmi_reg;
 	int ddc_bus;
 	uint32_t color_range;
 	bool color_range_auto;
@@ -366,6 +371,7 @@ struct intel_hdmi {
 
 struct intel_dp {
 	uint32_t output_reg;
+	uint32_t aux_ch_ctl_reg;
 	uint32_t DP;
 	uint8_t  link_configuration[DP_LINK_CONFIGURATION_SIZE];
 	bool has_audio;
@@ -443,7 +449,7 @@ extern void intel_attach_broadcast_rgb_property(struct drm_connector *connector)
 
 extern void intel_crt_init(struct drm_device *dev);
 extern void intel_hdmi_init(struct drm_device *dev,
-			    int sdvox_reg, enum port port);
+			    int hdmi_reg, enum port port);
 extern void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 				      struct intel_connector *intel_connector);
 extern struct intel_hdmi *enc_to_intel_hdmi(struct drm_encoder *encoder);
@@ -531,6 +537,7 @@ extern bool intel_encoder_check_is_cloned(struct intel_encoder *encoder);
 extern void intel_connector_dpms(struct drm_connector *, int mode);
 extern bool intel_connector_get_hw_state(struct intel_connector *connector);
 extern void intel_modeset_check_state(struct drm_device *dev);
+extern void intel_plane_restore(struct drm_plane *plane);
 
 
 static inline struct intel_encoder *intel_attached_encoder(struct drm_connector *connector)
@@ -681,7 +688,7 @@ extern bool intel_ddi_get_hw_state(struct intel_encoder *encoder,
 				   enum pipe *pipe);
 extern int intel_ddi_get_cdclk_freq(struct drm_i915_private *dev_priv);
 extern void intel_ddi_pll_init(struct drm_device *dev);
-extern void intel_ddi_enable_pipe_func(struct drm_crtc *crtc);
+extern void intel_ddi_enable_transcoder_func(struct drm_crtc *crtc);
 extern void intel_ddi_disable_transcoder_func(struct drm_i915_private *dev_priv,
 					      enum transcoder cpu_transcoder);
 extern void intel_ddi_enable_pipe_clock(struct intel_crtc *intel_crtc);
@@ -694,5 +701,7 @@ extern void intel_ddi_prepare_link_retrain(struct drm_encoder *encoder);
 extern bool
 intel_ddi_connector_get_hw_state(struct intel_connector *intel_connector);
 extern void intel_ddi_fdi_disable(struct drm_crtc *crtc);
+
+extern void intel_display_handle_reset(struct drm_device *dev);
 
 #endif /* __INTEL_DRV_H__ */

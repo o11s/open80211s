@@ -898,6 +898,9 @@ bool intel_ddi_pll_mode_set(struct drm_crtc *crtc, int clock)
 			plls->spll_refcount++;
 			reg = SPLL_CTL;
 			intel_crtc->ddi_pll_sel = PORT_CLK_SEL_SPLL;
+		} else {
+			DRM_ERROR("SPLL already in use\n");
+			return false;
 		}
 
 		WARN(I915_READ(reg) & SPLL_PLL_ENABLE,
@@ -950,7 +953,7 @@ void intel_ddi_set_pipe_settings(struct drm_crtc *crtc)
 	}
 }
 
-void intel_ddi_enable_pipe_func(struct drm_crtc *crtc)
+void intel_ddi_enable_transcoder_func(struct drm_crtc *crtc)
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	struct intel_encoder *intel_encoder = intel_ddi_get_crtc_encoder(crtc);
@@ -1157,7 +1160,7 @@ static uint32_t intel_ddi_get_crtc_pll(struct drm_i915_private *dev_priv,
 				       enum pipe pipe)
 {
 	uint32_t temp, ret;
-	enum port port;
+	enum port port = I915_MAX_PORTS;
 	enum transcoder cpu_transcoder = intel_pipe_to_cpu_transcoder(dev_priv,
 								      pipe);
 	int i;
@@ -1173,10 +1176,16 @@ static uint32_t intel_ddi_get_crtc_pll(struct drm_i915_private *dev_priv,
 				port = i;
 	}
 
-	ret = I915_READ(PORT_CLK_SEL(port));
-
-	DRM_DEBUG_KMS("Pipe %c connected to port %c using clock 0x%08x\n",
-		      pipe_name(pipe), port_name(port), ret);
+	if (port == I915_MAX_PORTS) {
+		WARN(1, "Pipe %c enabled on an unknown port\n",
+		     pipe_name(pipe));
+		ret = PORT_CLK_SEL_NONE;
+	} else {
+		ret = I915_READ(PORT_CLK_SEL(port));
+		DRM_DEBUG_KMS("Pipe %c connected to port %c using clock "
+			      "0x%08x\n", pipe_name(pipe), port_name(port),
+			      ret);
+	}
 
 	return ret;
 }
@@ -1341,15 +1350,15 @@ static void intel_disable_ddi(struct intel_encoder *intel_encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t tmp;
 
+	tmp = I915_READ(HSW_AUD_PIN_ELD_CP_VLD);
+	tmp &= ~((AUDIO_OUTPUT_ENABLE_A | AUDIO_ELD_VALID_A) << (pipe * 4));
+	I915_WRITE(HSW_AUD_PIN_ELD_CP_VLD, tmp);
+
 	if (type == INTEL_OUTPUT_EDP) {
 		struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
 
 		ironlake_edp_backlight_off(intel_dp);
 	}
-
-	tmp = I915_READ(HSW_AUD_PIN_ELD_CP_VLD);
-	tmp &= ~((AUDIO_OUTPUT_ENABLE_A | AUDIO_ELD_VALID_A) << (pipe * 4));
-	I915_WRITE(HSW_AUD_PIN_ELD_CP_VLD, tmp);
 }
 
 int intel_ddi_get_cdclk_freq(struct drm_i915_private *dev_priv)
@@ -1537,9 +1546,7 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_dig_port->port_reversal = I915_READ(DDI_BUF_CTL(port)) &
 					DDI_BUF_PORT_REVERSAL;
 	if (hdmi_connector)
-		intel_dig_port->hdmi.sdvox_reg = DDI_BUF_CTL(port);
-	else
-		intel_dig_port->hdmi.sdvox_reg = 0;
+		intel_dig_port->hdmi.hdmi_reg = DDI_BUF_CTL(port);
 	intel_dig_port->dp.output_reg = DDI_BUF_CTL(port);
 
 	intel_encoder->type = INTEL_OUTPUT_UNKNOWN;

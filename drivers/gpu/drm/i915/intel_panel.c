@@ -287,6 +287,9 @@ void intel_panel_set_backlight(struct drm_device *dev, u32 level)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	dev_priv->backlight_level = level;
+	if (dev_priv->backlight)
+		dev_priv->backlight->props.brightness = level;
+
 	if (dev_priv->backlight_enabled)
 		intel_panel_actually_set_backlight(dev, level);
 }
@@ -318,8 +321,12 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	if (dev_priv->backlight_level == 0)
+	if (dev_priv->backlight_level == 0) {
 		dev_priv->backlight_level = intel_panel_get_max_backlight(dev);
+		if (dev_priv->backlight)
+			dev_priv->backlight->props.brightness =
+				dev_priv->backlight_level;
+	}
 
 	if (INTEL_INFO(dev)->gen >= 4) {
 		uint32_t reg, tmp;
@@ -335,7 +342,7 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 		if (tmp & BLM_PWM_ENABLE)
 			goto set_level;
 
-		if (dev_priv->num_pipe == 3)
+		if (INTEL_INFO(dev)->num_pipes == 3)
 			tmp &= ~BLM_PIPE_SELECT_IVB;
 		else
 			tmp &= ~BLM_PIPE_SELECT;
@@ -405,8 +412,7 @@ static int intel_panel_update_status(struct backlight_device *bd)
 static int intel_panel_get_brightness(struct backlight_device *bd)
 {
 	struct drm_device *dev = bl_get_data(bd);
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	return dev_priv->backlight_level;
+	return intel_panel_get_backlight(dev);
 }
 
 static const struct backlight_ops intel_panel_bl_ops = {
@@ -424,6 +430,7 @@ int intel_panel_setup_backlight(struct drm_connector *connector)
 
 	memset(&props, 0, sizeof(props));
 	props.type = BACKLIGHT_RAW;
+	props.brightness = dev_priv->backlight_level;
 	props.max_brightness = _intel_panel_get_max_backlight(dev);
 	if (props.max_brightness == 0) {
 		DRM_DEBUG_DRIVER("Failed to get maximum backlight value\n");
@@ -440,7 +447,6 @@ int intel_panel_setup_backlight(struct drm_connector *connector)
 		dev_priv->backlight = NULL;
 		return -ENODEV;
 	}
-	dev_priv->backlight->props.brightness = intel_panel_get_backlight(dev);
 	return 0;
 }
 

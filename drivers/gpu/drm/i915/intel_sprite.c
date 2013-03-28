@@ -441,6 +441,15 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	old_obj = intel_plane->obj;
 
+	intel_plane->crtc_x = crtc_x;
+	intel_plane->crtc_y = crtc_y;
+	intel_plane->crtc_w = crtc_w;
+	intel_plane->crtc_h = crtc_h;
+	intel_plane->src_x = src_x;
+	intel_plane->src_y = src_y;
+	intel_plane->src_w = src_w;
+	intel_plane->src_h = src_h;
+
 	src_w = src_w >> 16;
 	src_h = src_h >> 16;
 
@@ -513,6 +522,11 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 	mutex_lock(&dev->struct_mutex);
 
+	/* Note that this will apply the VT-d workaround for scanouts,
+	 * which is more restrictive than required for sprites. (The
+	 * primary plane requires 256KiB alignment with 64 PTE padding,
+	 * the sprite planes only require 128KiB alignment and 32 PTE padding.
+	 */
 	ret = intel_pin_and_fence_fb_obj(dev, obj, NULL);
 	if (ret)
 		goto out_unlock;
@@ -567,6 +581,8 @@ intel_disable_plane(struct drm_plane *plane)
 
 	if (!intel_plane->obj)
 		goto out;
+
+	intel_wait_for_vblank(dev, intel_plane->pipe);
 
 	mutex_lock(&dev->struct_mutex);
 	intel_unpin_fb_obj(intel_plane->obj);
@@ -645,6 +661,20 @@ int intel_sprite_get_colorkey(struct drm_device *dev, void *data,
 out_unlock:
 	drm_modeset_unlock_all(dev);
 	return ret;
+}
+
+void intel_plane_restore(struct drm_plane *plane)
+{
+	struct intel_plane *intel_plane = to_intel_plane(plane);
+
+	if (!plane->crtc || !plane->fb)
+		return;
+
+	intel_update_plane(plane, plane->crtc, plane->fb,
+			   intel_plane->crtc_x, intel_plane->crtc_y,
+			   intel_plane->crtc_w, intel_plane->crtc_h,
+			   intel_plane->src_x, intel_plane->src_y,
+			   intel_plane->src_w, intel_plane->src_h);
 }
 
 static const struct drm_plane_funcs intel_plane_funcs = {
