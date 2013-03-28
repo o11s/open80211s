@@ -1,0 +1,75 @@
+for-next contents for 3.10: 
+Format is a little different from before in an attempt to make it easier to read:
+
+<next/* branch>
+	<topic branch>
+		<contents>
+		<...>
+	<...>
+
+next/fixes-non-critical
+	ux500/dt-fixes
+		  git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-dt-fixes
+
+next/cleanup
+	samsung/cleanup-s3c
+		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s3c
+	samsung/cleanup-s5p
+		  git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/cleanup-s5p
+	clksrc/cleanup
+		  git://sources.calxeda.com/kernel/linux.git tags/clksrc-cleanup-for-3.10
+	at91/cleanup
+		  git://github.com/at91linux/linux-at91.git tags/at91-soc
+
+next/multiplatform
+	nomadik/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-multiplatform
+	spear/multiplatform
+		patches <1363106816-9603-1-git-send-email-arnd@arndb.de>
+	cns3xxx/multiplatform
+		patches <1363299271-8283-1-git-send-email-arnd@arndb.de>
+
+next/dt
+	mvebu/dt
+		git://git.infradead.org/users/jcooper/linux.git tags/mvebu_dt_for_v3.10
+	at91/dt
+		  git://github.com/at91linux/linux-at91.git tags/at91-dt
+	sunxi/dt
+		  git://github.com/mripard/linux.git tags/sunxi-dt-for-3.10
+
+next/soc
+	prima2/soc
+		patches <1363590279-5656-1-git-send-email-Barry.Song@csr.com>
+	ux500/defconfig
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-defconfig-v3.10
+	ux500/core
+		http://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-v3.10
+	renesas/defconfig
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-defconfig-for-v3.10
+	renesas/soc
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc-for-v3.10
+
+next/drivers
+	samsung/timer
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/timer-samsung
+		depends on samsung/cleanup-s3c
+	samsung/irq-s3c24xx
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/irq-s3c24xx
+	samsung/pinctrl-exynos
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git next/pinctrl-exynos
+	at91/lcdfb
+		git://github.com/at91linux/linux-at91.git tags/at91-driversLCD
+	renesas/intc-external-irq
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-intc-external-irq-for-v3.10
+		depends on renesas/soc
+	renesas/clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-clocksource-for-v3.10
+
+next/renesas-pinctrl
+	renesas/pinctrl
+		  git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-pinmux-for-v3.10
+
+next/boards
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards-for-v3.10
+		depends on renesas/pinctrl and renesas/soc

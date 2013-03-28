@@ -381,17 +381,6 @@ config ARCH_BCM2835
 	  This enables support for the Broadcom BCM2835 SoC. This SoC is
 	  use in the Raspberry Pi, and Roku 2 devices.
 
-config ARCH_CNS3XXX
-	bool "Cavium Networks CNS3XXX family"
-	select ARM_GIC
-	select CPU_V6K
-	select GENERIC_CLOCKEVENTS
-	select MIGHT_HAVE_CACHE_L2X0
-	select MIGHT_HAVE_PCI
-	select PCI_DOMAINS if PCI
-	help
-	  Support for Cavium Networks CNS3XXX platform.
-
 config ARCH_CLPS711X
 	bool "Cirrus Logic CLPS711x/EP721x/EP731x-based"
 	select ARCH_REQUIRE_GPIOLIB
@@ -410,6 +399,7 @@ config ARCH_GEMINI
 	bool "Cortina Systems Gemini"
 	select ARCH_REQUIRE_GPIOLIB
 	select ARCH_USES_GETTIMEOFFSET
+	select NEED_MACH_GPIO_H
 	select CPU_FA526
 	help
 	  Support for the Cortina Systems Gemini family SoCs
@@ -491,14 +481,6 @@ config ARCH_NETX
 	select GENERIC_CLOCKEVENTS
 	help
 	  This enables support for systems based on the Hilscher NetX Soc
-
-config ARCH_H720X
-	bool "Hynix HMS720x-based"
-	select ARCH_USES_GETTIMEOFFSET
-	select CPU_ARM720T
-	select ISA_DMA_API
-	help
-	  This enables support for systems based on the Hynix HMS720x
 
 config ARCH_IOP13XX
 	bool "IOP13xx-based"
@@ -769,8 +751,10 @@ config ARCH_SA1100
 config ARCH_S3C24XX
 	bool "Samsung S3C24XX SoCs"
 	select ARCH_HAS_CPUFREQ
-	select ARCH_USES_GETTIMEOFFSET
 	select CLKDEV_LOOKUP
+	select CLKSRC_MMIO
+	select GENERIC_CLOCKEVENTS
+	select GENERIC_GPIO
 	select HAVE_CLK
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
@@ -787,10 +771,11 @@ config ARCH_S3C64XX
 	bool "Samsung S3C64XX"
 	select ARCH_HAS_CPUFREQ
 	select ARCH_REQUIRE_GPIOLIB
-	select ARCH_USES_GETTIMEOFFSET
 	select ARM_VIC
 	select CLKDEV_LOOKUP
+	select CLKSRC_MMIO
 	select CPU_V6
+	select GENERIC_CLOCKEVENTS
 	select HAVE_CLK
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
@@ -824,9 +809,11 @@ config ARCH_S5P64X0
 
 config ARCH_S5PC100
 	bool "Samsung S5PC100"
-	select ARCH_USES_GETTIMEOFFSET
 	select CLKDEV_LOOKUP
+	select CLKSRC_MMIO
 	select CPU_V7
+	select GENERIC_CLOCKEVENTS
+	select GENERIC_GPIO
 	select HAVE_CLK
 	select HAVE_S3C2410_I2C if I2C
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
@@ -916,35 +903,6 @@ config ARCH_U8500
 	help
 	  Support for ST-Ericsson's Ux500 architecture
 
-config ARCH_NOMADIK
-	bool "STMicroelectronics Nomadik"
-	select ARCH_REQUIRE_GPIOLIB
-	select ARM_AMBA
-	select ARM_VIC
-	select CLKSRC_NOMADIK_MTU
-	select COMMON_CLK
-	select CPU_ARM926T
-	select GENERIC_CLOCKEVENTS
-	select MIGHT_HAVE_CACHE_L2X0
-	select USE_OF
-	select PINCTRL
-	select PINCTRL_STN8815
-	select SPARSE_IRQ
-	help
-	  Support for the Nomadik platform by ST-Ericsson
-
-config PLAT_SPEAR
-	bool "ST SPEAr"
-	select ARCH_HAS_CPUFREQ
-	select ARCH_REQUIRE_GPIOLIB
-	select ARM_AMBA
-	select CLKDEV_LOOKUP
-	select CLKSRC_MMIO
-	select COMMON_CLK
-	select GENERIC_CLOCKEVENTS
-	select HAVE_CLK
-	help
-	  Support for ST's SPEAr platform (SPEAr3xx, SPEAr6xx and SPEAr13xx).
 
 config ARCH_DAVINCI
 	bool "TI DaVinci"
@@ -1051,8 +1009,6 @@ source "arch/arm/mach-footbridge/Kconfig"
 
 source "arch/arm/mach-gemini/Kconfig"
 
-source "arch/arm/mach-h720x/Kconfig"
-
 source "arch/arm/mach-highbank/Kconfig"
 
 source "arch/arm/mach-integrator/Kconfig"
@@ -1104,7 +1060,7 @@ source "arch/arm/plat-samsung/Kconfig"
 
 source "arch/arm/mach-socfpga/Kconfig"
 
-source "arch/arm/plat-spear/Kconfig"
+source "arch/arm/mach-spear/Kconfig"
 
 source "arch/arm/mach-s3c24xx/Kconfig"
 
@@ -1593,6 +1549,7 @@ config HAVE_ARM_ARCH_TIMER
 config HAVE_ARM_TWD
 	bool
 	depends on SMP
+	select CLKSRC_OF if OF
 	help
 	  This options enables support for the ARM timer and watchdog unit
 
@@ -1660,7 +1617,7 @@ config ARCH_NR_GPIO
 	int
 	default 1024 if ARCH_SHMOBILE || ARCH_TEGRA
 	default 512 if SOC_OMAP5
-	default 355 if ARCH_U8500
+	default 392 if ARCH_U8500
 	default 288 if ARCH_VT8500 || ARCH_SUNXI
 	default 264 if MACH_H4700
 	default 0

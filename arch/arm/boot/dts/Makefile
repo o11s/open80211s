@@ -3,6 +3,7 @@ ifeq ($(CONFIG_OF),y)
 # Keep at91 dtb files sorted alphabetically for each SoC
 # rm9200
 dtb-$(CONFIG_ARCH_AT91) += at91rm9200ek.dtb
+dtb-$(CONFIG_ARCH_AT91) += mpa1600.dtb
 # sam9260
 dtb-$(CONFIG_ARCH_AT91) += animeo_ip.dtb
 dtb-$(CONFIG_ARCH_AT91) += aks-cdu.dtb
@@ -136,7 +137,9 @@ dtb-$(CONFIG_ARCH_U8500) += snowball.dtb \
 	ccu9540.dtb
 dtb-$(CONFIG_ARCH_SHMOBILE) += emev2-kzm9d.dtb \
 	r8a7740-armadillo800eva.dtb \
+	r8a7779-marzen-reference.dtb \
 	sh73a0-kzm9g.dtb \
+	sh73a0-kzm9g-reference.dtb \
 	sh7372-mackerel.dtb
 dtb-$(CONFIG_ARCH_SOCFPGA) += socfpga_cyclone5.dtb \
 	socfpga_vt.dtb
