@@ -232,6 +232,38 @@ static bool mei_me_hw_is_ready(struct mei_device *dev)
 	return (hw->me_hw_state & ME_RDY_HRA) == ME_RDY_HRA;
 }
 
+static int mei_me_hw_ready_wait(struct mei_device *dev)
+{
+	int err;
+	if (mei_me_hw_is_ready(dev))
+		return 0;
+
+	mutex_unlock(&dev->device_lock);
+	err = wait_event_interruptible_timeout(dev->wait_hw_ready,
+			dev->recvd_hw_ready, MEI_INTEROP_TIMEOUT);
+	mutex_lock(&dev->device_lock);
+	if (!err && !dev->recvd_hw_ready) {
+		dev_err(&dev->pdev->dev,
+			"wait hw ready failed. status = 0x%x\n", err);
+		return -ETIMEDOUT;
+	}
+
+	dev->recvd_hw_ready = false;
+	return 0;
+}
+
+static int mei_me_hw_start(struct mei_device *dev)
+{
+	int ret = mei_me_hw_ready_wait(dev);
+	if (ret)
+		return ret;
+	dev_dbg(&dev->pdev->dev, "hw is ready\n");
+
+	mei_me_host_set_ready(dev);
+	return ret;
+}
+
+
 /**
  * mei_hbuf_filled_slots - gets number of device filled buffer slots
  *
@@ -305,10 +337,11 @@ static int mei_me_write_message(struct mei_device *dev,
 			unsigned char *buf)
 {
 	struct mei_me_hw *hw = to_me_hw(dev);
-	unsigned long rem, dw_cnt;
+	unsigned long rem;
 	unsigned long length = header->length;
 	u32 *reg_buf = (u32 *)buf;
 	u32 hcsr;
+	u32 dw_cnt;
 	int i;
 	int empty_slots;
 
@@ -433,8 +466,6 @@ irqreturn_t mei_me_irq_thread_handler(int irq, void *dev_id)
 {
 	struct mei_device *dev = (struct mei_device *) dev_id;
 	struct mei_cl_cb complete_list;
-	struct mei_cl_cb *cb_pos = NULL, *cb_next = NULL;
-	struct mei_cl *cl;
 	s32 slots;
 	int rets;
 	bool  bus_message_received;
@@ -465,14 +496,9 @@ irqreturn_t mei_me_irq_thread_handler(int irq, void *dev_id)
 		if (mei_hw_is_ready(dev)) {
 			dev_dbg(&dev->pdev->dev, "we need to start the dev.\n");
 
-			mei_host_set_ready(dev);
+			dev->recvd_hw_ready = true;
+			wake_up_interruptible(&dev->wait_hw_ready);
 
-			dev_dbg(&dev->pdev->dev, "link is established start sending messages.\n");
-			/* link is established * start sending messages.  */
-
-			dev->dev_state = MEI_DEV_INIT_CLIENTS;
-
-			mei_hbm_start_req(dev);
 			mutex_unlock(&dev->device_lock);
 			return IRQ_HANDLED;
 		} else {
@@ -510,33 +536,19 @@ end:
 		wake_up_interruptible(&dev->wait_recvd_msg);
 		bus_message_received = false;
 	}
-	if (list_empty(&complete_list.list))
-		return IRQ_HANDLED;
 
+	mei_irq_compl_handler(dev, &complete_list);
 
-	list_for_each_entry_safe(cb_pos, cb_next, &complete_list.list, list) {
-		cl = cb_pos->cl;
-		list_del(&cb_pos->list);
-		if (cl) {
-			if (cl != &dev->iamthif_cl) {
-				dev_dbg(&dev->pdev->dev, "completing call back.\n");
-				mei_irq_complete_handler(cl, cb_pos);
-				cb_pos = NULL;
-			} else if (cl == &dev->iamthif_cl) {
-				mei_amthif_complete(dev, cb_pos);
-			}
-		}
-	}
 	return IRQ_HANDLED;
 }
 static const struct mei_hw_ops mei_me_hw_ops = {
 
-	.host_set_ready = mei_me_host_set_ready,
 	.host_is_ready = mei_me_host_is_ready,
 
 	.hw_is_ready = mei_me_hw_is_ready,
 	.hw_reset = mei_me_hw_reset,
-	.hw_config  = mei_me_hw_config,
+	.hw_config = mei_me_hw_config,
+	.hw_start = mei_me_hw_start,
 
 	.intr_clear = mei_me_intr_clear,
 	.intr_enable = mei_me_intr_enable,
