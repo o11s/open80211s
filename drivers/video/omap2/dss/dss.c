@@ -473,6 +473,45 @@ int dss_calc_clock_rates(struct dss_clock_info *cinfo)
 	return 0;
 }
 
+bool dss_div_calc(unsigned long fck_min, dss_div_calc_func func, void *data)
+{
+	int fckd, fckd_start, fckd_stop;
+	unsigned long fck;
+	unsigned long fck_hw_max;
+	unsigned long fckd_hw_max;
+	unsigned long prate;
+
+	if (dss.dpll4_m4_ck == NULL) {
+		/*
+		 * TODO: dss1_fclk can be changed on OMAP2, but the available
+		 * dividers are not continuous. We just use the pre-set rate for
+		 * now.
+		 */
+		fck = clk_get_rate(dss.dss_clk);
+		fckd = 1;
+		return func(fckd, fck, data);
+	}
+
+	fck_hw_max = dss_feat_get_param_max(FEAT_PARAM_DSS_FCK);
+	fckd_hw_max = dss.feat->fck_div_max;
+
+	prate = dss_get_dpll4_rate() * dss.feat->dss_fck_multiplier;
+
+	fck_min = fck_min ? fck_min : 1;
+
+	fckd_start = min(prate / fck_min, fckd_hw_max);
+	fckd_stop = max(DIV_ROUND_UP(prate, fck_hw_max), 1ul);
+
+	for (fckd = fckd_start; fckd >= fckd_stop; --fckd) {
+		fck = prate / fckd;
+
+		if (func(fckd, fck, data))
+			return true;
+	}
+
+	return false;
+}
+
 int dss_set_clock_div(struct dss_clock_info *cinfo)
 {
 	if (dss.dpll4_m4_ck) {
@@ -538,121 +577,6 @@ static int dss_setup_default_clock(void)
 	r = dss_set_clock_div(&dss_cinfo);
 	if (r)
 		return r;
-
-	return 0;
-}
-
-int dss_calc_clock_div(unsigned long req_pck, struct dss_clock_info *dss_cinfo,
-		struct dispc_clock_info *dispc_cinfo)
-{
-	unsigned long prate;
-	struct dss_clock_info best_dss;
-	struct dispc_clock_info best_dispc;
-
-	unsigned long fck, max_dss_fck;
-
-	u16 fck_div;
-
-	int match = 0;
-	int min_fck_per_pck;
-
-	prate = dss_get_dpll4_rate();
-
-	max_dss_fck = dss_feat_get_param_max(FEAT_PARAM_DSS_FCK);
-
-	fck = clk_get_rate(dss.dss_clk);
-	if (req_pck == dss.cache_req_pck && prate == dss.cache_prate &&
-		dss.cache_dss_cinfo.fck == fck) {
-		DSSDBG("dispc clock info found from cache.\n");
-		*dss_cinfo = dss.cache_dss_cinfo;
-		*dispc_cinfo = dss.cache_dispc_cinfo;
-		return 0;
-	}
-
-	min_fck_per_pck = CONFIG_OMAP2_DSS_MIN_FCK_PER_PCK;
-
-	if (min_fck_per_pck &&
-		req_pck * min_fck_per_pck > max_dss_fck) {
-		DSSERR("Requested pixel clock not possible with the current "
-				"OMAP2_DSS_MIN_FCK_PER_PCK setting. Turning "
-				"the constraint off.\n");
-		min_fck_per_pck = 0;
-	}
-
-retry:
-	memset(&best_dss, 0, sizeof(best_dss));
-	memset(&best_dispc, 0, sizeof(best_dispc));
-
-	if (dss.dpll4_m4_ck == NULL) {
-		struct dispc_clock_info cur_dispc;
-		/* XXX can we change the clock on omap2? */
-		fck = clk_get_rate(dss.dss_clk);
-		fck_div = 1;
-
-		dispc_find_clk_divs(req_pck, fck, &cur_dispc);
-		match = 1;
-
-		best_dss.fck = fck;
-		best_dss.fck_div = fck_div;
-
-		best_dispc = cur_dispc;
-
-		goto found;
-	} else {
-		for (fck_div = dss.feat->fck_div_max; fck_div > 0; --fck_div) {
-			struct dispc_clock_info cur_dispc;
-
-			fck = prate / fck_div * dss.feat->dss_fck_multiplier;
-
-			if (fck > max_dss_fck)
-				continue;
-
-			if (min_fck_per_pck &&
-					fck < req_pck * min_fck_per_pck)
-				continue;
-
-			match = 1;
-
-			dispc_find_clk_divs(req_pck, fck, &cur_dispc);
-
-			if (abs(cur_dispc.pck - req_pck) <
-					abs(best_dispc.pck - req_pck)) {
-
-				best_dss.fck = fck;
-				best_dss.fck_div = fck_div;
-
-				best_dispc = cur_dispc;
-
-				if (cur_dispc.pck == req_pck)
-					goto found;
-			}
-		}
-	}
-
-found:
-	if (!match) {
-		if (min_fck_per_pck) {
-			DSSERR("Could not find suitable clock settings.\n"
-					"Turning FCK/PCK constraint off and"
-					"trying again.\n");
-			min_fck_per_pck = 0;
-			goto retry;
-		}
-
-		DSSERR("Could not find suitable clock settings.\n");
-
-		return -EINVAL;
-	}
-
-	if (dss_cinfo)
-		*dss_cinfo = best_dss;
-	if (dispc_cinfo)
-		*dispc_cinfo = best_dispc;
-
-	dss.cache_req_pck = req_pck;
-	dss.cache_prate = prate;
-	dss.cache_dss_cinfo = best_dss;
-	dss.cache_dispc_cinfo = best_dispc;
 
 	return 0;
 }

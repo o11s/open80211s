@@ -97,6 +97,8 @@ static struct {
 
 	int irq;
 
+	unsigned long core_clk_rate;
+
 	u32 fifo_size[DISPC_MAX_NR_FIFOS];
 	/* maps which plane is using a fifo. fifo-id -> plane-id */
 	int fifo_assignment[DISPC_MAX_NR_FIFOS];
@@ -2951,6 +2953,10 @@ static void dispc_mgr_set_lcd_divisor(enum omap_channel channel, u16 lck_div,
 
 	dispc_write_reg(DISPC_DIVISORo(channel),
 			FLD_VAL(lck_div, 23, 16) | FLD_VAL(pck_div, 7, 0));
+
+	if (dss_has_feature(FEAT_CORE_CLK_DIV) == false &&
+			channel == OMAP_DSS_CHANNEL_LCD)
+		dispc.core_clk_rate = dispc_fclk_rate() / lck_div;
 }
 
 static void dispc_mgr_get_lcd_divisor(enum omap_channel channel, int *lck_div,
@@ -3056,15 +3062,7 @@ unsigned long dispc_mgr_pclk_rate(enum omap_channel channel)
 
 unsigned long dispc_core_clk_rate(void)
 {
-	int lcd;
-	unsigned long fclk = dispc_fclk_rate();
-
-	if (dss_has_feature(FEAT_CORE_CLK_DIV))
-		lcd = REG_GET(DISPC_DIVISOR, 23, 16);
-	else
-		lcd = REG_GET(DISPC_DIVISORo(OMAP_DSS_CHANNEL_LCD), 23, 16);
-
-	return fclk / lcd;
+	return dispc.core_clk_rate;
 }
 
 static unsigned long dispc_plane_pclk_rate(enum omap_plane plane)
@@ -3313,54 +3311,6 @@ static void dispc_dump_regs(struct seq_file *s)
 #undef DUMPREG
 }
 
-/* with fck as input clock rate, find dispc dividers that produce req_pck */
-void dispc_find_clk_divs(unsigned long req_pck, unsigned long fck,
-		struct dispc_clock_info *cinfo)
-{
-	u16 pcd_min, pcd_max;
-	unsigned long best_pck;
-	u16 best_ld, cur_ld;
-	u16 best_pd, cur_pd;
-
-	pcd_min = dss_feat_get_param_min(FEAT_PARAM_DSS_PCD);
-	pcd_max = dss_feat_get_param_max(FEAT_PARAM_DSS_PCD);
-
-	best_pck = 0;
-	best_ld = 0;
-	best_pd = 0;
-
-	for (cur_ld = 1; cur_ld <= 255; ++cur_ld) {
-		unsigned long lck = fck / cur_ld;
-
-		for (cur_pd = pcd_min; cur_pd <= pcd_max; ++cur_pd) {
-			unsigned long pck = lck / cur_pd;
-			long old_delta = abs(best_pck - req_pck);
-			long new_delta = abs(pck - req_pck);
-
-			if (best_pck == 0 || new_delta < old_delta) {
-				best_pck = pck;
-				best_ld = cur_ld;
-				best_pd = cur_pd;
-
-				if (pck == req_pck)
-					goto found;
-			}
-
-			if (pck < req_pck)
-				break;
-		}
-
-		if (lck / pcd_min < req_pck)
-			break;
-	}
-
-found:
-	cinfo->lck_div = best_ld;
-	cinfo->pck_div = best_pd;
-	cinfo->lck = fck / cinfo->lck_div;
-	cinfo->pck = cinfo->lck / cinfo->pck_div;
-}
-
 /* calculate clock rates using dividers in cinfo */
 int dispc_calc_clock_rates(unsigned long dispc_fclk_rate,
 		struct dispc_clock_info *cinfo)
@@ -3374,6 +3324,66 @@ int dispc_calc_clock_rates(unsigned long dispc_fclk_rate,
 	cinfo->pck = cinfo->lck / cinfo->pck_div;
 
 	return 0;
+}
+
+bool dispc_div_calc(unsigned long dispc,
+		unsigned long pck_min, unsigned long pck_max,
+		dispc_div_calc_func func, void *data)
+{
+	int lckd, lckd_start, lckd_stop;
+	int pckd, pckd_start, pckd_stop;
+	unsigned long pck, lck;
+	unsigned long lck_max;
+	unsigned long pckd_hw_min, pckd_hw_max;
+	unsigned min_fck_per_pck;
+	unsigned long fck;
+
+#ifdef CONFIG_OMAP2_DSS_MIN_FCK_PER_PCK
+	min_fck_per_pck = CONFIG_OMAP2_DSS_MIN_FCK_PER_PCK;
+#else
+	min_fck_per_pck = 0;
+#endif
+
+	pckd_hw_min = dss_feat_get_param_min(FEAT_PARAM_DSS_PCD);
+	pckd_hw_max = dss_feat_get_param_max(FEAT_PARAM_DSS_PCD);
+
+	lck_max = dss_feat_get_param_max(FEAT_PARAM_DSS_FCK);
+
+	pck_min = pck_min ? pck_min : 1;
+	pck_max = pck_max ? pck_max : ULONG_MAX;
+
+	lckd_start = max(DIV_ROUND_UP(dispc, lck_max), 1ul);
+	lckd_stop = min(dispc / pck_min, 255ul);
+
+	for (lckd = lckd_start; lckd <= lckd_stop; ++lckd) {
+		lck = dispc / lckd;
+
+		pckd_start = max(DIV_ROUND_UP(lck, pck_max), pckd_hw_min);
+		pckd_stop = min(lck / pck_min, pckd_hw_max);
+
+		for (pckd = pckd_start; pckd <= pckd_stop; ++pckd) {
+			pck = lck / pckd;
+
+			/*
+			 * For OMAP2/3 the DISPC fclk is the same as LCD's logic
+			 * clock, which means we're configuring DISPC fclk here
+			 * also. Thus we need to use the calculated lck. For
+			 * OMAP4+ the DISPC fclk is a separate clock.
+			 */
+			if (dss_has_feature(FEAT_CORE_CLK_DIV))
+				fck = dispc_core_clk_rate();
+			else
+				fck = lck;
+
+			if (fck < pck * min_fck_per_pck)
+				continue;
+
+			if (func(lckd, pckd, lck, pck, data))
+				return true;
+		}
+	}
+
+	return false;
 }
 
 void dispc_mgr_set_clock_div(enum omap_channel channel,
@@ -3451,6 +3461,8 @@ static void _omap_dispc_initial_config(void)
 		l = FLD_MOD(l, 1, 0, 0);
 		l = FLD_MOD(l, 1, 23, 16);
 		dispc_write_reg(DISPC_DIVISOR, l);
+
+		dispc.core_clk_rate = dispc_fclk_rate();
 	}
 
 	/* FUNCGATED */
