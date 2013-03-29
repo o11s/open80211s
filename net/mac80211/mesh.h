@@ -210,7 +210,8 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
 int ieee80211_new_mesh_header(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211s_hdr *meshhdr,
 			      const char *addr4or5, const char *addr6);
-int mesh_rmc_check(const u8 *addr, struct ieee80211s_hdr *mesh_hdr);
+int mesh_rmc_check(struct mesh_local_bss *mbss,
+		   const u8 *addr, struct ieee80211s_hdr *mesh_hdr);
 bool mesh_matches_local(struct ieee80211_sub_if_data *sdata,
 			struct ieee802_11_elems *ie);
 void mesh_ids_set_default(struct ieee80211_if_mesh *mesh);
@@ -228,8 +229,8 @@ int mesh_add_ht_cap_ie(struct ieee80211_sub_if_data *sdata,
 		       struct sk_buff *skb);
 int mesh_add_ht_oper_ie(struct ieee80211_sub_if_data *sdata,
 			struct sk_buff *skb);
-void mesh_rmc_free(void);
-int mesh_rmc_init(void);
+void mesh_rmc_free(struct mesh_local_bss *mbss);
+int mesh_rmc_init(struct mesh_local_bss *mbss);
 void ieee80211s_init(void);
 void ieee80211s_update_metric(struct ieee80211_local *local,
 			      struct sta_info *sta, struct sk_buff *skb);

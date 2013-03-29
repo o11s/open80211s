@@ -19,7 +19,6 @@
 
 static int mesh_allocated;
 static struct kmem_cache *rm_cache;
-static struct mesh_rmc *mesh_rmc;
 
 /* mesh_bss_mtx protects updates; internal iface list uses RCU */
 static DEFINE_MUTEX(mesh_bss_mtx);
@@ -34,7 +33,6 @@ bool mesh_action_is_path_sel(struct ieee80211_mgmt *mgmt)
 void ieee80211s_init(void)
 {
 	mesh_pathtbl_init();
-	mesh_rmc_init();
 	mesh_allocated = 1;
 	rm_cache = kmem_cache_create("mesh_rmc", sizeof(struct rmc_entry),
 				     0, 0, NULL);
@@ -45,7 +43,7 @@ void ieee80211s_stop(void)
 	if (!mesh_allocated)
 		return;
 	mesh_pathtbl_unregister();
-	mesh_rmc_free();
+	kmem_cache_destroy(rm_cache);
 }
 
 static void ieee80211_mesh_housekeeping_timer(unsigned long data)
@@ -128,6 +126,11 @@ mesh_bss_create(struct ieee80211_sub_if_data *sdata,
 	if (!mbss)
 		return NULL;
 
+	if (mesh_rmc_init(mbss)) {
+		kfree(mbss);
+		return NULL;
+	}
+
 	INIT_LIST_HEAD(&mbss->if_list);
 
 	mbss->mesh_id_len = setup->mesh_id_len;
@@ -159,6 +162,7 @@ static void mesh_bss_remove(struct ieee80211_sub_if_data *sdata)
 	if (list_empty(&mbss->if_list)) {
 		list_del(&mbss->list);
 		kfree(mbss);
+		mesh_rmc_free(mbss);
 	}
 }
 
@@ -333,7 +337,7 @@ void mesh_sta_cleanup(struct sta_info *sta)
 		ieee80211_mbss_info_change_notify(sdata, changed);
 }
 
-int mesh_rmc_init(void)
+int mesh_rmc_init(struct mesh_local_bss *mbss)
 {
 	struct mesh_rmc *rmc;
 	int i;
@@ -347,13 +351,13 @@ int mesh_rmc_init(void)
 		rwlock_init(&rmc->bucket_lock[i]);
 	}
 
-	mesh_rmc = rmc;
+	mbss->rmc= rmc;
 	return 0;
 }
 
-void mesh_rmc_free(void)
+void mesh_rmc_free(struct mesh_local_bss *mbss)
 {
-	struct mesh_rmc *rmc = mesh_rmc;
+	struct mesh_rmc *rmc = mbss->rmc;
 	struct rmc_entry *p, *n;
 	int i;
 
@@ -368,8 +372,7 @@ void mesh_rmc_free(void)
 	}
 
 	kfree(rmc);
-	mesh_rmc = NULL;
-	kmem_cache_destroy(rm_cache);
+	mbss->rmc = NULL;
 }
 
 /**
@@ -384,9 +387,10 @@ void mesh_rmc_free(void)
  * received this frame lately. If the frame is not in the cache, it is added to
  * it.
  */
-int mesh_rmc_check(const u8 *sa, struct ieee80211s_hdr *mesh_hdr)
+int mesh_rmc_check(struct mesh_local_bss *mbss,
+		   const u8 *sa, struct ieee80211s_hdr *mesh_hdr)
 {
-	struct mesh_rmc *rmc = mesh_rmc;
+	struct mesh_rmc *rmc = mbss->rmc;
 	u32 seqnum = 0;
 	int entries = 0, ret = 0;
 	u8 idx;

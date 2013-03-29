@@ -295,6 +295,7 @@ struct mesh_stats {
  * @is_secure: true if the mesh is secure
  * @can_share: true if this bss can be shared (user-configurable per-if)
  * @net: network namespace devices in this mbss belong to
+ * @rmc: Recent Multicast Cache for this mbss
  * @list: listptr for siblings in mesh_bss_list
  * @if_list: interfaces sharing this bss
  */
@@ -313,6 +314,7 @@ struct mesh_local_bss {
 	bool can_share;
 	struct net *net;
 
+	struct mesh_rmc *rmc;
 	struct list_head list;
 	struct list_head if_list;
 };
