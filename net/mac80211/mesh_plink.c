@@ -379,8 +379,10 @@ static void mesh_sta_info_init(struct ieee80211_sub_if_data *sdata,
 	sta->last_rx = jiffies;
 
 	/* rates and capabilities don't change during peering */
-	if (sta->plink_state == NL80211_PLINK_ESTAB)
-		goto out;
+	if (sta->plink_state == NL80211_PLINK_ESTAB) {
+		spin_unlock_bh(&sta->lock);
+		return;
+	}
 
 	if (sta->sta.supp_rates[band] != rates)
 		changed |= IEEE80211_RC_SUPP_RATES_CHANGED;
@@ -398,13 +400,12 @@ static void mesh_sta_info_init(struct ieee80211_sub_if_data *sdata,
 			changed |= IEEE80211_RC_BW_CHANGED;
 		sta->sta.bandwidth = IEEE80211_STA_RX_BW_20;
 	}
+	spin_unlock_bh(&sta->lock);
 
 	if (insert)
 		rate_control_rate_init(sta);
 	else
 		rate_control_rate_update(local, sband, sta, changed);
-out:
-	spin_unlock_bh(&sta->lock);
 }
 
 static struct sta_info *
