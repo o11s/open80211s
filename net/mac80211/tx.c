@@ -1799,7 +1799,7 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			struct sta_info *next_hop;
 			bool mpp_lookup = true;
 
-			mpath = mesh_path_lookup(sdata, skb->data);
+			mpath = mesh_path_lookup(mbss(sdata), skb->data);
 			if (mpath) {
 				mpp_lookup = false;
 				next_hop = rcu_dereference(mpath->next_hop);
@@ -1810,7 +1810,8 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			}
 
 			if (mpp_lookup)
-				mppath = mpp_path_lookup(sdata, skb->data);
+				mppath = mpp_path_lookup(mbss(sdata),
+							 skb->data);
 
 			if (mppath && mpath)
 				mesh_path_del(mpath->sdata, mpath->dst);

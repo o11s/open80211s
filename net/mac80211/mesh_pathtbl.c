@@ -184,11 +184,11 @@ errcopy:
 	return -ENOMEM;
 }
 
-static u32 mesh_table_hash(const u8 *addr, struct ieee80211_sub_if_data *sdata,
+static u32 mesh_table_hash(struct mesh_local_bss *mbss, const u8 *addr,
 			   struct mesh_table *tbl)
 {
-	/* Use last four bytes of hw addr and interface index as hash index */
-	return jhash_2words(*(u32 *)(addr+2), sdata->dev->ifindex,
+	/* Use last four bytes of hw addr and first four of meshid */
+	return jhash_2words(*(u32 *)(addr+2), *(u32 *) mbss->mesh_id,
 			    tbl->hash_rnd) & tbl->hash_mask;
 }
 
@@ -328,15 +328,14 @@ static void mesh_path_move_to_queue(struct mesh_path *gate_mpath,
 	spin_unlock_irqrestore(&from_mpath->frame_queue.lock, flags);
 }
 
-
-static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
-				      struct ieee80211_sub_if_data *sdata)
+static struct mesh_path *__mpath_lookup(struct mesh_table *tbl, const u8 *dst,
+					struct ieee80211_sub_if_data *sdata)
 {
 	struct mesh_path *mpath;
 	struct hlist_head *bucket;
 	struct mpath_node *node;
 
-	bucket = &tbl->hash_buckets[mesh_table_hash(dst, sdata, tbl)];
+	bucket = &tbl->hash_buckets[mesh_table_hash(mbss(sdata), dst, tbl)];
 	hlist_for_each_entry_rcu(node, bucket, list) {
 		mpath = node->mpath;
 		if (mpath->sdata == sdata &&
@@ -352,9 +351,25 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
 	return NULL;
 }
 
+static struct mesh_path *mpath_lookup(struct mesh_table *tbl,
+				      struct mesh_local_bss *mbss,
+				      const u8 *dst)
+{
+	struct ieee80211_sub_if_data *sdata;
+	struct mesh_path *mpath;
+
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list) {
+		mpath = __mpath_lookup(tbl, dst, sdata);
+		if (mpath)
+			return mpath;
+	}
+	return NULL;
+}
+
 /**
  * mesh_path_lookup - look up a path in the mesh path table
- * @sdata: local subif
+ *
+ * @mbss: MBSS where this destination might be found
  * @dst: hardware address (ETH_ALEN length) of destination
  *
  * Returns: pointer to the mesh path structure, or NULL if not found
@@ -362,15 +377,15 @@ static struct mesh_path *mpath_lookup(struct mesh_table *tbl, const u8 *dst,
  * Locking: must be called within a read rcu section.
  */
 struct mesh_path *
-mesh_path_lookup(struct ieee80211_sub_if_data *sdata, const u8 *dst)
+mesh_path_lookup(struct mesh_local_bss *mbss, const u8 *dst)
 {
-	return mpath_lookup(rcu_dereference(mesh_paths), dst, sdata);
+	return mpath_lookup(rcu_dereference(mesh_paths), mbss, dst);
 }
 
 struct mesh_path *
-mpp_path_lookup(struct ieee80211_sub_if_data *sdata, const u8 *dst)
+mpp_path_lookup(struct mesh_local_bss *mbss, const u8 *dst)
 {
-	return mpath_lookup(rcu_dereference(mpp_paths), dst, sdata);
+	return mpath_lookup(rcu_dereference(mpp_paths), mbss, dst);
 }
 
 
@@ -519,7 +534,7 @@ struct mesh_path *mesh_path_add(struct ieee80211_sub_if_data *sdata,
 	read_lock_bh(&pathtbl_resize_lock);
 	tbl = resize_dereference_mesh_paths();
 
-	hash_idx = mesh_table_hash(dst, sdata, tbl);
+	hash_idx = mesh_table_hash(mbss(sdata), dst, tbl);
 	bucket = &tbl->hash_buckets[hash_idx];
 
 	spin_lock(&tbl->hashwlock[hash_idx]);
@@ -669,7 +684,7 @@ int mpp_path_add(struct ieee80211_sub_if_data *sdata,
 
 	tbl = resize_dereference_mpp_paths();
 
-	hash_idx = mesh_table_hash(dst, sdata, tbl);
+	hash_idx = mesh_table_hash(mbss(sdata), dst, tbl);
 	bucket = &tbl->hash_buckets[hash_idx];
 
 	spin_lock(&tbl->hashwlock[hash_idx]);
@@ -862,7 +877,7 @@ int mesh_path_del(struct ieee80211_sub_if_data *sdata, const u8 *addr)
 
 	read_lock_bh(&pathtbl_resize_lock);
 	tbl = resize_dereference_mesh_paths();
-	hash_idx = mesh_table_hash(addr, sdata, tbl);
+	hash_idx = mesh_table_hash(mbss(sdata), addr, tbl);
 	bucket = &tbl->hash_buckets[hash_idx];
 
 	spin_lock(&tbl->hashwlock[hash_idx]);
@@ -1028,7 +1043,7 @@ static int mesh_path_node_copy(struct hlist_node *p, struct mesh_table *newtbl)
 	node = hlist_entry(p, struct mpath_node, list);
 	mpath = node->mpath;
 	new_node->mpath = mpath;
-	hash_idx = mesh_table_hash(mpath->dst, mpath->sdata, newtbl);
+	hash_idx = mesh_table_hash(mbss(mpath->sdata), mpath->dst, newtbl);
 	hlist_add_head(&new_node->list,
 			&newtbl->hash_buckets[hash_idx]);
 	return 0;

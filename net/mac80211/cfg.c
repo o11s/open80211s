@@ -1605,8 +1605,8 @@ static int ieee80211_change_mpath(struct wiphy *wiphy,
 		return -ENOENT;
 	}
 
-	mpath = mesh_path_lookup(sdata, dst);
-	if (!mpath) {
+	mpath = mesh_path_lookup(mbss(sdata), dst);
+	if (!mpath || mpath->sdata != sdata) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
@@ -1669,8 +1669,8 @@ static int ieee80211_get_mpath(struct wiphy *wiphy, struct net_device *dev,
 	sdata = IEEE80211_DEV_TO_SUB_IF(dev);
 
 	rcu_read_lock();
-	mpath = mesh_path_lookup(sdata, dst);
-	if (!mpath) {
+	mpath = mesh_path_lookup(mbss(sdata), dst);
+	if (!mpath || mpath->sdata != sdata) {
 		rcu_read_unlock();
 		return -ENOENT;
 	}
