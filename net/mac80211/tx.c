@@ -1452,6 +1452,9 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 		} else {
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
 		}
+		if (is_multicast_ether_addr(hdr->addr1) &&
+		    ieee80211_is_data(hdr->frame_control))
+			mesh_bss_forward_tx(sdata, skb);
 	}
 
 	ieee80211_set_qos_hdr(sdata, skb);
