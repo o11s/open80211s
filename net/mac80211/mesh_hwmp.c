@@ -358,7 +358,7 @@ static u32 airtime_link_metric_get(struct ieee80211_local *local,
  * hwmp_route_info_get - Update routing info to originator and transmitter
  *
  * @sdata: local mesh subif
- * @mgmt: mesh management frame
+ * @sta: previous hop sta
  * @hwmp_ie: hwmp information element (PREP or PREQ)
  * @action: type of hwmp ie
  *
@@ -371,26 +371,20 @@ static u32 airtime_link_metric_get(struct ieee80211_local *local,
  * Notes: this function is the only place (besides user-provided info) where
  * path routing information is updated.
  */
+/* XXX: annotate __rcu */
 static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
-			       struct ieee80211_mgmt *mgmt,
+			       struct sta_info *sta,
 			       const u8 *hwmp_ie, enum mpath_frame_type action)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct mesh_path *mpath;
-	struct sta_info *sta;
 	bool fresh_info;
-	const u8 *orig_addr, *ta;
+	u8 *ta = sta->sta.addr;
+	const u8 *orig_addr;
 	u32 orig_sn, orig_metric;
 	unsigned long orig_lifetime, exp_time;
 	u32 last_hop_metric, new_metric;
 	bool process = true;
-
-	rcu_read_lock();
-	sta = sta_info_get(sdata, mgmt->sa);
-	if (!sta) {
-		rcu_read_unlock();
-		return 0;
-	}
 
 	last_hop_metric = airtime_link_metric_get(local, sta);
 	/* Update and check originator routing info */
@@ -471,7 +465,6 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	}
 
 	/* Update and check transmitter routing info */
-	ta = mgmt->sa;
 	if (ether_addr_equal(orig_addr, ta))
 		fresh_info = false;
 	else {
@@ -601,41 +594,42 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 		}
 	}
 
-	if (forward && ifmsh->mshcfg.dot11MeshForwarding) {
-		u32 preq_id;
-		u8 hopcount;
+	if (!forward || !ifmsh->mshcfg.dot11MeshForwarding)
+		return;
 
-		ttl = PREQ_IE_TTL(preq_elem);
-		lifetime = PREQ_IE_LIFETIME(preq_elem);
-		if (ttl <= 1) {
-			ifmsh->mshstats.dropped_frames_ttl++;
-			return;
-		}
-		mhwmp_dbg(sdata, "forwarding the PREQ from %pM\n", orig_addr);
-		--ttl;
-		preq_id = PREQ_IE_PREQ_ID(preq_elem);
-		hopcount = PREQ_IE_HOPCOUNT(preq_elem) + 1;
-		da = (mpath && mpath->is_root) ?
-			mpath->rann_snd_addr : broadcast_addr;
+	u32 preq_id;
+	u8 hopcount;
 
-		if (flags & IEEE80211_PREQ_PROACTIVE_PREP_FLAG) {
-			target_addr = PREQ_IE_TARGET_ADDR(preq_elem);
-			target_sn = PREQ_IE_TARGET_SN(preq_elem);
-			metric = orig_metric;
-		}
-
-		mesh_path_sel_frame_tx(MPATH_PREQ, flags, orig_addr,
-				cpu_to_le32(orig_sn), target_flags, target_addr,
-				cpu_to_le32(target_sn), da,
-				hopcount, ttl, cpu_to_le32(lifetime),
-				cpu_to_le32(metric), cpu_to_le32(preq_id),
-				sdata);
-		if (!is_multicast_ether_addr(da))
-			ifmsh->mshstats.fwded_unicast++;
-		else
-			ifmsh->mshstats.fwded_mcast++;
-		ifmsh->mshstats.fwded_frames++;
+	ttl = PREQ_IE_TTL(preq_elem);
+	lifetime = PREQ_IE_LIFETIME(preq_elem);
+	if (ttl <= 1) {
+		ifmsh->mshstats.dropped_frames_ttl++;
+		return;
 	}
+	mhwmp_dbg(sdata, "forwarding the PREQ from %pM\n", orig_addr);
+	--ttl;
+	preq_id = PREQ_IE_PREQ_ID(preq_elem);
+	hopcount = PREQ_IE_HOPCOUNT(preq_elem) + 1;
+	da = (mpath && mpath->is_root) ?
+		mpath->rann_snd_addr : broadcast_addr;
+
+	if (flags & IEEE80211_PREQ_PROACTIVE_PREP_FLAG) {
+		target_addr = PREQ_IE_TARGET_ADDR(preq_elem);
+		target_sn = PREQ_IE_TARGET_SN(preq_elem);
+		metric = orig_metric;
+	}
+
+	mesh_path_sel_frame_tx(MPATH_PREQ, flags, orig_addr,
+			cpu_to_le32(orig_sn), target_flags, target_addr,
+			cpu_to_le32(target_sn), da,
+			hopcount, ttl, cpu_to_le32(lifetime),
+			cpu_to_le32(metric), cpu_to_le32(preq_id),
+			sdata);
+	if (!is_multicast_ether_addr(da))
+		ifmsh->mshstats.fwded_unicast++;
+	else
+		ifmsh->mshstats.fwded_mcast++;
+	ifmsh->mshstats.fwded_frames++;
 }
 
 
@@ -876,7 +870,6 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 		rcu_read_unlock();
 		return;
 	}
-	rcu_read_unlock();
 
 	baselen = (u8 *) mgmt->u.action.u.mesh_action.variable - (u8 *) mgmt;
 	ieee802_11_parse_elems(mgmt->u.action.u.mesh_action.variable,
@@ -886,8 +879,9 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 		if (elems.preq_len != 37)
 			/* Right now we support just 1 destination and no AE */
 			return;
-		last_hop_metric = hwmp_route_info_get(sdata, mgmt, elems.preq,
+		last_hop_metric = hwmp_route_info_get(sdata, sta, elems.preq,
 						      MPATH_PREQ);
+		rcu_read_unlock();
 		if (last_hop_metric)
 			hwmp_preq_frame_process(sdata, mgmt, elems.preq,
 						last_hop_metric);
@@ -896,8 +890,9 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 		if (elems.prep_len != 31)
 			/* Right now we support no AE */
 			return;
-		last_hop_metric = hwmp_route_info_get(sdata, mgmt, elems.prep,
+		last_hop_metric = hwmp_route_info_get(sdata, sta, elems.prep,
 						      MPATH_PREP);
+		rcu_read_unlock();
 		if (last_hop_metric)
 			hwmp_prep_frame_process(sdata, mgmt, elems.prep,
 						last_hop_metric);
