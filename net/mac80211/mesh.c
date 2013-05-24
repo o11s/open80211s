@@ -54,6 +54,25 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 	ieee80211_queue_work(&local->hw, &sdata->work);
 }
 
+/* iterate over ifaces in mbss to find the highest tx headroom */
+static void mesh_bss_set_max_headroom(struct mesh_local_bss *mbss)
+{
+	struct ieee80211_sub_if_data *sdata;
+	int max_headroom = 0;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list)
+		if (sdata->local->tx_headroom > max_headroom)
+			max_headroom = sdata->local->tx_headroom;
+
+	/* elevate all netdevs to max headroom */
+	list_for_each_entry_rcu(sdata, &mbss->if_list, u.mesh.if_list)
+		sdata->dev->needed_headroom = max_headroom;
+	rcu_read_unlock();
+
+	mbss->max_headroom = max_headroom;
+}
+
 static inline bool
 mesh_bss_matches(struct ieee80211_sub_if_data *sdata,
 		 struct mesh_setup *setup,
@@ -126,6 +145,7 @@ static void mesh_bss_remove(struct ieee80211_sub_if_data *sdata)
 
 	mutex_lock(&mesh_bss_mtx);
 	list_del_rcu(&ifmsh->if_list);
+	mesh_bss_set_max_headroom(mbss);
 	synchronize_rcu();
 	ifmsh->mesh_bss = NULL;
 
@@ -165,6 +185,7 @@ int mesh_bss_add(struct ieee80211_sub_if_data *sdata,
 out_add:
 	ifmsh->mesh_bss = mbss;
 	list_add_rcu(&ifmsh->if_list, &mbss->if_list);
+	mesh_bss_set_max_headroom(mbss);
 	ret = 0;
 
 out_fail:

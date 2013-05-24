@@ -298,6 +298,7 @@ struct mesh_stats {
  * @rmc: Recent Multicast Cache for this mbss
  * @list: listptr for siblings in mesh_bss_list
  * @if_list: interfaces sharing this bss
+ * @max_headroom: max tx headroom of all interfaces in this bss
  */
 struct mesh_local_bss {
 	u8 mesh_id[IEEE80211_MAX_SSID_LEN];
@@ -312,6 +313,8 @@ struct mesh_local_bss {
 	struct mesh_rmc *rmc;
 	struct list_head list;
 	struct list_head if_list;
+
+	int max_headroom;
 };
 
 #define PREQ_Q_F_START		0x1
