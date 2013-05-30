@@ -57,6 +57,7 @@ enum mesh_path_flags {
  * grow
  * @MESH_WORK_ROOT: the mesh root station needs to send a frame
  * @MESH_WORK_DRIFT_ADJUST: time to compensate for clock drift relative to other
+ * @MESH_WORK_MBSS_CHANGED: rebuild beacon and notify driver of BSS changes
  * mesh nodes
  */
 enum mesh_deferred_task_flags {
@@ -65,6 +66,7 @@ enum mesh_deferred_task_flags {
 	MESH_WORK_GROW_MPP_TABLE,
 	MESH_WORK_ROOT,
 	MESH_WORK_DRIFT_ADJUST,
+	MESH_WORK_MBSS_CHANGED,
 };
 
 /**
