@@ -384,11 +384,8 @@ void mesh_sta_cleanup(struct sta_info *sta)
 		del_timer_sync(&sta->plink_timer);
 	}
 
-	if (changed) {
-		sdata_lock(sdata);
+	if (changed)
 		ieee80211_mbss_info_change_notify(sdata, changed);
-		sdata_unlock(sdata);
-	}
 }
 
 int mesh_rmc_init(struct mesh_local_bss *mbss)
@@ -957,14 +954,15 @@ ieee80211_mesh_rebuild_beacon(struct ieee80211_sub_if_data *sdata)
 void ieee80211_mbss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 				       u32 changed)
 {
-	if (sdata->vif.bss_conf.enable_beacon &&
-	    (changed & (BSS_CHANGED_BEACON |
-			BSS_CHANGED_HT |
-			BSS_CHANGED_BASIC_RATES |
-			BSS_CHANGED_BEACON_INT)))
-		if (ieee80211_mesh_rebuild_beacon(sdata))
-			return;
-	ieee80211_bss_info_change_notify(sdata, changed);
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	u32 bit;
+
+	/* if we race with running work, worst case this work becomes a noop */
+	for_each_set_bit(bit, (unsigned long *)&changed,
+			 sizeof(changed) * BITS_PER_BYTE)
+		set_bit(BIT(bit), &ifmsh->mbss_changed);
+	set_bit(MESH_WORK_MBSS_CHANGED, &ifmsh->wrkq_flags);
+	ieee80211_queue_work(&sdata->local->hw, &sdata->work);
 }
 
 int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
@@ -1228,6 +1226,26 @@ out:
 	sdata_unlock(sdata);
 }
 
+static void mesh_bss_info_changed(struct ieee80211_sub_if_data *sdata)
+{
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	u32 bit, changed = 0;
+
+	for_each_set_bit(bit, (unsigned long *)&ifmsh->mbss_changed,
+			 sizeof(changed) * BITS_PER_BYTE)
+		changed |= test_and_clear_bit(BIT(bit), &ifmsh->mbss_changed);
+
+	if (sdata->vif.bss_conf.enable_beacon &&
+	    (changed & (BSS_CHANGED_BEACON |
+			BSS_CHANGED_HT |
+			BSS_CHANGED_BASIC_RATES |
+			BSS_CHANGED_BEACON_INT)))
+		if (ieee80211_mesh_rebuild_beacon(sdata))
+			return;
+
+	ieee80211_bss_info_change_notify(sdata, changed);
+}
+
 void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
@@ -1258,6 +1276,8 @@ void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata)
 	if (test_and_clear_bit(MESH_WORK_DRIFT_ADJUST, &ifmsh->wrkq_flags))
 		mesh_sync_adjust_tbtt(sdata);
 
+	if (test_and_clear_bit(MESH_WORK_MBSS_CHANGED, &ifmsh->wrkq_flags))
+		mesh_bss_info_changed(sdata);
 out:
 	sdata_unlock(sdata);
 }
