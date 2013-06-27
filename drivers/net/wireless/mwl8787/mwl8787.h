@@ -1,0 +1,38 @@
+#ifndef MWL8787_H
+#define MWL8787_H
+
+#include <net/mac80211.h>
+
+struct mwl8787_bus_ops
+{
+	/* things like send_fw_cmd go here... */
+};
+
+struct mwl8787_priv
+{
+	struct ieee80211_hw *hw;
+	const struct firmware *fw;
+	void *bus_priv;
+	struct mwl8787_bus_ops *bus_ops;
+};
+
+/* main */
+struct mwl8787_priv *mwl8787_init(void);
+void mwl8787_unregister(struct mwl8787_priv *priv);
+void mwl8787_free(struct mwl8787_priv *priv);
+
+/* fw.c? */
+int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
+		     u8 *buf, size_t len);
+
+/* tx */
+void mwl8787_tx(struct ieee80211_hw *hw,
+		struct ieee80211_tx_control *control,
+		struct sk_buff *skb);
+
+/* testmode */
+int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len);
+int mwl8787_testmode_dump(struct ieee80211_hw *hw, struct sk_buff *skb,
+			  struct netlink_callback *cb,
+			  void *data, int len);
+#endif
