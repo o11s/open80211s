@@ -1,0 +1,8 @@
+config MWL8787
+	tristate "Marvell 8787 SoftMAC SDIO support"
+	depends on MMC && MAC80211
+	select FW_LOADER
+	help
+	  This is a softmac driver for Marvell 8787 USB devices.
+
+	  If unsure, say N.
