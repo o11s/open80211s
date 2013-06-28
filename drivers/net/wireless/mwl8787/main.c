@@ -196,9 +196,12 @@ struct mwl8787_priv *mwl8787_init(void)
 
 	SET_IEEE80211_PERM_ADDR(hw, mac);
 
-	ieee80211_register_hw(priv->hw);
-
 	return priv;
+}
+
+int mwl8787_register(struct mwl8787_priv *priv)
+{
+	return ieee80211_register_hw(priv->hw);
 }
 
 void mwl8787_unregister(struct mwl8787_priv *priv)

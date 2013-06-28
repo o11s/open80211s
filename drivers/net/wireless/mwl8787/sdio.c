@@ -36,8 +36,11 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	sdio_set_drvdata(func, priv);
 	SET_IEEE80211_DEV(priv->hw, &func->dev);
 
-	return 0;
+	ret = mwl8787_register(priv);
+	if (ret)
+		goto release;
 
+	return 0;
 release:
 	mwl8787_free(priv);
 	return ret;
@@ -106,6 +109,9 @@ static int register_fake_driver(void)
 
 	SET_IEEE80211_DEV(priv->hw, dev);
 	fake_device = priv;
+	err = mwl8787_register(priv);
+	if (err)
+		goto release;
 
 	return 0;
 
