@@ -18,6 +18,7 @@ struct mwl8787_priv
 
 /* main */
 struct mwl8787_priv *mwl8787_init(void);
+int mwl8787_register(struct mwl8787_priv *priv);
 void mwl8787_unregister(struct mwl8787_priv *priv);
 void mwl8787_free(struct mwl8787_priv *priv);
 
