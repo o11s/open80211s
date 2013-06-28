@@ -58,6 +58,86 @@ static struct sdio_driver mwl8787_sdio_driver = {
 	.id_table = mwl8787_sdio_ids,
 };
 
+/* for testing basic setup without hw, skips all sdio stuff */
+#define MWLFAKEDEV
+#ifdef MWLFAKEDEV
+#include <linux/platform_device.h>
+
+static struct mwl8787_priv *fake_device = NULL;
+
+static struct platform_driver mwl8787_fake_driver = {
+	.driver = {
+		.name = "mwl8787_fake_driver",
+		.owner = THIS_MODULE,
+	},
+};
+
+static int register_fake_driver(void)
+{
+	struct mwl8787_priv *priv;
+	struct device *dev;
+	struct class *class;
+	int err;
+
+	err = platform_driver_register(&mwl8787_fake_driver);
+	if (err)
+		return err;
+
+	class = class_create(THIS_MODULE, "mwl8787");
+	if (IS_ERR(class))
+		return PTR_ERR(class);
+
+	priv = mwl8787_init();
+
+	if (IS_ERR(priv))
+		return PTR_ERR(priv);
+
+	dev = device_create(class, NULL, 0, priv, "mwlfake0");
+	if (IS_ERR(dev)) {
+		err = PTR_ERR(dev);
+		goto release;
+	}
+	priv->bus_priv = dev;
+
+	dev->driver = &mwl8787_fake_driver.driver;
+	err = device_bind_driver(dev);
+	if (err)
+		return err;
+
+	SET_IEEE80211_DEV(priv->hw, dev);
+	fake_device = priv;
+
+	return 0;
+
+release:
+	mwl8787_free(priv);
+	return err;
+}
+
+static void unregister_fake_driver(void)
+{
+	struct mwl8787_priv *priv = fake_device;
+	if (!priv)
+		return;
+
+	mwl8787_unregister(priv);
+	device_release_driver(priv->bus_priv);
+	device_unregister(priv->bus_priv);
+	mwl8787_free(priv);
+	platform_driver_unregister(&mwl8787_fake_driver);
+}
+
+static int __init mwl8787_sdio_init(void)
+{
+	return register_fake_driver();
+}
+
+static void __exit mwl8787_sdio_exit(void)
+{
+	unregister_fake_driver();
+}
+
+#else
 static int __init mwl8787_sdio_init(void)
 {
 	return sdio_register_driver(&mwl8787_sdio_driver);
@@ -67,6 +147,7 @@ static void __exit mwl8787_sdio_exit(void)
 {
 	sdio_unregister_driver(&mwl8787_sdio_driver);
 }
+#endif
 
 module_init(mwl8787_sdio_init);
 module_exit(mwl8787_sdio_exit);
