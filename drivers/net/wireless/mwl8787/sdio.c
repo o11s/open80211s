@@ -67,35 +67,36 @@ static struct sdio_driver mwl8787_sdio_driver = {
 #include <linux/platform_device.h>
 
 static struct mwl8787_priv *fake_device = NULL;
+static struct class *mwl8787_class;
 
 static struct platform_driver mwl8787_fake_driver = {
 	.driver = {
-		.name = "mwl8787_fake_driver",
+		.name = "mwl8787_sdio",
 		.owner = THIS_MODULE,
 	},
 };
+
 
 static int register_fake_driver(void)
 {
 	struct mwl8787_priv *priv;
 	struct device *dev;
-	struct class *class;
 	int err;
 
 	err = platform_driver_register(&mwl8787_fake_driver);
 	if (err)
 		return err;
 
-	class = class_create(THIS_MODULE, "mwl8787");
-	if (IS_ERR(class))
-		return PTR_ERR(class);
+	mwl8787_class = class_create(THIS_MODULE, "mwl8787_sdio");
+	if (IS_ERR(mwl8787_class))
+		return PTR_ERR(mwl8787_class);
 
 	priv = mwl8787_init();
 
 	if (IS_ERR(priv))
 		return PTR_ERR(priv);
 
-	dev = device_create(class, NULL, 0, priv, "mwlfake0");
+	dev = device_create(mwl8787_class, NULL, 0, priv, "mwlfake0");
 	if (IS_ERR(dev)) {
 		err = PTR_ERR(dev);
 		goto release;
@@ -131,6 +132,7 @@ static void unregister_fake_driver(void)
 	device_unregister(priv->bus_priv);
 	mwl8787_free(priv);
 	platform_driver_unregister(&mwl8787_fake_driver);
+	class_destroy(mwl8787_class);
 }
 
 static int __init mwl8787_sdio_init(void)
