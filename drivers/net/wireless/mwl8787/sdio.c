@@ -112,6 +112,7 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	SET_IEEE80211_DEV(priv->hw, &func->dev);
 
 	priv->bus_ops = &sdio_ops;
+	priv->dev = &func->dev;
 
 	ret = mwl8787_register(priv);
 	if (ret)
