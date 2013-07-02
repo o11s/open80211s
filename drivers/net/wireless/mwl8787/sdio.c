@@ -1,8 +1,6 @@
 #include "mwl8787.h"
-#include <linux/module.h>
-#include <linux/mmc/sdio.h>
-#include <linux/mmc/sdio_func.h>
-#include <linux/mmc/sdio_ids.h>
+#include "sdio.h"
+#include "fw.h"
 
 MODULE_DESCRIPTION("Marvell 8787 SDIO wireless");
 MODULE_LICENSE("GPL");
@@ -14,6 +12,83 @@ static struct sdio_device_id mwl8787_sdio_ids[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(sdio, mwl8787_sdio_ids);
+
+/*
+ * This function reads data from SDIO card register.
+ */
+static int
+mwl8787_read_reg(struct mwl8787_priv *priv, u32 reg, u8 *data)
+{
+	struct sdio_func *func = priv->bus_priv;
+	int ret = -1;
+	u8 val;
+
+	sdio_claim_host(func);
+	val = sdio_readb(func, reg, &ret);
+	sdio_release_host(func);
+
+	*data = val;
+
+	return ret;
+}
+
+/*
+ * This function reads the firmware status.
+ */
+static int
+mwl8787_sdio_read_fw_status(struct mwl8787_priv *priv, u16 *dat)
+{
+	u8 fws0, fws1;
+
+	if (mwl8787_read_reg(priv, MWL8787_REG_STATUS_0, &fws0))
+		return -1;
+
+	if (mwl8787_read_reg(priv, MWL8787_REG_STATUS_1, &fws1))
+		return -1;
+
+	*dat = (u16) ((fws1 << 8) | fws0);
+
+	return 0;
+}
+
+/*
+ * This function checks the firmware status in card.
+ */
+static int mwl8787_sdio_check_fw_ready(struct mwl8787_priv *priv,
+				       u32 poll_num)
+{
+	int ret = 0;
+	u16 firmware_stat;
+	u32 tries;
+
+	/* Wait for firmware initialization event */
+	for (tries = 0; tries < poll_num; tries++) {
+		ret = mwl8787_sdio_read_fw_status(priv, &firmware_stat);
+		if (ret)
+			continue;
+		if (firmware_stat == FIRMWARE_READY_SDIO) {
+			ret = 0;
+			break;
+		} else {
+			mdelay(100);
+			ret = -1;
+		}
+	}
+
+	return ret;
+}
+
+static int mwl8787_sdio_prog_fw(struct mwl8787_priv *priv,
+				const struct firmware *fw)
+{
+	return 0; /* that was easy */
+}
+
+static struct mwl8787_bus_ops sdio_ops = {
+	.prog_fw = mwl8787_sdio_prog_fw,
+	.check_fw_ready = mwl8787_sdio_check_fw_ready,
+};
+
 
 static int mwl8787_sdio_probe(struct sdio_func *func,
 			      const struct sdio_device_id *id)
@@ -35,6 +110,8 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	priv->bus_priv = func;
 	sdio_set_drvdata(func, priv);
 	SET_IEEE80211_DEV(priv->hw, &func->dev);
+
+	priv->bus_ops = &sdio_ops;
 
 	ret = mwl8787_register(priv);
 	if (ret)
@@ -156,6 +233,5 @@ static void __exit mwl8787_sdio_exit(void)
 	sdio_unregister_driver(&mwl8787_sdio_driver);
 }
 #endif
-
 module_init(mwl8787_sdio_init);
 module_exit(mwl8787_sdio_exit);

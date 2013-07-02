@@ -3,7 +3,7 @@
  */
 
 #include "mwl8787.h"
-#include <linux/firmware.h>
+#include "fw.h"
 
 #define MWL8787_FW_NAME "sd8787_uapsta.bin"
 
@@ -96,6 +96,36 @@ static struct ieee80211_supported_band mwl8787_5ghz_band = {
 	.n_bitrates = mwl8787_5ghz_rates_len
 };
 
+static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
+{
+	int ret;
+
+	if (!priv->fw) {
+		printk(KERN_WARNING "no firmware? \n");
+		return -1;
+	}
+
+	/* Download firmware with helper */
+	ret = priv->bus_ops->prog_fw(priv, priv->fw);
+	if (ret) {
+		printk(KERN_WARNING "prog_fw failed ret=%#x\n", ret);
+		return ret;
+	}
+
+	/* Check if the firmware is downloaded successfully or not */
+	ret = priv->bus_ops->check_fw_ready(priv, MAX_FIRMWARE_POLL_TRIES);
+	if (ret) {
+		printk(KERN_WARNING "FW failed to be active in time\n");
+		return -1;
+	}
+
+	/* re-enable host interrupt for mwifiex after fw dnld is successful */
+	if (priv->bus_ops->enable_int)
+		priv->bus_ops->enable_int(priv);
+
+	return ret;
+}
+
 static int mwl8787_start(struct ieee80211_hw *hw)
 {
 	struct mwl8787_priv *priv = hw->priv;
@@ -107,6 +137,14 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 		printk(KERN_WARNING
 		       "mwl8787: unable to find firmware %s\n",
 		       MWL8787_FW_NAME);
+		return ret;
+	}
+
+	ret = mwl8787_dnld_fw(priv);
+
+	if (ret) {
+		printk(KERN_WARNING
+		       "mwl8787: unable to download firmware!\n");
 		return ret;
 	}
 
