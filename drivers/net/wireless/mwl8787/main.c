@@ -5,7 +5,7 @@
 #include "mwl8787.h"
 #include "fw.h"
 
-#define MWL8787_FW_NAME "sd8787_uapsta.bin"
+#define MWL8787_FW_NAME "mrvl/sd8787_uapsta.bin"
 
 #define CHAN(_freq, _idx) { \
 	.center_freq = (_freq), \
