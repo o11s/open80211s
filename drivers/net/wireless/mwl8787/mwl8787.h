@@ -3,7 +3,10 @@
 
 #include <net/mac80211.h>
 #include <linux/firmware.h>
+#include <linux/kernel.h>
 #include <linux/device.h>
+
+#define MWL8787_UPLD_SIZE               (2312)
 
 struct mwl8787_priv;
 
@@ -23,6 +26,7 @@ struct mwl8787_priv
 	void *bus_priv;
 	struct mwl8787_bus_ops *bus_ops;
 	struct device *dev;
+	u32 ioport;
 };
 
 /* main */
