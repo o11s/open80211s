@@ -101,21 +101,21 @@ static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 	int ret;
 
 	if (!priv->fw) {
-		printk(KERN_WARNING "no firmware? \n");
+		dev_dbg(priv->dev, "no firmware? \n");
 		return -1;
 	}
 
 	/* Download firmware with helper */
 	ret = priv->bus_ops->prog_fw(priv, priv->fw);
 	if (ret) {
-		printk(KERN_WARNING "prog_fw failed ret=%#x\n", ret);
+		dev_err(priv->dev, "prog_fw failed ret=%#x\n", ret);
 		return ret;
 	}
 
 	/* Check if the firmware is downloaded successfully or not */
 	ret = priv->bus_ops->check_fw_ready(priv, MAX_FIRMWARE_POLL_TRIES);
 	if (ret) {
-		printk(KERN_WARNING "FW failed to be active in time\n");
+		dev_err(priv->dev, "FW failed to be active in time\n");
 		return -1;
 	}
 
@@ -134,7 +134,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	ret = request_firmware(&priv->fw, MWL8787_FW_NAME,
 			       wiphy_dev(hw->wiphy));
 	if (ret) {
-		printk(KERN_WARNING
+		dev_err(priv->dev,
 		       "mwl8787: unable to find firmware %s\n",
 		       MWL8787_FW_NAME);
 		return ret;
@@ -143,7 +143,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	ret = mwl8787_dnld_fw(priv);
 
 	if (ret) {
-		printk(KERN_WARNING
+		dev_err(priv->dev,
 		       "mwl8787: unable to download firmware!\n");
 		return ret;
 	}
