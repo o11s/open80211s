@@ -105,6 +105,14 @@ static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 		return -1;
 	}
 
+	/* check if firmware is already running */
+	ret = priv->bus_ops->check_fw_ready(priv, 1);
+	if (!ret) {
+		dev_notice(priv->dev,
+			   "WLAN FW already running! Skip FW dnld\n");
+		goto done;
+	}
+
 	/* Download firmware with helper */
 	ret = priv->bus_ops->prog_fw(priv, priv->fw);
 	if (ret) {
@@ -119,6 +127,7 @@ static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 		return -1;
 	}
 
+done:
 	/* re-enable host interrupt for mwifiex after fw dnld is successful */
 	if (priv->bus_ops->enable_int)
 		priv->bus_ops->enable_int(priv);

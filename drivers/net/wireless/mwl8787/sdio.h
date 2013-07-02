@@ -10,15 +10,16 @@
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_func.h>
 #include <linux/mmc/sdio_ids.h>
+#include <linux/mmc/card.h>
 
 #define BLOCK_MODE	1
 #define BYTE_MODE	0
 
 #define REG_PORT			0
 
-#define MWIFIEX_SDIO_IO_PORT_MASK		0xfffff
+#define MWL8787_SDIO_IO_PORT_MASK	0xfffff
 
-#define MWIFIEX_SDIO_BYTE_MODE_MASK	0x80000000
+#define MWL8787_SDIO_BYTE_MODE_MASK	0x80000000
 
 #define SDIO_MPA_ADDR_BASE		0x1000
 #define CTRL_PORT			0
@@ -107,11 +108,13 @@
 
 /* register definitions */
 #define MWL8787_REG_START_RD_PORT	1
-#define MWL8787_REG_ START_WR_PORT	1
+#define MWL8787_REG_START_WR_PORT	1
 #define MWL8787_REG_BASE_0		0x0040
 #define MWL8787_REG_BASE_1		0x0041
 #define MWL8787_REG_POLL		0x30
 #define MWL8787_REG_STATUS_0		0x60
 #define MWL8787_REG_STATUS_1		0x61
 #define MWL8787_REG_CARD_MISC_CFG	0x6c
+
+#define MWL8787_SDIO_BLOCK_SIZE            256
 #endif /* _MWL8787_SDIO_H_ */
