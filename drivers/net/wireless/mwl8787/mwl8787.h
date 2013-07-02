@@ -3,6 +3,7 @@
 
 #include <net/mac80211.h>
 #include <linux/firmware.h>
+#include <linux/device.h>
 
 struct mwl8787_priv;
 
@@ -21,6 +22,7 @@ struct mwl8787_priv
 	const struct firmware *fw;
 	void *bus_priv;
 	struct mwl8787_bus_ops *bus_ops;
+	struct device *dev;
 };
 
 /* main */
