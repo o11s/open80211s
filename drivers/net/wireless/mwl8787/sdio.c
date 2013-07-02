@@ -306,8 +306,7 @@ static int mwl8787_sdio_prog_fw(struct mwl8787_priv *priv,
 			if (firmware_len - offset < txlen)
 				txlen = firmware_len - offset;
 
-			tx_blocks = DIV_ROUND_UP(txlen + MWL8787_SDIO_BLOCK_SIZE - 1,
-						 MWL8787_SDIO_BLOCK_SIZE);
+			tx_blocks = DIV_ROUND_UP(txlen, MWL8787_SDIO_BLOCK_SIZE);
 
 			/* Copy payload to buffer */
 			memcpy(fwbuf, &fw->data[offset], txlen);
