@@ -408,7 +408,90 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	card->mpa_rx.enabled = 1;
 	card->mpa_rx.pkt_aggr_limit = card->mp_agg_pkt_limit;
 	*/
+
+	/* Allocate buffers for SDIO MP-A */
+	priv->mp_regs = kzalloc(MWL8787_MAX_MP_REGS, GFP_KERNEL);
+	if (!priv->mp_regs)
+		return -ENOMEM;
+
 	return 0;
+}
+
+/*
+ * This function reads multiple data from SDIO card memory.
+ */
+static int mwl8787_read_data_sync(struct mwl8787_priv *priv, u8 *buffer,
+				  u32 len, u32 port, u8 claim)
+{
+	struct sdio_func *func = priv->bus_priv;
+	int ret;
+	u8 blk_mode = (port & MWL8787_SDIO_BYTE_MODE_MASK) ? BYTE_MODE
+		       : BLOCK_MODE;
+	u32 blk_size = (blk_mode == BLOCK_MODE) ? MWL8787_SDIO_BLOCK_SIZE : 1;
+	u32 blk_cnt = (blk_mode == BLOCK_MODE) ? (len / MWL8787_SDIO_BLOCK_SIZE)
+			: len;
+	u32 ioport = (port & MWL8787_SDIO_IO_PORT_MASK);
+
+	if (claim)
+		sdio_claim_host(func);
+
+	ret = sdio_readsb(func, buffer, ioport, blk_cnt * blk_size);
+
+	if (claim)
+		sdio_release_host(func);
+
+	return ret;
+}
+
+/*
+ * This function reads the interrupt status from card.
+ */
+static void mwl8787_interrupt_status(struct mwl8787_priv *priv)
+{
+	u8 sdio_ireg;
+	unsigned long flags;
+
+	if (mwl8787_read_data_sync(priv, priv->mp_regs, MWL8787_MAX_MP_REGS,
+				   REG_PORT | MWL8787_SDIO_BYTE_MODE_MASK, 0)) {
+		dev_err(priv->dev, "read mp_regs failed\n");
+		return;
+	}
+
+	sdio_ireg = priv->mp_regs[HOST_INTSTATUS_REG];
+	if (sdio_ireg) {
+		/*
+		 * DN_LD_HOST_INT_STATUS and/or UP_LD_HOST_INT_STATUS
+		 * For SDIO new mode CMD port interrupts
+		 *	DN_LD_CMD_PORT_HOST_INT_STATUS and/or
+		 *	UP_LD_CMD_PORT_HOST_INT_STATUS
+		 * Clear the interrupt status register
+		 */
+		dev_dbg(priv->dev, "int: sdio_ireg = %#x\n", sdio_ireg);
+		spin_lock_irqsave(&priv->int_lock, flags);
+		priv->int_status |= sdio_ireg;
+		spin_unlock_irqrestore(&priv->int_lock, flags);
+	}
+}
+
+/*
+ * SDIO interrupt handler.
+ *
+ * This function reads the interrupt status from firmware and handles
+ * the interrupt in current thread (ksdioirqd) right away.
+ */
+static void
+mwl8787_sdio_interrupt(struct sdio_func *func)
+{
+	struct mwl8787_priv *priv;
+
+	priv = sdio_get_drvdata(func);
+	if (!priv) {
+		pr_debug("mwl8787: no priv? func=%p\n", func);
+		return;
+	}
+
+	mwl8787_interrupt_status(priv);
+	mwl8787_main_process(priv);
 }
 
 static int mwl8787_sdio_probe(struct sdio_func *func,
@@ -422,22 +505,18 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	if (IS_ERR(priv))
 		return PTR_ERR(priv);
 
-	/* XXX: this? */
 	func->card->quirks |= MMC_QUIRK_BLKSZ_FOR_BYTE_MODE;
 
 	sdio_claim_host(func);
 
 	ret = sdio_enable_func(func);
-#if 0
 
 	/* Request the SDIO IRQ */
-	ret = sdio_claim_irq(func, mwifiex_sdio_interrupt);
+	ret = sdio_claim_irq(func, mwl8787_sdio_interrupt);
 	if (ret) {
 		pr_err("claim irq failed: ret=%d\n", ret);
 		goto disable;
 	}
-
-#endif
 
 	/* Set block size */
 	ret = sdio_set_block_size(func, MWL8787_SDIO_BLOCK_SIZE);
@@ -467,11 +546,9 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 		goto release;
 
 	return 0;
-#if 0
 disable:
 	sdio_disable_func(func);
 	sdio_release_host(func);
-#endif
 release:
 	mwl8787_free(priv);
 	return ret;
@@ -482,6 +559,11 @@ static void mwl8787_sdio_remove(struct sdio_func *func)
 	struct mwl8787_priv *priv = sdio_get_drvdata(func);
 
 	mwl8787_unregister(priv);
+
+	sdio_claim_host(func);
+	sdio_release_irq(func);
+	sdio_release_host(func);
+
 	mwl8787_free(priv);
 }
 

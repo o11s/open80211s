@@ -135,6 +135,30 @@ done:
 	return ret;
 }
 
+/*
+ * The main process.
+ *
+ * This function is the main procedure of the driver and handles various driver
+ * operations. It runs in a loop and provides the core functionalities.
+ *
+ * The main responsibilities of this function are -
+ *      - Ensure concurrency control
+ *      - Handle pending interrupts and call interrupt handlers
+ *      - Wake up the card if required
+ *      - Handle command responses and call response handlers
+ *      - Handle events and call event handlers
+ *      - Execute pending commands
+ *      - Transmit pending data packets
+ */
+int mwl8787_main_process(struct mwl8787_priv *priv)
+{
+	int ret = 0;
+
+	dev_dbg(priv->dev, "got IRQs: %4X!\n", priv->int_status);
+
+	return ret;
+}
+
 static int mwl8787_start(struct ieee80211_hw *hw)
 {
 	struct mwl8787_priv *priv = hw->priv;
@@ -228,6 +252,8 @@ struct mwl8787_priv *mwl8787_init(void)
 
 	priv = hw->priv;
 	priv->hw = hw;
+
+	spin_lock_init(&priv->int_lock);
 
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =
