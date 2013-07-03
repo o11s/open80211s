@@ -116,5 +116,9 @@
 #define MWL8787_REG_STATUS_1		0x61
 #define MWL8787_REG_CARD_MISC_CFG	0x6c
 
+#define MWL8787_TYPE_CMD		1
+#define MWL8787_TYPE_DATA		0
+#define MWL8787_TYPE_EVENT		3
+
 #define MWL8787_SDIO_BLOCK_SIZE            256
 #endif /* _MWL8787_SDIO_H_ */

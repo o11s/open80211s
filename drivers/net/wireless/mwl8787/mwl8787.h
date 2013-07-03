@@ -13,11 +13,10 @@ struct mwl8787_priv;
 
 struct mwl8787_bus_ops
 {
-	/* things like send_fw_cmd go here... */
-	/* XXX: wrong place for these? */
 	int (*prog_fw)(struct mwl8787_priv *, const struct firmware *);
 	int (*check_fw_ready)(struct mwl8787_priv *, u32);
 	int (*enable_int) (struct mwl8787_priv *);
+	int (*send_cmd)(struct mwl8787_priv *priv, int id, u8 *buf, size_t len);
 };
 
 struct mwl8787_priv

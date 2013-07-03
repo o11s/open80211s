@@ -219,11 +219,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
 		     u8 *buf, size_t len)
 {
-	/* does something like:
 	return priv->bus_ops->send_cmd(priv, id, buf, len);
-	...which in turn does sdio_memcpy_toio or whatever.
-	*/
-	return 0;
 }
 
 const struct ieee80211_ops mwl8787_ops = {
