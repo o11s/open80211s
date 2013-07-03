@@ -10,6 +10,7 @@
 #include "fw.h"
 
 #define MWL8787_UPLD_SIZE               (2312)
+#define MWL8787_RX_DATA_BUF_SIZE     (4 * 1024)
 
 struct mwl8787_priv;
 
@@ -19,6 +20,7 @@ struct mwl8787_bus_ops
 	int (*check_fw_ready)(struct mwl8787_priv *, u32);
 	int (*enable_int) (struct mwl8787_priv *);
 	int (*send_cmd)(struct mwl8787_priv *priv, u8 *buf, size_t len);
+	int (*process_int_status) (struct mwl8787_priv *);
 };
 
 struct mwl8787_priv
@@ -35,10 +37,16 @@ struct mwl8787_priv
 	u32 int_status;
 
 	int cmd_seq;
+	u8 cmd_sent;
+	u8 data_sent;
 
 	/* sdio */
 	u32 ioport;
 	u8 *mp_regs;
+	u32 mp_rd_bitmap;
+	u32 mp_wr_bitmap;
+	u8 curr_rd_port;
+	u8 curr_wr_port;
 };
 
 /* main */

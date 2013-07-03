@@ -340,6 +340,33 @@ done:
 	return ret;
 }
 
+/*
+ * This function reads multiple data from SDIO card memory.
+ */
+static int mwl8787_read_data_sync(struct mwl8787_priv *priv, u8 *buffer,
+				  u32 len, u32 port, u8 claim)
+{
+	struct sdio_func *func = priv->bus_priv;
+	int ret;
+	u8 blk_mode = (port & MWL8787_SDIO_BYTE_MODE_MASK) ? BYTE_MODE
+		       : BLOCK_MODE;
+	u32 blk_size = (blk_mode == BLOCK_MODE) ? MWL8787_SDIO_BLOCK_SIZE : 1;
+	u32 blk_cnt = (blk_mode == BLOCK_MODE) ? (len / MWL8787_SDIO_BLOCK_SIZE)
+			: len;
+	u32 ioport = (port & MWL8787_SDIO_IO_PORT_MASK);
+
+	if (claim)
+		sdio_claim_host(func);
+
+	ret = sdio_readsb(func, buffer, ioport, blk_cnt * blk_size);
+
+	if (claim)
+		sdio_release_host(func);
+
+	return ret;
+}
+
+
 static int mwl8787_write(struct mwl8787_priv *priv,
 			 u8 *buf, size_t len, u32 port)
 {
@@ -389,10 +416,327 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	return ret;
 }
 
+static int __mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
+				       u32 *type, u8 *buffer,
+				       u32 npayload, u32 ioport)
+{
+	int ret;
+	u32 nb;
+
+	if (!buffer) {
+		dev_err(priv->dev, "%s: buffer is NULL\n", __func__);
+		return -1;
+	}
+
+	ret = mwl8787_read_data_sync(priv, buffer, npayload, ioport, 1);
+
+	if (ret) {
+		dev_err(priv->dev, "%s: read iomem failed: %d\n", __func__,
+			ret);
+		return -1;
+	}
+
+	nb = le16_to_cpu(*(__le16 *) (buffer));
+	if (nb > npayload) {
+		dev_err(priv->dev, "%s: invalid packet, nb=%d npayload=%d\n",
+			__func__, nb, npayload);
+		return -1;
+	}
+
+	*type = le16_to_cpu(*(__le16 *) (buffer + 2));
+
+	return ret;
+}
+
+/*
+ * This function gets the read port.
+ *
+ * If control port bit is set in MP read bitmap, the control port
+ * is returned, otherwise the current read port is returned and
+ * the value is increased (provided it does not reach the maximum
+ * limit, in which case it is reset to 1)
+ */
+static int mwl8787_get_rd_port(struct mwl8787_priv *priv, u8 *port)
+{
+	u32 rd_bitmap = priv->mp_rd_bitmap;
+
+	dev_dbg(priv->dev, "data: mp_rd_bitmap=0x%08x\n", rd_bitmap);
+
+	if (!(rd_bitmap & (CTRL_PORT_MASK | MWL8787_DATA_PORT_MASK)))
+		return -1;
+
+	if ((rd_bitmap & CTRL_PORT_MASK)) {
+		priv->mp_rd_bitmap &= (u32) (~CTRL_PORT_MASK);
+		*port = CTRL_PORT;
+		dev_dbg(priv->dev, "data: port=%d mp_rd_bitmap=0x%08x\n",
+			*port, priv->mp_rd_bitmap);
+		return 0;
+	}
+
+	if (!(priv->mp_rd_bitmap & (1 << priv->curr_rd_port)))
+		return -1;
+
+	/* We are now handling the SDIO data ports */
+	priv->mp_rd_bitmap &= (u32)(~(1 << priv->curr_rd_port));
+	*port = priv->curr_rd_port;
+
+	if (++priv->curr_rd_port == MWL8787_MAX_PORTS)
+		priv->curr_rd_port = MWL8787_REG_START_RD_PORT;
+
+	dev_dbg(priv->dev,
+		"data: port=%d mp_rd_bitmap=0x%08x -> 0x%08x\n",
+		*port, rd_bitmap, priv->mp_rd_bitmap);
+
+	return 0;
+}
+
+/*
+ * This function decodes a received packet.
+ *
+ * Based on the type, the packet is treated as either a data, or
+ * a command response, or an event, and the correct handler
+ * function is invoked.
+ */
+static int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
+				    struct sk_buff *skb, u32 upld_typ)
+{
+	u8 *cmd_buf;
+
+	skb_pull(skb, INTF_HEADER_LEN);
+
+	switch (upld_typ) {
+	case MWL8787_TYPE_DATA:
+		dev_dbg(priv->dev, "info: --- Rx: Data packet ---\n");
+#if 0
+		mwifiex_handle_rx_packet(priv, skb);
+#endif
+		break;
+
+	case MWL8787_TYPE_CMD:
+		dev_dbg(priv->dev, "info: --- Rx: Cmd Response ---\n");
+		/* take care of curr_cmd = NULL case */
+#if 0
+		if (!priv->curr_cmd) {
+			cmd_buf = priv->upld_buf;
+
+			if (priv->ps_state == PS_STATE_SLEEP_CFM)
+				mwifiex_process_sleep_confirm_resp(priv,
+								   skb->data,
+								   skb->len);
+
+			memcpy(cmd_buf, skb->data,
+			       min_t(u32, MWL8787_SIZE_OF_CMD_BUFFER,
+				     skb->len));
+
+			dev_kfree_skb_any(skb);
+		} else {
+			priv->cmd_resp_received = true;
+			priv->curr_cmd->resp_skb = skb;
+		}
+#endif
+		break;
+
+	case MWL8787_TYPE_EVENT:
+		dev_dbg(priv->dev, "info: --- Rx: Event ---\n");
+#if 0
+		priv->event_cause = *(u32 *) skb->data;
+
+		if ((skb->len > 0) && (skb->len  < MAX_EVENT_SIZE))
+			memcpy(priv->event_body,
+			       skb->data + MWL8787_EVENT_HEADER_LEN,
+			       skb->len);
+
+		/* event cause has been saved to priv->event_cause */
+		priv->event_received = true;
+		priv->event_skb = skb;
+#endif
+
+		break;
+
+	default:
+		dev_err(priv->dev, "unknown upload type %#x\n", upld_typ);
+		dev_kfree_skb_any(skb);
+		break;
+	}
+
+	return 0;
+}
+
+static int mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
+				     struct sk_buff *skb, u8 port)
+{
+	u32 rx_len = skb->len;
+	u32 pkt_type;
+
+	dev_dbg(priv->dev, "info: RX: port: %d, rx_len: %d\n",
+		port, rx_len);
+
+	if (__mwl8787_sdio_card_to_host(priv, &pkt_type,
+				      skb->data, skb->len,
+				      priv->ioport + port)) {
+		dev_kfree_skb_any(skb);
+		return -1;
+	}
+
+	mwl8787_decode_rx_packet(priv, skb, pkt_type);
+	return 0;
+}
+
+/*
+ * This function checks the current interrupt status.
+ *
+ * The following interrupts are checked and handled by this function -
+ *      - Data sent
+ *      - Command sent
+ *      - Packets received
+ *
+ * Since the firmware does not generate download ready interrupt if the
+ * port updated is command port only, command sent interrupt checking
+ * should be done manually, and for every SDIO interrupt.
+ *
+ * In case of Rx packets received, the packets are uploaded from card to
+ * host and processed accordingly.
+ */
+static int mwl8787_process_int_status(struct mwl8787_priv *priv)
+{
+	struct sdio_func *func = priv->bus_priv;
+	int ret = 0;
+	u8 sdio_ireg;
+	struct sk_buff *skb;
+	u8 port = CTRL_PORT;
+	u32 len_reg_l, len_reg_u;
+	u32 rx_blocks;
+	u16 rx_len;
+	unsigned long flags;
+	u32 bitmap;
+	u8 cr;
+
+	spin_lock_irqsave(&priv->int_lock, flags);
+	sdio_ireg = priv->int_status;
+	priv->int_status = 0;
+	spin_unlock_irqrestore(&priv->int_lock, flags);
+
+	if (!sdio_ireg)
+		return ret;
+
+#if 0
+	if (sdio_ireg & DN_LD_HOST_INT_STATUS) {
+		bitmap = (u32) priv->mp_regs[reg->wr_bitmap_l];
+		bitmap |= ((u32) priv->mp_regs[reg->wr_bitmap_u]) << 8;
+		priv->mp_wr_bitmap = bitmap;
+
+		dev_dbg(priv->dev, "int: DNLD: wr_bitmap=0x%x\n",
+			priv->mp_wr_bitmap);
+		if (priv->data_sent &&
+		    (card->mp_wr_bitmap & card->mp_data_port_mask)) {
+			dev_dbg(priv->dev,
+				"info:  <--- Tx DONE Interrupt --->\n");
+			priv->data_sent = false;
+		}
+	}
+
+#endif
+	/* As firmware will not generate download ready interrupt if the port
+	   updated is command port only, cmd_sent should be done for any SDIO
+	   interrupt. */
+	if (priv->cmd_sent) {
+		/* Check if firmware has attach buffer at command port and
+		   update just that in wr_bit_map. */
+		priv->mp_wr_bitmap |=
+			(u32) priv->mp_regs[MWL8787_WR_BITMAP_L] & CTRL_PORT_MASK;
+		if (priv->mp_wr_bitmap & CTRL_PORT_MASK)
+			priv->cmd_sent = false;
+	}
+
+	dev_dbg(priv->dev, "info: cmd_sent=%d data_sent=%d\n",
+		priv->cmd_sent, priv->data_sent);
+	if (sdio_ireg & UP_LD_HOST_INT_STATUS) {
+		bitmap = (u32) priv->mp_regs[MWL8787_RD_BITMAP_L];
+		bitmap |= ((u32) priv->mp_regs[MWL8787_RD_BITMAP_U]) << 8;
+		priv->mp_rd_bitmap = bitmap;
+		dev_dbg(priv->dev, "int: UPLD: rd_bitmap=0x%x\n",
+			priv->mp_rd_bitmap);
+
+		while (true) {
+			ret = mwl8787_get_rd_port(priv, &port);
+			if (ret) {
+				dev_dbg(priv->dev,
+					"info: no more rd_port available\n");
+				break;
+			}
+			len_reg_l = MWL8787_RD_LEN_P0_L + (port << 1);
+			len_reg_u = MWL8787_RD_LEN_P0_U + (port << 1);
+			rx_len = ((u16) priv->mp_regs[len_reg_u]) << 8;
+			rx_len |= (u16) priv->mp_regs[len_reg_l];
+			dev_dbg(priv->dev, "info: RX: port=%d rx_len=%u\n",
+				port, rx_len);
+			rx_blocks = DIV_ROUND_UP(rx_len,
+						 MWL8787_SDIO_BLOCK_SIZE);
+			if (rx_len <= INTF_HEADER_LEN ||
+			    (rx_blocks * MWL8787_SDIO_BLOCK_SIZE) >
+			     MWL8787_RX_DATA_BUF_SIZE) {
+				dev_err(priv->dev, "invalid rx_len=%d\n",
+					rx_len);
+				return -1;
+			}
+			rx_len = (u16) (rx_blocks * MWL8787_SDIO_BLOCK_SIZE);
+
+			skb = dev_alloc_skb(rx_len);
+
+			if (!skb) {
+				dev_err(priv->dev, "%s: failed to alloc skb",
+					__func__);
+				return -1;
+			}
+
+			skb_put(skb, rx_len);
+
+			dev_dbg(priv->dev, "info: rx_len = %d skb->len = %d\n",
+				rx_len, skb->len);
+
+			/* XXX: no host/fw aggregation for now
+			if (mwifiex_sdio_card_to_host_mp_aggr(priv, skb,
+							      port)) {
+				dev_err(priv->dev, "card_to_host_mpa failed:"
+					" int status=%#x\n", sdio_ireg);
+				goto term_cmd;
+			}
+			*/
+			if (mwl8787_sdio_card_to_host(priv, skb, port)) {
+				dev_err(priv->dev, "card_to_host failed:"
+					" int status=%#x\n", sdio_ireg);
+				goto term_cmd;
+			}
+		}
+	}
+
+	return 0;
+
+term_cmd:
+	/* terminate cmd */
+	if (mwl8787_read_reg(priv, CONFIGURATION_REG, &cr))
+		dev_err(priv->dev, "read CFG reg failed\n");
+	else
+		dev_dbg(priv->dev, "info: CFG reg val = %d\n", cr);
+
+	if (mwl8787_write_reg(priv, CONFIGURATION_REG, (cr | 0x04)))
+		dev_err(priv->dev, "write CFG reg failed\n");
+	else
+		dev_dbg(priv->dev, "info: write success\n");
+
+	if (mwl8787_read_reg(priv, CONFIGURATION_REG, &cr))
+		dev_err(priv->dev, "read CFG reg failed\n");
+	else
+		dev_dbg(priv->dev, "info: CFG reg val =%x\n", cr);
+
+	return -1;
+}
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
 	.send_cmd = mwl8787_sdio_send_cmd,
+	.process_int_status = mwl8787_process_int_status,
 };
 
 /*
@@ -436,12 +780,14 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 
 	/* Get SDIO ioport */
 	mwl8787_init_sdio_ioport(priv);
-	/* XXX: maybe need this stuff for RX/TX
-	card->mp_rd_bitmap = 0;
-	card->mp_wr_bitmap = 0;
-	card->curr_rd_port = reg->start_rd_port;
-	card->curr_wr_port = reg->start_wr_port;
 
+	priv->mp_rd_bitmap = 0;
+	priv->mp_wr_bitmap = 0;
+
+	priv->curr_rd_port = MWL8787_REG_START_RD_PORT;
+	priv->curr_wr_port = MWL8787_REG_START_WR_PORT;
+
+	/* XXX: maybe need this stuff for RX/TX
 	card->mp_data_port_mask = reg->data_port_mask;
 
 	card->mpa_tx.buf_len = 0;
@@ -465,32 +811,6 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 		return -ENOMEM;
 
 	return 0;
-}
-
-/*
- * This function reads multiple data from SDIO card memory.
- */
-static int mwl8787_read_data_sync(struct mwl8787_priv *priv, u8 *buffer,
-				  u32 len, u32 port, u8 claim)
-{
-	struct sdio_func *func = priv->bus_priv;
-	int ret;
-	u8 blk_mode = (port & MWL8787_SDIO_BYTE_MODE_MASK) ? BYTE_MODE
-		       : BLOCK_MODE;
-	u32 blk_size = (blk_mode == BLOCK_MODE) ? MWL8787_SDIO_BLOCK_SIZE : 1;
-	u32 blk_cnt = (blk_mode == BLOCK_MODE) ? (len / MWL8787_SDIO_BLOCK_SIZE)
-			: len;
-	u32 ioport = (port & MWL8787_SDIO_IO_PORT_MASK);
-
-	if (claim)
-		sdio_claim_host(func);
-
-	ret = sdio_readsb(func, buffer, ioport, blk_cnt * blk_size);
-
-	if (claim)
-		sdio_release_host(func);
-
-	return ret;
 }
 
 /*

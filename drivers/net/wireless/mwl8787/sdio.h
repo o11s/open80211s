@@ -94,6 +94,8 @@
 /* Max retry number of CMD53 write */
 #define MAX_WRITE_IOMEM_RETRY		2
 
+#define MWL8787_MAX_PORTS		16
+
 /* misc. */
 #define MWL8787_HOST_INT_ENABLE	(UP_LD_HOST_INT_MASK | DN_LD_HOST_INT_MASK)
 #define MWL8787_SDIO_INT_MASK		0x3f
