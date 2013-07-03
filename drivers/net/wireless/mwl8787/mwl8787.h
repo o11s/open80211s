@@ -18,7 +18,7 @@ struct mwl8787_bus_ops
 	int (*prog_fw)(struct mwl8787_priv *, const struct firmware *);
 	int (*check_fw_ready)(struct mwl8787_priv *, u32);
 	int (*enable_int) (struct mwl8787_priv *);
-	int (*send_cmd)(struct mwl8787_priv *priv, int id, u8 *buf, size_t len);
+	int (*send_cmd)(struct mwl8787_priv *priv, u8 *buf, size_t len);
 };
 
 struct mwl8787_priv
@@ -49,8 +49,7 @@ void mwl8787_free(struct mwl8787_priv *priv);
 int mwl8787_main_process(struct mwl8787_priv *priv);
 
 /* cmd.c */
-int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
-		     u8 *buf, size_t len);
+int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len);
 int mwl8787_reset(struct mwl8787_priv *priv);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);

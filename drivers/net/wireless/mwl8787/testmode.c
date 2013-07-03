@@ -45,7 +45,7 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	buf = nla_data(tb[MWL8787_TM_ATTR_DATA]);
 	buf_len = nla_len(tb[MWL8787_TM_ATTR_DATA]);
 
-	return mwl8787_send_cmd(priv, id, buf, buf_len);
+	return mwl8787_send_cmd(priv, buf, buf_len);
 }
 
 int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
