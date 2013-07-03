@@ -111,6 +111,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_beacon_ctrl beacon_ctrl;
 		struct mwl8787_cmd_mode mode;
 		struct mwl8787_cmd_bssid bssid;
+		u8 data[0];
 	} u;
 } __packed;
 
