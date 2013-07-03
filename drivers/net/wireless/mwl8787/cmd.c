@@ -1,7 +1,13 @@
 #include "mwl8787.h"
 #include "fw.h"
 
-struct mwl8787_cmd *mwl8787_alloc_cmd(struct mwl8787_priv *priv,
+int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
+		     u8 *buf, size_t len)
+{
+	return priv->bus_ops->send_cmd(priv, id, buf, len);
+}
+
+struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags)
 {
 	struct mwl8787_cmd *cmd;
@@ -17,7 +23,7 @@ struct mwl8787_cmd *mwl8787_alloc_cmd(struct mwl8787_priv *priv,
 	return (void *)cmd + priv->bus_headroom;
 }
 
-void mwl8787_free_cmd(struct mwl8787_priv *priv, void *ptr)
+void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
 {
 	if (!ptr)
 		return;
@@ -30,7 +36,7 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 	int ret;
 	struct mwl8787_cmd *cmd;
 
-	cmd = mwl8787_alloc_cmd(priv,
+	cmd = mwl8787_cmd_alloc(priv,
 				MWL8787_CMD_RESET,
 				sizeof(struct mwl8787_cmd_reset),
 				GFP_KERNEL);
@@ -39,8 +45,8 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 		return -ENOMEM;
 
 	cmd->u.reset.action = MWL8787_ACT_SET;
-	ret = mwl8787_send_cmd(priv, cmd->hdr.id, cmd, cmd->hdr.len);
+	ret = mwl8787_send_cmd(priv, cmd->hdr.id, (u8 *) cmd, cmd->hdr.len);
 
-	mwl8787_free_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }

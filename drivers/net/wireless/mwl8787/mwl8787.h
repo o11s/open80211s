@@ -7,6 +7,8 @@
 #include <linux/device.h>
 #include <linux/spinlock.h>
 
+#include "fw.h"
+
 #define MWL8787_UPLD_SIZE               (2312)
 
 struct mwl8787_priv;
@@ -46,10 +48,13 @@ void mwl8787_unregister(struct mwl8787_priv *priv);
 void mwl8787_free(struct mwl8787_priv *priv);
 int mwl8787_main_process(struct mwl8787_priv *priv);
 
-/* cmds.c */
+/* cmd.c */
 int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
 		     u8 *buf, size_t len);
 int mwl8787_reset(struct mwl8787_priv *priv);
+struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
+				      int id, size_t len, gfp_t gfp_flags);
+void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
