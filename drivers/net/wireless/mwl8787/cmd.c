@@ -14,7 +14,7 @@ struct mwl8787_cmd *mwl8787_alloc_cmd(struct mwl8787_priv *priv,
 	cmd->hdr.id = id;
 	cmd->hdr.len = len;
 	cmd->hdr.seq = priv->cmd_seq++;
-	return cmd + priv->bus_headroom;
+	return (void *)cmd + priv->bus_headroom;
 }
 
 void mwl8787_free_cmd(struct mwl8787_priv *priv, void *ptr)
