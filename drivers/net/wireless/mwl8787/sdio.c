@@ -615,6 +615,7 @@ static void mwl8787_sdio_remove(struct sdio_func *func)
 	sdio_release_irq(func);
 	sdio_release_host(func);
 
+	kfree(priv->mp_regs);
 	mwl8787_free(priv);
 }
 
