@@ -420,6 +420,7 @@ static int __mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 				       u32 *type, u8 *buffer,
 				       u32 npayload, u32 ioport)
 {
+	struct mwl8787_sdio_header *hdr;
 	int ret;
 	u32 nb;
 
@@ -436,14 +437,14 @@ static int __mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 		return -1;
 	}
 
-	nb = le16_to_cpu(*(__le16 *) (buffer));
+	hdr = (struct mwl8787_sdio_header *) buffer;
+	nb = le16_to_cpu(hdr->len);
 	if (nb > npayload) {
 		dev_err(priv->dev, "%s: invalid packet, nb=%d npayload=%d\n",
 			__func__, nb, npayload);
 		return -1;
 	}
-
-	*type = le16_to_cpu(*(__le16 *) (buffer + 2));
+	*type = le16_to_cpu(hdr->type);
 
 	return ret;
 }
@@ -502,7 +503,7 @@ static int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 {
 	u8 *cmd_buf;
 
-	skb_pull(skb, INTF_HEADER_LEN);
+	skb_pull(skb, sizeof(struct mwl8787_sdio_header));
 
 	switch (upld_typ) {
 	case MWL8787_TYPE_DATA:
@@ -672,7 +673,7 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 				port, rx_len);
 			rx_blocks = DIV_ROUND_UP(rx_len,
 						 MWL8787_SDIO_BLOCK_SIZE);
-			if (rx_len <= INTF_HEADER_LEN ||
+			if (rx_len <= sizeof(struct mwl8787_sdio_header) ||
 			    (rx_blocks * MWL8787_SDIO_BLOCK_SIZE) >
 			     MWL8787_RX_DATA_BUF_SIZE) {
 				dev_err(priv->dev, "invalid rx_len=%d\n",

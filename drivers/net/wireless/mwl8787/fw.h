@@ -36,9 +36,6 @@
 
 #define MWL8787_ACT_SET				1
 
-/* hardware header? */
-#define INTF_HEADER_LEN				4
-
 enum mwl8787_cmd_id {
 	MWL8787_CMD_RESET = 0x0003,
 };
