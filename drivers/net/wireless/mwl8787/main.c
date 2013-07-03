@@ -215,13 +215,6 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	*total_flags = 0;
 }
 
-
-int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
-		     u8 *buf, size_t len)
-{
-	return priv->bus_ops->send_cmd(priv, id, buf, len);
-}
-
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
