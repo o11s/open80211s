@@ -36,6 +36,8 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	u32 id;
 	u8 *buf;
 	size_t buf_len;
+	struct mwl8787_cmd *cmd;
+	int ret;
 
 	if (!tb[MWL8787_TM_ATTR_CMD_ID] ||
 	    !tb[MWL8787_TM_ATTR_DATA])
@@ -45,7 +47,14 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	buf = nla_data(tb[MWL8787_TM_ATTR_DATA]);
 	buf_len = nla_len(tb[MWL8787_TM_ATTR_DATA]);
 
-	return mwl8787_send_cmd(priv, buf, buf_len);
+	cmd = mwl8787_cmd_alloc(priv, id, buf_len, GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	memcpy(cmd->u.data, buf, buf_len);
+	ret = mwl8787_send_cmd(priv, (u8*) cmd, buf_len);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
 }
 
 int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
