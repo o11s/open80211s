@@ -45,7 +45,7 @@ struct mwl8787_cmd_header {
 	__le16 result;
 } __packed;
 
-#define MWL8787_CMD_RESET			0x0003
+#define MWL8787_CMD_RESET			0x0005
 struct mwl8787_cmd_reset {
 	struct mwl8787_cmd_header header;
 	__le16 action;
