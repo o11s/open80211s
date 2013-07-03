@@ -340,9 +340,51 @@ done:
 	return ret;
 }
 
+static int mwl8787_write(struct mwl8787_priv *priv,
+			 u8 *buf, size_t len, u32 port)
+{
+	u32 i = 0;
+	int ret;
+
+	for (i=0; i < MAX_WRITE_IOMEM_RETRY; i++) {
+		ret = mwl8787_write_data_sync(priv, buf, len, port);
+		if (!ret)
+			break;
+
+		mwl8787_write_reg(priv, CONFIGURATION_REG, 0x04);
+	}
+	if (ret)
+		dev_err(priv->dev, "write iomem (%d) failed (%d)\n", port, ret);
+
+	return ret;
+}
+
+static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
+				 int id, u8 *buf, size_t len)
+{
+	u8 *payload;
+	size_t buf_block_len;
+
+	buf_block_len = DIV_ROUND_UP(len + 4, MWL8787_SDIO_BLOCK_SIZE);
+
+	/*
+	 * Allocate buffer and copy payload
+	 * TODO avoid this alloc/copy...
+	 */
+	payload = kzalloc(buf_block_len, GFP_KERNEL);
+	if (!payload)
+		return -ENOMEM;
+
+	put_unaligned_le16(len, payload);
+	put_unaligned_le16(MWL8787_TYPE_CMD, payload + 2);
+	memcpy(payload + 4, buf, len);
+	return mwl8787_write(priv, payload, buf_block_len, CTRL_PORT);
+}
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
+	.send_cmd = mwl8787_sdio_send_cmd,
 };
 
 /*
