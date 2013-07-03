@@ -41,9 +41,10 @@ void mwl8787_unregister(struct mwl8787_priv *priv);
 void mwl8787_free(struct mwl8787_priv *priv);
 int mwl8787_main_process(struct mwl8787_priv *priv);
 
-/* fw.c? */
+/* cmds.c */
 int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
 		     u8 *buf, size_t len);
+int mwl8787_reset(struct mwl8787_priv *priv);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
