@@ -1,10 +1,9 @@
 #include "mwl8787.h"
 #include "fw.h"
 
-int mwl8787_send_cmd(struct mwl8787_priv *priv, int id,
-		     u8 *buf, size_t len)
+int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len)
 {
-	return priv->bus_ops->send_cmd(priv, id, buf, len);
+	return priv->bus_ops->send_cmd(priv, buf, len);
 }
 
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
@@ -45,7 +44,7 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 		return -ENOMEM;
 
 	cmd->u.reset.action = MWL8787_ACT_SET;
-	ret = mwl8787_send_cmd(priv, cmd->hdr.id, (u8 *) cmd, cmd->hdr.len);
+	ret = mwl8787_send_cmd(priv, (u8 *) cmd, cmd->hdr.len);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;

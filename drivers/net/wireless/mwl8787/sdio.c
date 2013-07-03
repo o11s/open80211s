@@ -360,7 +360,7 @@ static int mwl8787_write(struct mwl8787_priv *priv,
 }
 
 static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
-				 int id, u8 *buf, size_t len)
+				 u8 *buf, size_t len)
 {
 	u8 *payload;
 	size_t buf_block_len;
