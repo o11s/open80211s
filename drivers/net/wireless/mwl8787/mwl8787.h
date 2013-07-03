@@ -23,11 +23,16 @@ struct mwl8787_priv
 {
 	struct ieee80211_hw *hw;
 	const struct firmware *fw;
-	void *bus_priv;
+
 	struct mwl8787_bus_ops *bus_ops;
+	void *bus_priv;
+	int bus_headroom;
+
 	struct device *dev;
 	spinlock_t int_lock;
 	u32 int_status;
+
+	int cmd_seq;
 
 	/* sdio */
 	u32 ioport;
