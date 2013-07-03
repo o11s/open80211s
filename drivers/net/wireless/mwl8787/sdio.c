@@ -364,21 +364,29 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 {
 	u8 *payload;
 	size_t buf_block_len;
+	struct mwl8787_sdio_header *hdr;
+	int ret;
 
-	buf_block_len = DIV_ROUND_UP(len + 4, MWL8787_SDIO_BLOCK_SIZE);
+	hdr = (struct mwl8787_sdio_header *) buf - priv->bus_headroom;
+
+	hdr->type = cpu_to_le16(MWL8787_TYPE_CMD);
+	hdr->len = cpu_to_le16(len);
 
 	/*
 	 * Allocate buffer and copy payload
 	 * TODO avoid this alloc/copy...
 	 */
+	buf_block_len = DIV_ROUND_UP(len, MWL8787_SDIO_BLOCK_SIZE);
+
 	payload = kzalloc(buf_block_len, GFP_KERNEL);
 	if (!payload)
 		return -ENOMEM;
 
-	put_unaligned_le16(len, payload);
-	put_unaligned_le16(MWL8787_TYPE_CMD, payload + 2);
-	memcpy(payload + 4, buf, len);
-	return mwl8787_write(priv, payload, buf_block_len, CTRL_PORT);
+	memcpy(payload, hdr, len + sizeof(*hdr));
+	ret = mwl8787_write(priv, payload, buf_block_len, CTRL_PORT);
+	kfree(payload);
+
+	return ret;
 }
 
 static struct mwl8787_bus_ops sdio_ops = {
@@ -576,6 +584,7 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	sdio_set_drvdata(func, priv);
 	SET_IEEE80211_DEV(priv->hw, &func->dev);
 
+	priv->bus_headroom = sizeof(struct mwl8787_sdio_header);
 	priv->bus_ops = &sdio_ops;
 	priv->dev = &func->dev;
 
