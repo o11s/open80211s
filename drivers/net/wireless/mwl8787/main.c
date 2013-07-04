@@ -298,7 +298,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	if (priv->hw_status != MWL8787_HW_STATUS_READY)
 		dev_err(priv->dev,
 		       "mwl8787: unable to init firmware!\n");
-
+	return ret;
 done:
 	release_firmware(priv->fw);
 	return ret;
