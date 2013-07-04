@@ -416,6 +416,80 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	return ret;
 }
 
+/*
+ * This function decodes a received packet.
+ *
+ * Based on the type, the packet is treated as either a data, or
+ * a command response, or an event, and the correct handler
+ * function is invoked.
+ */
+int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
+			     struct sk_buff *skb, u32 upld_typ)
+{
+	u8 *cmd_buf;
+
+	skb_pull(skb, sizeof(struct mwl8787_sdio_header));
+
+	switch (upld_typ) {
+	case MWL8787_TYPE_DATA:
+		dev_dbg(priv->dev, "info: --- Rx: Data packet ---\n");
+#if 0
+		mwifiex_handle_rx_packet(priv, skb);
+#endif
+		break;
+
+	case MWL8787_TYPE_CMD:
+		dev_dbg(priv->dev, "info: --- Rx: Cmd Response ---\n");
+		priv->cmd_resp_skb = skb;
+		break;
+
+	case MWL8787_TYPE_EVENT:
+		dev_dbg(priv->dev, "info: --- Rx: Event ---\n");
+#if 0
+		priv->event_cause = *(u32 *) skb->data;
+
+		if ((skb->len > 0) && (skb->len  < MAX_EVENT_SIZE))
+			memcpy(priv->event_body,
+			       skb->data + MWL8787_EVENT_HEADER_LEN,
+			       skb->len);
+
+		/* event cause has been saved to priv->event_cause */
+		priv->event_received = true;
+		priv->event_skb = skb;
+#endif
+
+		break;
+
+	default:
+		dev_err(priv->dev, "unknown upload type %#x\n", upld_typ);
+		dev_kfree_skb_any(skb);
+		break;
+	}
+
+	return 0;
+}
+
+int mwl8787_reset(struct mwl8787_priv *priv)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_RESET,
+				sizeof(struct mwl8787_cmd_reset),
+				GFP_KERNEL);
+
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.reset.action = MWL8787_ACT_SET;
+	ret = mwl8787_send_cmd(priv, (u8 *) cmd, cmd->hdr.len);
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
+
 static int __mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 				       u32 *type, u8 *buffer,
 				       u32 npayload, u32 ioport)
@@ -487,78 +561,6 @@ static int mwl8787_get_rd_port(struct mwl8787_priv *priv, u8 *port)
 	dev_dbg(priv->dev,
 		"data: port=%d mp_rd_bitmap=0x%08x -> 0x%08x\n",
 		*port, rd_bitmap, priv->mp_rd_bitmap);
-
-	return 0;
-}
-
-/*
- * This function decodes a received packet.
- *
- * Based on the type, the packet is treated as either a data, or
- * a command response, or an event, and the correct handler
- * function is invoked.
- */
-static int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
-				    struct sk_buff *skb, u32 upld_typ)
-{
-	u8 *cmd_buf;
-
-	skb_pull(skb, sizeof(struct mwl8787_sdio_header));
-
-	switch (upld_typ) {
-	case MWL8787_TYPE_DATA:
-		dev_dbg(priv->dev, "info: --- Rx: Data packet ---\n");
-#if 0
-		mwifiex_handle_rx_packet(priv, skb);
-#endif
-		break;
-
-	case MWL8787_TYPE_CMD:
-		dev_dbg(priv->dev, "info: --- Rx: Cmd Response ---\n");
-		/* take care of curr_cmd = NULL case */
-#if 0
-		if (!priv->curr_cmd) {
-			cmd_buf = priv->upld_buf;
-
-			if (priv->ps_state == PS_STATE_SLEEP_CFM)
-				mwifiex_process_sleep_confirm_resp(priv,
-								   skb->data,
-								   skb->len);
-
-			memcpy(cmd_buf, skb->data,
-			       min_t(u32, MWL8787_SIZE_OF_CMD_BUFFER,
-				     skb->len));
-
-			dev_kfree_skb_any(skb);
-		} else {
-			priv->cmd_resp_received = true;
-			priv->curr_cmd->resp_skb = skb;
-		}
-#endif
-		break;
-
-	case MWL8787_TYPE_EVENT:
-		dev_dbg(priv->dev, "info: --- Rx: Event ---\n");
-#if 0
-		priv->event_cause = *(u32 *) skb->data;
-
-		if ((skb->len > 0) && (skb->len  < MAX_EVENT_SIZE))
-			memcpy(priv->event_body,
-			       skb->data + MWL8787_EVENT_HEADER_LEN,
-			       skb->len);
-
-		/* event cause has been saved to priv->event_cause */
-		priv->event_received = true;
-		priv->event_skb = skb;
-#endif
-
-		break;
-
-	default:
-		dev_err(priv->dev, "unknown upload type %#x\n", upld_typ);
-		dev_kfree_skb_any(skb);
-		break;
-	}
 
 	return 0;
 }

@@ -96,6 +96,105 @@ static struct ieee80211_supported_band mwl8787_5ghz_band = {
 	.n_bitrates = mwl8787_5ghz_rates_len
 };
 
+/*
+ * This function issues commands to initialize firmware.
+ *
+ * This is called after firmware download to bring the card to
+ * working state.
+ *
+ * The following commands are issued sequentially -
+ *      - Set PCI-Express host buffer configuration (PCIE only)
+ *      - Function init (for first interface only)
+ *      - Read MAC address (for first interface only)
+ *      - Reconfigure Tx buffer size (for first interface only)
+ *      - Enable auto deep sleep (for first interface only)
+ *      - Get Tx rate
+ *      - Get Tx power
+ *      - Set MAC control (this must be the last command to initialize firmware)
+ */
+int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
+{
+	int ret;
+	u16 enable = true;
+
+	ret = mwl8787_cmd_init(priv);
+	if (ret)
+		return ret;
+
+#if 0
+	/* Read MAC address from HW */
+	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_GET_HW_SPEC,
+				    HostCmd_ACT_GEN_GET, 0, NULL);
+	if (ret)
+		return ret;
+
+	/* Reconfigure tx buf size */
+	ret = mwifiex_send_cmd_sync(priv,
+				    HostCmd_CMD_RECONFIGURE_TX_BUFF,
+				    HostCmd_ACT_GEN_SET, 0,
+				    &priv->adapter->tx_buf_size);
+	if (ret)
+		return ret;
+
+	/* get tx rate */
+	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_TX_RATE_CFG,
+				    HostCmd_ACT_GEN_GET, 0, NULL);
+	if (ret)
+		return ret;
+	priv->data_rate = 0;
+
+	/* get tx power */
+	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_RF_TX_PWR,
+				    HostCmd_ACT_GEN_GET, 0, NULL);
+	if (ret)
+		return ret;
+
+	if (priv->bss_type == MWL8787_BSS_TYPE_STA) {
+		/* set ibss coalescing_status */
+		ret = mwifiex_send_cmd_sync(
+				priv, HostCmd_CMD_802_11_IBSS_COALESCING_STATUS,
+				HostCmd_ACT_GEN_SET, 0, &enable);
+		if (ret)
+			return ret;
+	}
+
+	/* MAC Control must be the last command in init_fw */
+	/* set MAC Control */
+	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_MAC_CONTROL,
+				    HostCmd_ACT_GEN_SET, 0,
+				    &priv->curr_pkt_filter);
+#endif
+	return ret;
+}
+/*
+ * This function initializes the firmware.
+ *
+ * The following operations are performed sequentially -
+ *      - Allocate adapter structure
+ *      - Initialize the adapter structure
+ *      - Initialize the private structure
+ *      - Add BSS priority tables to the adapter structure
+ *      - For each interface, send the init commands to firmware
+ *      - Send the first command in command pending queue, if available
+ */
+int mwl8787_init_fw(struct mwl8787_priv *priv)
+{
+	int ret;
+	u8 i, first_sta = true;
+	int is_cmd_pend_q_empty;
+	unsigned long flags;
+
+	priv->hw_status = MWL8787_HW_STATUS_INITIALIZING;
+
+	ret = mwl8787_fw_init_cmd(priv);
+	if (ret)
+		return ret;
+
+	priv->hw_status = MWL8787_HW_STATUS_READY;
+
+	return ret;
+}
+
 static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 {
 	int ret;
@@ -159,6 +258,10 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 	if (priv->int_status)
 		priv->bus_ops->process_int_status(priv);
 
+	/* Check for Cmd Resp */
+	if (priv->cmd_resp_skb)
+		mwl8787_process_cmdresp(priv, priv->cmd_resp_skb);
+
 	return ret;
 }
 
@@ -173,18 +276,32 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 		dev_err(priv->dev,
 		       "mwl8787: unable to find firmware %s\n",
 		       MWL8787_FW_NAME);
-		return ret;
+		goto done;
 	}
 
 	ret = mwl8787_dnld_fw(priv);
-
 	if (ret) {
 		dev_err(priv->dev,
 		       "mwl8787: unable to download firmware!\n");
-		return ret;
+		goto done;
 	}
 
-	return 0;
+	priv->init_wait_q_woken = false;
+	ret = mwl8787_init_fw(priv);
+	if (ret)
+		goto done;
+
+	priv->hw_status = MWL8787_HW_STATUS_READY;
+
+	/* wait for firmware to be ready */
+	wait_event_interruptible(priv->init_wait_q, priv->init_wait_q_woken);
+	if (priv->hw_status != MWL8787_HW_STATUS_READY)
+		dev_err(priv->dev,
+		       "mwl8787: unable to init firmware!\n");
+
+done:
+	release_firmware(priv->fw);
+	return ret;
 }
 
 static void mwl8787_stop(struct ieee80211_hw *hw)
@@ -246,6 +363,8 @@ struct mwl8787_priv *mwl8787_init(void)
 	priv->hw = hw;
 
 	spin_lock_init(&priv->int_lock);
+	init_waitqueue_head(&priv->init_wait_q);
+	init_waitqueue_head(&priv->cmd_wait_q);
 
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =
