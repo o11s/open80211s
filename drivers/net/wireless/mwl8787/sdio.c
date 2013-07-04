@@ -394,7 +394,7 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	struct mwl8787_sdio_header *hdr;
 	int ret;
 
-	hdr = (struct mwl8787_sdio_header *) buf - priv->bus_headroom;
+	hdr = (struct mwl8787_sdio_header *) (buf - priv->bus_headroom);
 
 	hdr->type = cpu_to_le16(MWL8787_TYPE_CMD);
 	hdr->len = cpu_to_le16(len);
