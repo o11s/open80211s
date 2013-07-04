@@ -36,8 +36,14 @@
 
 #define MWL8787_ACT_SET				1
 
+#define MWL8787_CMD_RET_BIT			0x8000
+
+#define MWL8787_CMD_SUCCESS			0x0
+#define MWL8787_CMD_FAIL			0x1
+
 enum mwl8787_cmd_id {
-	MWL8787_CMD_RESET = 0x0003,
+	MWL8787_CMD_RESET = 0x0005,
+	MWL8787_CMD_FUNC_INIT =  0x00a9,
 };
 
 struct mwl8787_cmd_reset {

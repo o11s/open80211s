@@ -12,6 +12,16 @@
 #define MWL8787_UPLD_SIZE               (2312)
 #define MWL8787_RX_DATA_BUF_SIZE     (4 * 1024)
 
+enum mwl8787_hw_status {
+	MWL8787_HW_STATUS_READY,
+	MWL8787_HW_STATUS_INITIALIZING,
+	MWL8787_HW_STATUS_FW_READY,
+	MWL8787_HW_STATUS_INIT_DONE,
+	MWL8787_HW_STATUS_RESET,
+	MWL8787_HW_STATUS_CLOSING,
+	MWL8787_HW_STATUS_NOT_READY
+};
+
 struct mwl8787_priv;
 
 struct mwl8787_bus_ops
@@ -32,11 +42,19 @@ struct mwl8787_priv
 	void *bus_priv;
 	int bus_headroom;
 
+	u16 init_wait_q_woken;
+	wait_queue_head_t init_wait_q;
+	u16 cmd_completed;
+	wait_queue_head_t cmd_wait_q;
+
+	enum mwl8787_hw_status hw_status;
+
 	struct device *dev;
 	spinlock_t int_lock;
 	u32 int_status;
 
 	int cmd_seq;
+	struct sk_buff *cmd_resp_skb;
 	u8 cmd_sent;
 	u8 data_sent;
 
@@ -59,9 +77,11 @@ int mwl8787_main_process(struct mwl8787_priv *priv);
 /* cmd.c */
 int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len);
 int mwl8787_reset(struct mwl8787_priv *priv);
+int mwl8787_cmd_init(struct mwl8787_priv *priv);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);
+int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
