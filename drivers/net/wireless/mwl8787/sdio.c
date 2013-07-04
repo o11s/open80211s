@@ -469,27 +469,6 @@ int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 	return 0;
 }
 
-int mwl8787_reset(struct mwl8787_priv *priv)
-{
-	int ret;
-	struct mwl8787_cmd *cmd;
-
-	cmd = mwl8787_cmd_alloc(priv,
-				MWL8787_CMD_RESET,
-				sizeof(struct mwl8787_cmd_reset),
-				GFP_KERNEL);
-
-	if (!cmd)
-		return -ENOMEM;
-
-	cmd->u.reset.action = cpu_to_le16(MWL8787_ACT_SET);
-	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
-
-	mwl8787_cmd_free(priv, cmd);
-	return ret;
-}
-
-
 static int __mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 				       u32 *type, u8 *buffer,
 				       u32 npayload, u32 ioport)
