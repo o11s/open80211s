@@ -482,8 +482,8 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 	if (!cmd)
 		return -ENOMEM;
 
-	cmd->u.reset.action = MWL8787_ACT_SET;
-	ret = mwl8787_send_cmd(priv, (u8 *) cmd, cmd->hdr.len);
+	cmd->u.reset.action = cpu_to_le16(MWL8787_ACT_SET);
+	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;

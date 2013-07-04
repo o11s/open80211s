@@ -33,9 +33,9 @@ struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 	if (!cmd)
 		return NULL;
 
-	cmd->hdr.id = id;
-	cmd->hdr.len = pktlen;
-	cmd->hdr.seq = priv->cmd_seq++;
+	cmd->hdr.id = cpu_to_le16(id);
+	cmd->hdr.len = cpu_to_le16(pktlen);
+	cmd->hdr.seq = cpu_to_le16(priv->cmd_seq++);
 	return (void *)cmd + priv->bus_headroom;
 }
 
@@ -114,7 +114,7 @@ int mwl8787_cmd_init(struct mwl8787_priv *priv)
 	if (!cmd)
 		return -ENOMEM;
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, cmd->hdr.len);
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
