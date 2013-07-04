@@ -403,7 +403,7 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	 * Allocate buffer and copy payload
 	 * TODO avoid this alloc/copy...
 	 */
-	buf_block_len = DIV_ROUND_UP(len, MWL8787_SDIO_BLOCK_SIZE);
+	buf_block_len = roundup(len + sizeof(*hdr), MWL8787_SDIO_BLOCK_SIZE);
 
 	payload = kzalloc(buf_block_len, GFP_KERNEL);
 	if (!payload)
