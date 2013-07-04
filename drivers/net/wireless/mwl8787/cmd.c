@@ -27,14 +27,14 @@ struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags)
 {
 	struct mwl8787_cmd *cmd;
+	int pktlen = len + sizeof(struct mwl8787_cmd_header);
 
-	cmd = kzalloc(len + sizeof(struct mwl8787_cmd_header) +
-		      priv->bus_headroom, gfp_flags);
+	cmd = kzalloc(pktlen + priv->bus_headroom, gfp_flags);
 	if (!cmd)
 		return NULL;
 
 	cmd->hdr.id = id;
-	cmd->hdr.len = len;
+	cmd->hdr.len = pktlen;
 	cmd->hdr.seq = priv->cmd_seq++;
 	return (void *)cmd + priv->bus_headroom;
 }
