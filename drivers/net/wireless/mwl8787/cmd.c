@@ -119,3 +119,24 @@ int mwl8787_cmd_init(struct mwl8787_priv *priv)
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }
+
+int mwl8787_reset(struct mwl8787_priv *priv)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_RESET,
+				sizeof(struct mwl8787_cmd_reset),
+				GFP_KERNEL);
+
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.reset.action = cpu_to_le16(MWL8787_ACT_SET);
+	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
