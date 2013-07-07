@@ -714,11 +714,23 @@ term_cmd:
 	return -1;
 }
 
+static int mwl8787_enable_int(struct mwl8787_priv *priv)
+{
+	int ret;
+	ret = mwl8787_write_reg(priv, HOST_INT_MASK_REG,
+				MWL8787_HOST_INT_ENABLE);
+
+	if (ret)
+		dev_err(priv->dev, "enable host interrupt failed\n");
+	return ret;
+}
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
 	.send_cmd = mwl8787_sdio_send_cmd,
 	.process_int_status = mwl8787_process_int_status,
+	.enable_int = mwl8787_enable_int,
 };
 
 /*
