@@ -42,10 +42,8 @@ struct mwl8787_priv
 	void *bus_priv;
 	int bus_headroom;
 
-	u16 init_wait_q_woken;
-	wait_queue_head_t init_wait_q;
-	u16 cmd_completed;
-	wait_queue_head_t cmd_wait_q;
+	struct completion init_wait;
+	struct completion cmd_wait;
 
 	enum mwl8787_hw_status hw_status;
 
