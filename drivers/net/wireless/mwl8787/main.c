@@ -286,7 +286,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 		goto done;
 	}
 
-	priv->init_wait_q_woken = false;
+	INIT_COMPLETION(priv->init_wait);
 	ret = mwl8787_init_fw(priv);
 	if (ret)
 		goto done;
@@ -294,7 +294,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	priv->hw_status = MWL8787_HW_STATUS_READY;
 
 	/* wait for firmware to be ready */
-	wait_event_interruptible(priv->init_wait_q, priv->init_wait_q_woken);
+	complete(&priv->init_wait);
 	if (priv->hw_status != MWL8787_HW_STATUS_READY)
 		dev_err(priv->dev,
 		       "mwl8787: unable to init firmware!\n");
@@ -363,8 +363,8 @@ struct mwl8787_priv *mwl8787_init(void)
 	priv->hw = hw;
 
 	spin_lock_init(&priv->int_lock);
-	init_waitqueue_head(&priv->init_wait_q);
-	init_waitqueue_head(&priv->cmd_wait_q);
+	init_completion(&priv->init_wait);
+	init_completion(&priv->cmd_wait);
 
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =

@@ -10,17 +10,17 @@ int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, u8 *buf, size_t len)
 {
 	int ret = 0;
 
-	priv->cmd_completed = false;
+	INIT_COMPLETION(priv->cmd_wait);
 	ret = priv->bus_ops->send_cmd(priv, buf, len);
 	if (ret)
 		return ret;
 
-	ret = wait_event_interruptible(priv->cmd_wait_q,
-				       priv->cmd_completed);
-	if (ret)
-		dev_err(priv->dev, "cmd_wait_q terminated: %d\n", ret);
-
-	return ret;
+	ret = wait_for_completion_timeout(&priv->cmd_wait, HZ);
+	if (ret == 0) {
+		dev_err(priv->dev, "cmd_wait timed out\n", ret);
+		return -ETIMEDOUT;
+	}
+	return 0;
 }
 
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
@@ -94,13 +94,11 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 	    cmdid == MWL8787_CMD_FUNC_INIT &&
 	    result == MWL8787_CMD_SUCCESS) {
 		priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
-		priv->init_wait_q_woken = true;
-		wake_up_interruptible(&priv->init_wait_q);
+		complete(&priv->init_wait);
 	}
 
 	dev_kfree_skb_any(skb);
-	priv->cmd_completed = true;
-	wake_up_interruptible(&priv->cmd_wait_q);
+	complete(&priv->cmd_wait);
 	return ret;
 }
 
