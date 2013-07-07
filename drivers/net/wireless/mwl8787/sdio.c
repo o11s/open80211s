@@ -869,33 +869,28 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	if (IS_ERR(priv))
 		return PTR_ERR(priv);
 
+	priv->bus_priv = func;
+	sdio_set_drvdata(func, priv);
+
 	func->card->quirks |= MMC_QUIRK_BLKSZ_FOR_BYTE_MODE;
 
 	sdio_claim_host(func);
-
 	ret = sdio_enable_func(func);
+	if (ret)
+		goto release;
 
-	/* Request the SDIO IRQ */
+	ret = sdio_set_block_size(func, MWL8787_SDIO_BLOCK_SIZE);
+	if (ret) {
+		pr_err("cannot set SDIO block size\n");
+		goto disable;
+	}
+
 	ret = sdio_claim_irq(func, mwl8787_sdio_interrupt);
 	if (ret) {
 		pr_err("claim irq failed: ret=%d\n", ret);
 		goto disable;
 	}
 
-	/* Set block size */
-	ret = sdio_set_block_size(func, MWL8787_SDIO_BLOCK_SIZE);
-	if (ret) {
-		pr_err("cannot set SDIO block size\n");
-		ret = -1;
-		goto release;
-	}
-
-	sdio_release_host(func);
-	if (ret)
-		goto release;
-
-	priv->bus_priv = func;
-	sdio_set_drvdata(func, priv);
 	SET_IEEE80211_DEV(priv->hw, &func->dev);
 
 	priv->bus_headroom = sizeof(struct mwl8787_sdio_header);
@@ -904,17 +899,19 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 
 	ret = mwl8787_init_sdio(priv);
 	if (ret)
-		goto release;
+		goto disable;
 
 	ret = mwl8787_register(priv);
 	if (ret)
-		goto release;
+		goto disable;
 
+	sdio_release_host(func);
 	return 0;
+
 disable:
 	sdio_disable_func(func);
-	sdio_release_host(func);
 release:
+	sdio_release_host(func);
 	mwl8787_free(priv);
 	return ret;
 }
