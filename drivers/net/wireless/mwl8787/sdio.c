@@ -601,34 +601,26 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 	if (!sdio_ireg)
 		return ret;
 
-#if 0
 	if (sdio_ireg & DN_LD_HOST_INT_STATUS) {
-		bitmap = (u32) priv->mp_regs[reg->wr_bitmap_l];
-		bitmap |= ((u32) priv->mp_regs[reg->wr_bitmap_u]) << 8;
+		bitmap = (u32) priv->mp_regs[MWL8787_WR_BITMAP_L];
+		bitmap |= ((u32) priv->mp_regs[MWL8787_WR_BITMAP_U]) << 8;
 		priv->mp_wr_bitmap = bitmap;
 
 		dev_dbg(priv->dev, "int: DNLD: wr_bitmap=0x%x\n",
 			priv->mp_wr_bitmap);
+#if 0
 		if (priv->data_sent &&
-		    (card->mp_wr_bitmap & card->mp_data_port_mask)) {
+		    (priv->mp_wr_bitmap & card->mp_data_port_mask)) {
 			dev_dbg(priv->dev,
 				"info:  <--- Tx DONE Interrupt --->\n");
 			priv->data_sent = false;
 		}
+#endif
 	}
 
-#endif
-	/* As firmware will not generate download ready interrupt if the port
-	   updated is command port only, cmd_sent should be done for any SDIO
-	   interrupt. */
-	if (priv->cmd_sent) {
-		/* Check if firmware has attach buffer at command port and
-		   update just that in wr_bit_map. */
-		priv->mp_wr_bitmap |=
-			(u32) priv->mp_regs[MWL8787_WR_BITMAP_L] & CTRL_PORT_MASK;
-		if (priv->mp_wr_bitmap & CTRL_PORT_MASK)
-			priv->cmd_sent = false;
-	}
+	/* set mp_wr_bitmap for cmd responses */
+	priv->mp_wr_bitmap |=
+		(u32) priv->mp_regs[MWL8787_WR_BITMAP_L] & CTRL_PORT_MASK;
 
 	dev_dbg(priv->dev, "info: cmd_sent=%d data_sent=%d\n",
 		priv->cmd_sent, priv->data_sent);
