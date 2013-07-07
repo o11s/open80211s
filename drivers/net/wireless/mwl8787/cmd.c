@@ -28,15 +28,18 @@ struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 {
 	struct mwl8787_cmd *cmd;
 	int pktlen = len + sizeof(struct mwl8787_cmd_header);
+	void *buf;
 
-	cmd = kzalloc(pktlen + priv->bus_headroom, gfp_flags);
-	if (!cmd)
+	buf = kzalloc(pktlen + priv->bus_headroom, gfp_flags);
+	if (!buf)
 		return NULL;
+
+	cmd = buf + priv->bus_headroom;
 
 	cmd->hdr.id = cpu_to_le16(id);
 	cmd->hdr.len = cpu_to_le16(pktlen);
 	cmd->hdr.seq = cpu_to_le16(priv->cmd_seq++);
-	return (void *)cmd + priv->bus_headroom;
+	return cmd;
 }
 
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
