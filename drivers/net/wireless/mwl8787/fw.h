@@ -42,10 +42,31 @@
 #define MWL8787_CMD_FAIL			0x1
 
 enum mwl8787_cmd_id {
+	MWL8787_CMD_HW_SPEC = 0x0003,
 	MWL8787_CMD_RESET = 0x0005,
 	MWL8787_CMD_MAC_ADDR = 0x004d,
 	MWL8787_CMD_FUNC_INIT =  0x00a9,
 };
+
+struct mwl8787_cmd_hw_spec {
+	__le16 hw_if_version;
+	__le16 version;
+	__le16 reserved;
+	__le16 num_mcast;
+	u8 perm_addr[ETH_ALEN];
+	__le16 region_code;
+	__le16 num_ant;
+	__le32 fw_release_number;
+	__le32 reserved_2[3];
+	__le32 fw_cap_info;
+	__le32 dot_11n_dev_cap;
+	u8 dev_mcs_support;
+	__le16 mp_end_port;
+	__le16 mgmt_buf_count;
+	__le32 reserved_3[2];
+	__le32 dot_11ac_dev_cap;
+	__le32 dot_11ac_mcs_support;
+} __packed;
 
 struct mwl8787_cmd_reset {
 	__le16 action;
@@ -109,6 +130,7 @@ struct mwl8787_cmd_header {
 struct mwl8787_cmd {
 	struct mwl8787_cmd_header hdr;
 	union {
+		struct mwl8787_cmd_hw_spec hw_spec;
 		struct mwl8787_cmd_reset reset;
 		struct mwl8787_cmd_multicast_addr multicast_addr;
 		struct mwl8787_cmd_radio_ctrl radio_ctrl;

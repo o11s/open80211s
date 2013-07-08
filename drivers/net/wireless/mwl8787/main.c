@@ -121,13 +121,12 @@ int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 	if (ret)
 		return ret;
 
-#if 0
-	/* Read MAC address from HW */
-	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_GET_HW_SPEC,
-				    HostCmd_ACT_GEN_GET, 0, NULL);
+	/* get hw description & mac address */
+	ret = mwl8787_cmd_hw_spec(priv);
 	if (ret)
 		return ret;
 
+#if 0
 	/* Reconfigure tx buf size */
 	ret = mwifiex_send_cmd_sync(priv,
 				    HostCmd_CMD_RECONFIGURE_TX_BUFF,
