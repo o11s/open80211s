@@ -374,7 +374,8 @@ static int mwl8787_write(struct mwl8787_priv *priv,
 	int ret;
 
 	for (i=0; i < MAX_WRITE_IOMEM_RETRY; i++) {
-		ret = mwl8787_write_data_sync(priv, buf, len, port);
+		ret = mwl8787_write_data_sync(priv, buf, len,
+					      priv->ioport + port);
 		if (!ret)
 			break;
 
