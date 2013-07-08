@@ -77,6 +77,7 @@ int mwl8787_main_process(struct mwl8787_priv *priv);
 /* cmd.c */
 int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len);
 int mwl8787_reset(struct mwl8787_priv *priv);
+int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);

@@ -50,6 +50,13 @@ void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
 	return kfree(ptr - priv->bus_headroom);
 }
 
+int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
+			     struct mwl8787_cmd *resp)
+{
+	memcpy(priv->addr, &resp->u.hw_spec.perm_addr, ETH_ALEN);
+	return 0;
+}
+
 int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
 			      struct mwl8787_cmd *resp)
 {
@@ -99,6 +106,10 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 	ret = 0;
 	cmdid &= ~MWL8787_CMD_RET_BIT;
 	switch (cmdid) {
+		case MWL8787_CMD_HW_SPEC:
+			ret = mwl8787_cmd_hw_spec_resp(priv, resp);
+			break;
+
 		case MWL8787_CMD_MAC_ADDR:
 			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
 			break;
@@ -134,6 +145,25 @@ int mwl8787_cmd_init(struct mwl8787_priv *priv)
 		return -ENOMEM;
 
 	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
+int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_HW_SPEC,
+				sizeof(struct mwl8787_cmd_hw_spec),
+				GFP_KERNEL);
+
+	if (!cmd)
+		return -ENOMEM;
+
+	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
