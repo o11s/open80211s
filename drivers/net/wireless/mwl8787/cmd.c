@@ -17,7 +17,7 @@ int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, u8 *buf, size_t len)
 
 	ret = wait_for_completion_timeout(&priv->cmd_wait, HZ);
 	if (ret == 0) {
-		dev_err(priv->dev, "cmd_wait timed out\n", ret);
+		dev_err(priv->dev, "cmd_wait timed out\n");
 		return -ETIMEDOUT;
 	}
 	return 0;
