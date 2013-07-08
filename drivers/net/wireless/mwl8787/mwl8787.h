@@ -38,6 +38,8 @@ struct mwl8787_priv
 	struct ieee80211_hw *hw;
 	const struct firmware *fw;
 
+	u8 addr[ETH_ALEN];
+
 	struct mwl8787_bus_ops *bus_ops;
 	void *bus_priv;
 	int bus_headroom;

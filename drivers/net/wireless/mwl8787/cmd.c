@@ -50,10 +50,17 @@ void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
 	return kfree(ptr - priv->bus_headroom);
 }
 
+int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
+			      struct mwl8787_cmd *resp)
+{
+	memcpy(priv->addr, &resp->u.mac_addr, ETH_ALEN);
+	return 0;
+}
+
 int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *resp;
-	int ret = 0;
+	int ret;
 	uint16_t orig_cmdresp_no;
 	uint16_t cmdid;
 	uint16_t result;
@@ -80,25 +87,36 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 	if (!(cmdid & MWL8787_CMD_RET_BIT)) {
 		dev_err(priv->dev, "CMD_RESP: invalid cmd resp\n");
-
-		dev_kfree_skb_any(skb);
-		return -1;
+		ret = -EIO;
+		goto out;
 	}
 
-	/* handle response */
-	/*
-	ret = mwifiex_process_sta_cmdresp(priv, cmdresp_no, resp);
-	*/
-
-	if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING &&
-	    cmdid == MWL8787_CMD_FUNC_INIT &&
-	    result == MWL8787_CMD_SUCCESS) {
-		priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
-		complete(&priv->init_wait);
+	if (result != MWL8787_CMD_SUCCESS) {
+		ret = -EIO;
+		goto out;
 	}
 
-	dev_kfree_skb_any(skb);
+	ret = 0;
+	cmdid &= ~MWL8787_CMD_RET_BIT;
+	switch (cmdid) {
+		case MWL8787_CMD_MAC_ADDR:
+			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
+			break;
+
+		case MWL8787_CMD_FUNC_INIT:
+			if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING) {
+				priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
+				complete(&priv->init_wait);
+			}
+			break;
+		default:
+			break;
+	}
+
 	complete(&priv->cmd_wait);
+
+out:
+	dev_kfree_skb_any(skb);
 	return ret;
 }
 
