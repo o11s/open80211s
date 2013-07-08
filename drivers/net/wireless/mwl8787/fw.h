@@ -43,6 +43,7 @@
 
 enum mwl8787_cmd_id {
 	MWL8787_CMD_RESET = 0x0005,
+	MWL8787_CMD_MAC_ADDR = 0x004d,
 	MWL8787_CMD_FUNC_INIT =  0x00a9,
 };
 
