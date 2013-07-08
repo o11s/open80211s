@@ -395,6 +395,7 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	int ret;
 
 	hdr = (struct mwl8787_sdio_header *) (buf - priv->bus_headroom);
+	len += sizeof(*hdr);
 
 	hdr->type = cpu_to_le16(MWL8787_TYPE_CMD);
 	hdr->len = cpu_to_le16(len);
@@ -403,13 +404,13 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 	 * Allocate buffer and copy payload
 	 * TODO avoid this alloc/copy...
 	 */
-	buf_block_len = roundup(len + sizeof(*hdr), MWL8787_SDIO_BLOCK_SIZE);
+	buf_block_len = roundup(len, MWL8787_SDIO_BLOCK_SIZE);
 
 	payload = kzalloc(buf_block_len, GFP_KERNEL);
 	if (!payload)
 		return -ENOMEM;
 
-	memcpy(payload, hdr, len + sizeof(*hdr));
+	memcpy(payload, hdr, len);
 	ret = mwl8787_write(priv, payload, buf_block_len, CTRL_PORT);
 	kfree(payload);
 
