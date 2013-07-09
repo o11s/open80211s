@@ -325,7 +325,6 @@ static int mwl8787_sdio_prog_fw(struct mwl8787_priv *priv,
 			/* Copy payload to buffer */
 			memcpy(fwbuf, &fw->data[offset], txlen);
 			dev_dbg(priv->dev, "txlen: %d\n", txlen);
-			print_hex_dump_bytes("fwbuf: ", DUMP_PREFIX_NONE, fwbuf, txlen);
 		}
 
 		ret = mwl8787_write_data_sync(priv, fwbuf, tx_blocks *
@@ -444,8 +443,6 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 			     struct sk_buff *skb, u32 upld_typ)
 {
-	u8 *cmd_buf;
-
 	skb_pull(skb, sizeof(struct mwl8787_sdio_header));
 
 	switch (upld_typ) {
@@ -599,7 +596,6 @@ static int mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
  */
 static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 {
-	struct sdio_func *func = priv->bus_priv;
 	int ret = 0;
 	u8 sdio_ireg;
 	struct sk_buff *skb;

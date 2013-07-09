@@ -68,11 +68,9 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *resp;
 	int ret;
-	uint16_t orig_cmdresp_no;
-	uint16_t cmdid;
-	uint16_t result;
+	u16 cmdid;
+	u16 result;
 	struct timeval tstamp;
-	unsigned long flags;
 
 	if (!skb) {
 		dev_err(priv->dev, "CMD_RESP: no response?,\n");

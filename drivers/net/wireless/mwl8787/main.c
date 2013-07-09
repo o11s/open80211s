@@ -116,7 +116,6 @@ static struct ieee80211_supported_band mwl8787_5ghz_band = {
 int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 {
 	int ret;
-	u16 enable = true;
 
 	ret = mwl8787_cmd_init(priv);
 	if (ret)
@@ -180,9 +179,6 @@ int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 int mwl8787_init_fw(struct mwl8787_priv *priv)
 {
 	int ret;
-	u8 i, first_sta = true;
-	int is_cmd_pend_q_empty;
-	unsigned long flags;
 
 	priv->hw_status = MWL8787_HW_STATUS_INITIALIZING;
 
@@ -265,19 +261,11 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 
 static int mwl8787_start(struct ieee80211_hw *hw)
 {
-	struct mwl8787_priv *priv = hw->priv;
-	int ret;
-
-done:
-	release_firmware(priv->fw);
-	return ret;
+	return 0;
 }
 
 static void mwl8787_stop(struct ieee80211_hw *hw)
 {
-	struct mwl8787_priv *priv = hw->priv;
-
-	release_firmware(priv->fw);
 }
 
 static int mwl8787_add_interface(struct ieee80211_hw *hw,
@@ -320,9 +308,6 @@ struct mwl8787_priv *mwl8787_init(void)
 {
 	struct mwl8787_priv *priv;
 	struct ieee80211_hw *hw;
-	u8 mac[ETH_ALEN] = {
-		0x02, 0x00, 0x00, 0x00, 0x00, 0x20
-	};
 
 	hw = ieee80211_alloc_hw(sizeof(*priv), &mwl8787_ops);
 	if (!hw)
