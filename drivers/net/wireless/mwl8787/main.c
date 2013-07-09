@@ -5,8 +5,6 @@
 #include "mwl8787.h"
 #include "fw.h"
 
-#define MWL8787_FW_NAME "mrvl/sd8787_uapsta.bin"
-
 #define CHAN(_freq, _idx) { \
 	.center_freq = (_freq), \
 	.hw_value = (_idx), \
@@ -194,14 +192,12 @@ int mwl8787_init_fw(struct mwl8787_priv *priv)
 	return ret;
 }
 
-static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
+int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 {
 	int ret;
 
-	if (!priv->fw) {
-		dev_dbg(priv->dev, "no firmware? \n");
-		return -1;
-	}
+	if (WARN_ON(!priv->fw))
+		return -EINVAL;
 
 	/* check if firmware is already running */
 	ret = priv->bus_ops->check_fw_ready(priv, 1);
@@ -222,7 +218,7 @@ static int mwl8787_dnld_fw(struct mwl8787_priv *priv)
 	ret = priv->bus_ops->check_fw_ready(priv, MAX_FIRMWARE_POLL_TRIES);
 	if (ret) {
 		dev_err(priv->dev, "FW failed to be active in time\n");
-		return -1;
+		return ret;
 	}
 
 done:
@@ -269,35 +265,6 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	struct mwl8787_priv *priv = hw->priv;
 	int ret;
 
-	ret = request_firmware(&priv->fw, MWL8787_FW_NAME,
-			       wiphy_dev(hw->wiphy));
-	if (ret) {
-		dev_err(priv->dev,
-		       "mwl8787: unable to find firmware %s\n",
-		       MWL8787_FW_NAME);
-		goto done;
-	}
-
-	ret = mwl8787_dnld_fw(priv);
-	if (ret) {
-		dev_err(priv->dev,
-		       "mwl8787: unable to download firmware!\n");
-		goto done;
-	}
-
-	INIT_COMPLETION(priv->init_wait);
-	ret = mwl8787_init_fw(priv);
-	if (ret)
-		goto done;
-
-	priv->hw_status = MWL8787_HW_STATUS_READY;
-
-	/* wait for firmware to be ready */
-	complete(&priv->init_wait);
-	if (priv->hw_status != MWL8787_HW_STATUS_READY)
-		dev_err(priv->dev,
-		       "mwl8787: unable to init firmware!\n");
-	return ret;
 done:
 	release_firmware(priv->fw);
 	return ret;
@@ -377,19 +344,20 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->wiphy->bands[IEEE80211_BAND_2GHZ] = &mwl8787_2ghz_band;
 	hw->wiphy->bands[IEEE80211_BAND_5GHZ] = &mwl8787_5ghz_band;
 
-	SET_IEEE80211_PERM_ADDR(hw, mac);
-
 	return priv;
 }
 
 int mwl8787_register(struct mwl8787_priv *priv)
 {
-	return ieee80211_register_hw(priv->hw);
+	int ret = ieee80211_register_hw(priv->hw);
+	priv->registered = (ret == 0);
+	return ret;
 }
 
 void mwl8787_unregister(struct mwl8787_priv *priv)
 {
 	ieee80211_unregister_hw(priv->hw);
+	priv->registered = false;
 }
 
 void mwl8787_free(struct mwl8787_priv *priv)
