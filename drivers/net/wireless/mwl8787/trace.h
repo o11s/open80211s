@@ -26,9 +26,8 @@ TRACE_EVENT(mwl8787_sdio_reg,
 	TP_fast_assign(
 		__entry->priv = priv;
 		__entry->tx = tx;
-		__entry->port = (unsigned int) port;
-		__entry->len = len;
-		memcpy(__get_dynamic_array(buf), buf, len);
+		__entry->val = val;
+		__entry->ret = ret;
 	),
 	TP_printk(
 		"%s port:0x%x val:0x%x ret:%d", __entry->tx ? "tx" : "rx",
@@ -38,7 +37,7 @@ TRACE_EVENT(mwl8787_sdio_reg,
 
 TRACE_EVENT(mwl8787_sdio,
 	TP_PROTO(struct mwl8787_priv *priv, bool tx, u32 port, void *buf, size_t len),
-	TP_ARGS(priv, tx, port, val, ret),
+	TP_ARGS(priv, tx, port, buf, len),
 	TP_STRUCT__entry(
 		__field(struct mwl8787_priv *, priv)
 		__field(bool, tx)
@@ -49,7 +48,7 @@ TRACE_EVENT(mwl8787_sdio,
 	TP_fast_assign(
 		__entry->priv = priv;
 		__entry->tx = tx;
-		__entry->port = (unsigned int) port;
+		__entry->port = port;
 		__entry->len = len;
 		memcpy(__get_dynamic_array(buf), buf, len);
 	),
