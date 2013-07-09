@@ -18,7 +18,7 @@ TRACE_EVENT(mwl8787_sdio_reg,
 	TP_ARGS(priv, tx, port, val, ret),
 	TP_STRUCT__entry(
 		__field(struct mwl8787_priv *, priv)
-		__field(bool, tx)
+		__field(u8, tx)
 		__field(u32, port)
 		__field(u8, val)
 		__field(int, ret)
@@ -41,7 +41,7 @@ TRACE_EVENT(mwl8787_sdio,
 	TP_ARGS(priv, tx, port, buf, len),
 	TP_STRUCT__entry(
 		__field(struct mwl8787_priv *, priv)
-		__field(bool, tx)
+		__field(u8, tx)
 		__field(u32, port)
 		__field(size_t, len)
 		__dynamic_array(u8, buf, len)
