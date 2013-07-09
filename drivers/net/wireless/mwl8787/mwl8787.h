@@ -9,6 +9,8 @@
 
 #include "fw.h"
 
+#define MWL8787_FW_NAME "mrvl/sd8787_uapsta.bin"
+
 #define MWL8787_UPLD_SIZE               (2312)
 #define MWL8787_RX_DATA_BUF_SIZE     (4 * 1024)
 
@@ -37,6 +39,7 @@ struct mwl8787_priv
 {
 	struct ieee80211_hw *hw;
 	const struct firmware *fw;
+	bool registered;
 
 	u8 addr[ETH_ALEN];
 
@@ -73,6 +76,8 @@ int mwl8787_register(struct mwl8787_priv *priv);
 void mwl8787_unregister(struct mwl8787_priv *priv);
 void mwl8787_free(struct mwl8787_priv *priv);
 int mwl8787_main_process(struct mwl8787_priv *priv);
+int mwl8787_init_fw(struct mwl8787_priv *priv);
+int mwl8787_dnld_fw(struct mwl8787_priv *priv);
 
 /* cmd.c */
 int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len);

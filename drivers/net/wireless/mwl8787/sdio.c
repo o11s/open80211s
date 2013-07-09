@@ -229,6 +229,12 @@ static int mwl8787_sdio_prog_fw(struct mwl8787_priv *priv,
 	if (!fwbuf)
 		return -ENOMEM;
 
+	/* FIXME - found this necessary if fw loader is called from within
+	 * probe; many times we timeout while polling card status.  So we
+	 * may need more tries or bigger sleep between polls for the dev
+	 * devices.  Waiting a bit after power up skirts the issue.
+	 */
+	msleep(1000);
 	/* Perform firmware data transfer */
 	do {
 		/* The host polls for the DN_LD_CARD_RDY and CARD_IO_READY
@@ -852,6 +858,41 @@ mwl8787_sdio_interrupt(struct sdio_func *func)
 	mwl8787_main_process(priv);
 }
 
+static void mwl8787_fw_cb(const struct firmware *fw, void *context)
+{
+	struct mwl8787_priv *priv = context;
+	int ret;
+
+	if (!fw) {
+		dev_err(priv->dev, "request for firmware file '%s' failed",
+			MWL8787_FW_NAME);
+		ret = -ENOENT;
+		goto disable;
+	}
+
+	/* try to load the firmware, then register with mac80211 on success */
+	priv->fw = fw;
+	ret = mwl8787_dnld_fw(priv);
+	if (ret)
+		goto disable;
+
+	ret = mwl8787_init_fw(priv);
+	if (ret)
+		goto disable;
+
+	/* now we know the mac addr, so program it */
+	SET_IEEE80211_PERM_ADDR(priv->hw, priv->addr);
+
+	/* FW loaded, so register with mac80211 */
+	ret = mwl8787_register(priv);
+	if (ret)
+		goto disable;
+
+disable:
+	/* FIXME unbind device */
+	return;
+}
+
 static int mwl8787_sdio_probe(struct sdio_func *func,
 			      const struct sdio_device_id *id)
 {
@@ -895,10 +936,13 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	if (ret)
 		goto disable;
 
-	ret = mwl8787_register(priv);
-	if (ret)
+	ret = request_firmware_nowait(THIS_MODULE, 1, MWL8787_FW_NAME,
+				      priv->dev, GFP_KERNEL, priv,
+				      mwl8787_fw_cb);
+	if (ret) {
+		pr_err("request_firmware_nowait failed (%d)\n", ret);
 		goto disable;
-
+	}
 	sdio_release_host(func);
 	return 0;
 
@@ -914,7 +958,8 @@ static void mwl8787_sdio_remove(struct sdio_func *func)
 {
 	struct mwl8787_priv *priv = sdio_get_drvdata(func);
 
-	mwl8787_unregister(priv);
+	if (priv->registered)
+		mwl8787_unregister(priv);
 
 	sdio_claim_host(func);
 	sdio_release_irq(func);
