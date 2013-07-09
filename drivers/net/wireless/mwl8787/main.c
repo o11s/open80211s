@@ -5,6 +5,9 @@
 #include "mwl8787.h"
 #include "fw.h"
 
+#define CREATE_TRACE_POINTS
+#include "trace.h"
+
 #define CHAN(_freq, _idx) { \
 	.center_freq = (_freq), \
 	.hw_value = (_idx), \

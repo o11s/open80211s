@@ -6,3 +6,14 @@ config MWL8787
 	  This is a softmac driver for Marvell 8787 USB devices.
 
 	  If unsure, say N.
+
+config MWL8787_TRACER
+	bool "Marvell 8787 SoftMAC SDIO tracer"
+	depends on MWL8787
+	depends on EVENT_TRACING
+	---help---
+	  Say Y here to enable tracepoints for the mwl8787 driver
+	  using the kernel tracing infrastructure.  Select this
+	  option if you are interested in debugging the driver.
+
+	  If unsure, say N.

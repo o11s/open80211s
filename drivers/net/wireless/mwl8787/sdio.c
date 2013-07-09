@@ -2,6 +2,8 @@
 #include "sdio.h"
 #include "fw.h"
 
+#include "trace.h"
+
 MODULE_DESCRIPTION("Marvell 8787 SDIO wireless");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Cozybit Inc.");
@@ -27,6 +29,8 @@ mwl8787_read_reg(struct mwl8787_priv *priv, u32 reg, u8 *data)
 	val = sdio_readb(func, reg, &ret);
 	sdio_release_host(func);
 
+	trace_mwl8787_sdio_reg(priv, false, reg, val, ret);
+
 	*data = val;
 
 	return ret;
@@ -44,6 +48,8 @@ mwl8787_write_reg(struct mwl8787_priv *priv, u32 reg, u8 data)
 	sdio_claim_host(func);
 	sdio_writeb(func, data, reg, &ret);
 	sdio_release_host(func);
+
+	trace_mwl8787_sdio_reg(priv, true, reg, data, ret);
 
 	return ret;
 }
@@ -67,6 +73,8 @@ mwl8787_write_data_sync(struct mwl8787_priv *priv,
 		 BLOCK_MODE) ? (pkt_len /
 				MWL8787_SDIO_BLOCK_SIZE) : pkt_len;
 	u32 ioport = (port & MWL8787_SDIO_IO_PORT_MASK);
+
+	trace_mwl8787_sdio(priv, true, port, buffer, blk_cnt * blk_size);
 
 	sdio_claim_host(func);
 
@@ -368,6 +376,8 @@ static int mwl8787_read_data_sync(struct mwl8787_priv *priv, u8 *buffer,
 
 	if (claim)
 		sdio_release_host(func);
+
+	trace_mwl8787_sdio(priv, false, port, buffer, blk_cnt * blk_size);
 
 	return ret;
 }
