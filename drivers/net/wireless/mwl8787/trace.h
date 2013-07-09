@@ -26,6 +26,7 @@ TRACE_EVENT(mwl8787_sdio_reg,
 	TP_fast_assign(
 		__entry->priv = priv;
 		__entry->tx = tx;
+		__entry->port = port;
 		__entry->val = val;
 		__entry->ret = ret;
 	),
