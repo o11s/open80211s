@@ -163,7 +163,7 @@ int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv)
 	if (!cmd)
 		return -ENOMEM;
 
-	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
