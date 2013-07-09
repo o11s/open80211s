@@ -74,7 +74,7 @@ mwl8787_write_data_sync(struct mwl8787_priv *priv,
 				MWL8787_SDIO_BLOCK_SIZE) : pkt_len;
 	u32 ioport = (port & MWL8787_SDIO_IO_PORT_MASK);
 
-	trace_mwl8787_sdio(priv, true, port, buffer, blk_cnt * blk_size);
+	trace_mwl8787_sdio(priv, true, ioport, buffer, blk_cnt * blk_size);
 
 	sdio_claim_host(func);
 
@@ -376,7 +376,7 @@ static int mwl8787_read_data_sync(struct mwl8787_priv *priv, u8 *buffer,
 	if (claim)
 		sdio_release_host(func);
 
-	trace_mwl8787_sdio(priv, false, port, buffer, blk_cnt * blk_size);
+	trace_mwl8787_sdio(priv, false, ioport, buffer, blk_cnt * blk_size);
 
 	return ret;
 }
