@@ -186,6 +186,28 @@ int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control)
 	return ret;
 }
 
+int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_RF_CHANNEL,
+				sizeof(struct mwl8787_cmd_rf_channel),
+				GFP_KERNEL);
+
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.rf_channel.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.rf_channel.current_channel = cpu_to_le16(channel);
+
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
 int mwl8787_reset(struct mwl8787_priv *priv)
 {
 	int ret;

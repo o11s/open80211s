@@ -85,6 +85,7 @@ int mwl8787_reset(struct mwl8787_priv *priv);
 int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control);
 int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);
+int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);

@@ -275,6 +275,14 @@ static void mwl8787_remove_interface(struct ieee80211_hw *hw,
 
 static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 {
+	struct mwl8787_priv *priv = hw->priv;
+	u16 channel;
+
+	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
+		channel = hw->conf.chandef.chan->hw_value;
+		mwl8787_cmd_rf_channel(priv, channel);
+	}
+
 	return 0;
 }
 
