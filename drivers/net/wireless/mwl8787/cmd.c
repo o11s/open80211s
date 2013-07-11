@@ -167,6 +167,25 @@ int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv)
 	return ret;
 }
 
+int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_MAC_CTRL,
+				sizeof(struct mwl8787_cmd_mac_ctrl),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.mac_ctrl.control = cpu_to_le16(control);
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
 int mwl8787_reset(struct mwl8787_priv *priv)
 {
 	int ret;
