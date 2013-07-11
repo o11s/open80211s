@@ -156,12 +156,6 @@ int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 		if (ret)
 			return ret;
 	}
-
-	/* MAC Control must be the last command in init_fw */
-	/* set MAC Control */
-	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_MAC_CONTROL,
-				    HostCmd_ACT_GEN_SET, 0,
-				    &priv->curr_pkt_filter);
 #endif
 	return ret;
 }
@@ -289,7 +283,31 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 				     unsigned int *total_flags,
 				     u64 multicast)
 {
-	*total_flags = 0;
+	struct mwl8787_priv *priv = hw->priv;
+	int supported_flags = FIF_PROMISC_IN_BSS | FIF_ALLMULTI;
+
+	u16 filter = MWL8787_FIF_ENABLE_RX |
+		     MWL8787_FIF_ENABLE_TX |
+		     MWL8787_FIF_ENABLE_ETHERNETII;
+
+	/* TODO: some of these should likely set PROMISC
+	  FIF_FCSFAIL | FIF_PLCPFAIL | FIF_BCN_PRBRESP_PROMISC |
+	  FIF_CONTROL | FIF_OTHER_BSS | FIF_PSPOLL | FIF_PROBE_REQ
+	*/
+	changed_flags &= supported_flags;
+	*total_flags &= supported_flags;
+
+	if (*total_flags & FIF_PROMISC_IN_BSS) {
+		*total_flags &= ~FIF_PROMISC_IN_BSS;
+		filter |= MWL8787_FIF_ENABLE_PROMISC;
+	}
+
+	if (*total_flags & FIF_ALLMULTI) {
+		*total_flags &= ~FIF_ALLMULTI;
+		filter |= MWL8787_FIF_ENABLE_ALLMULTI;
+	}
+
+	mwl8787_cmd_mac_ctrl(priv, filter);
 }
 
 const struct ieee80211_ops mwl8787_ops = {
