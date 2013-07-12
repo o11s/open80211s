@@ -301,7 +301,8 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 
 	u16 filter = MWL8787_FIF_ENABLE_RX |
 		     MWL8787_FIF_ENABLE_TX |
-		     MWL8787_FIF_ENABLE_ETHERNETII;
+		     MWL8787_FIF_ENABLE_80211 |
+		     MWL8787_FIF_ENABLE_MGMT;
 
 	/* TODO: some of these should likely set PROMISC
 	  FIF_FCSFAIL | FIF_PLCPFAIL | FIF_BCN_PRBRESP_PROMISC |
