@@ -42,6 +42,17 @@
 #define MWL8787_CMD_SUCCESS			0x0
 #define MWL8787_CMD_FAIL			0x1
 
+#define MWL8787_ACTIVE_SCAN_TIME		30
+#define MWL8787_PASSIVE_SCAN_TIME		110
+
+#define MWL8787_BSS_MODE_ANY			3
+
+enum mwl8787_scan_type {
+	MWL8787_SCAN_TYPE_UNCHANGED	= 0,
+	MWL8787_SCAN_TYPE_ACTIVE	= 1,
+	MWL8787_SCAN_TYPE_PASSIVE	= 2,
+};
+
 enum mwl8787_filter_flags {
 	MWL8787_FIF_ENABLE_RX		= BIT(0),
 	MWL8787_FIF_ENABLE_TX		= BIT(1),
@@ -54,10 +65,16 @@ enum mwl8787_filter_flags {
 enum mwl8787_cmd_id {
 	MWL8787_CMD_HW_SPEC		= 0x0003,
 	MWL8787_CMD_RESET		= 0x0005,
+	MWL8787_CMD_SCAN		= 0x0006,
 	MWL8787_CMD_RF_CHANNEL		= 0x001d,
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
+};
+
+enum mwl8787_tlv_type {
+	MWL8787_TYPE_SSID		= WLAN_EID_SSID,
+	MWL8787_TYPE_CHANLIST		= 0x0100,
 };
 
 struct mwl8787_cmd_hw_spec {
@@ -139,6 +156,43 @@ struct mwl8787_cmd_header {
 	__le16 result;
 } __packed;
 
+struct mwl8787_tlv_header {
+	__le16 type;
+	__le16 len;
+} __packed;
+
+struct mwl8787_ssid_item {
+	struct mwl8787_tlv_header hdr;
+	u8 ssid[0];
+} __packed;
+
+struct mwl8787_channel_param {
+	u8 radio_type;
+	u8 channel;
+	u8 channel_scan_mode;
+	__le16 min_scan_time;
+	__le16 max_scan_time;
+} __packed;
+
+struct mwl8787_channel_list {
+	struct mwl8787_tlv_header hdr;
+	struct mwl8787_channel_param channels[0];
+} __packed;
+
+struct mwl8787_cmd_scan {
+	u8 bss_mode;
+	u8 bssid[ETH_ALEN];
+
+	/* bag of mwl8787_ssid_item and mwl8787_channel_list structs */
+	u8 data[0];
+} __packed;
+
+struct mwl8787_cmd_scan_resp {
+	__le16 bss_size;
+	u8 num;
+	u8 data[0];
+} __packed;
+
 struct mwl8787_cmd {
 	struct mwl8787_cmd_header hdr;
 	union {
@@ -152,6 +206,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_beacon_ctrl beacon_ctrl;
 		struct mwl8787_cmd_mode mode;
 		struct mwl8787_cmd_bssid bssid;
+		struct mwl8787_cmd_scan scan;
 		u8 data[0];
 	} u;
 } __packed;
