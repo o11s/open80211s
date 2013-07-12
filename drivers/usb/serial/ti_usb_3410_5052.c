@@ -101,6 +101,7 @@ static int ti_write(struct tty_struct *tty, struct usb_serial_port *port,
 		const unsigned char *data, int count);
 static int ti_write_room(struct tty_struct *tty);
 static int ti_chars_in_buffer(struct tty_struct *tty);
+static bool ti_tx_empty(struct usb_serial_port *port);
 static void ti_throttle(struct tty_struct *tty);
 static void ti_unthrottle(struct tty_struct *tty);
 static int ti_ioctl(struct tty_struct *tty,
@@ -171,7 +172,8 @@ static struct usb_device_id ti_id_table_3410[15+TI_EXTRA_VID_PID_COUNT+1] = {
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_4543_PRODUCT_ID) },
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_454B_PRODUCT_ID) },
 	{ USB_DEVICE(IBM_VENDOR_ID, IBM_454C_PRODUCT_ID) },
-	{ USB_DEVICE(ABBOTT_VENDOR_ID, ABBOTT_PRODUCT_ID) },
+	{ USB_DEVICE(ABBOTT_VENDOR_ID, ABBOTT_STEREO_PLUG_ID) },
+	{ USB_DEVICE(ABBOTT_VENDOR_ID, ABBOTT_STRIP_PORT_ID) },
 	{ USB_DEVICE(TI_VENDOR_ID, FRI2_PRODUCT_ID) },
 };
 
@@ -222,6 +224,7 @@ static struct usb_serial_driver ti_1port_device = {
 	.write			= ti_write,
 	.write_room		= ti_write_room,
 	.chars_in_buffer	= ti_chars_in_buffer,
+	.tx_empty		= ti_tx_empty,
 	.throttle		= ti_throttle,
 	.unthrottle		= ti_unthrottle,
 	.ioctl			= ti_ioctl,
@@ -253,6 +256,7 @@ static struct usb_serial_driver ti_2port_device = {
 	.write			= ti_write,
 	.write_room		= ti_write_room,
 	.chars_in_buffer	= ti_chars_in_buffer,
+	.tx_empty		= ti_tx_empty,
 	.throttle		= ti_throttle,
 	.unthrottle		= ti_unthrottle,
 	.ioctl			= ti_ioctl,
@@ -473,7 +477,7 @@ static int ti_open(struct tty_struct *tty, struct usb_serial_port *port)
 	if (mutex_lock_interruptible(&tdev->td_open_close_lock))
 		return -ERESTARTSYS;
 
-	port_number = port->number - port->serial->minor;
+	port_number = port->port_number;
 
 	tport->tp_msr = 0;
 	tport->tp_shadow_mcr |= (TI_MCR_RTS | TI_MCR_DTR);
@@ -615,7 +619,7 @@ static void ti_close(struct usb_serial_port *port)
 	kfifo_reset_out(&tport->write_fifo);
 	spin_unlock_irqrestore(&tport->tp_lock, flags);
 
-	port_number = port->number - port->serial->minor;
+	port_number = port->port_number;
 
 	dev_dbg(&port->dev, "%s - sending TI_CLOSE_PORT\n", __func__);
 	status = ti_command_out_sync(tdev, TI_CLOSE_PORT,
@@ -684,8 +688,6 @@ static int ti_chars_in_buffer(struct tty_struct *tty)
 	struct ti_port *tport = usb_get_serial_port_data(port);
 	int chars = 0;
 	unsigned long flags;
-	int ret;
-	u8 lsr;
 
 	if (tport == NULL)
 		return 0;
@@ -694,16 +696,22 @@ static int ti_chars_in_buffer(struct tty_struct *tty)
 	chars = kfifo_len(&tport->write_fifo);
 	spin_unlock_irqrestore(&tport->tp_lock, flags);
 
-	if (!chars) {
-		ret = ti_get_lsr(tport, &lsr);
-		if (!ret && !(lsr & TI_LSR_TX_EMPTY))
-			chars = 1;
-	}
-
 	dev_dbg(&port->dev, "%s - returns %d\n", __func__, chars);
 	return chars;
 }
 
+static bool ti_tx_empty(struct usb_serial_port *port)
+{
+	struct ti_port *tport = usb_get_serial_port_data(port);
+	int ret;
+	u8 lsr;
+
+	ret = ti_get_lsr(tport, &lsr);
+	if (!ret && !(lsr & TI_LSR_TX_EMPTY))
+		return false;
+
+	return true;
+}
 
 static void ti_throttle(struct tty_struct *tty)
 {
@@ -769,7 +777,7 @@ static void ti_set_termios(struct tty_struct *tty,
 	tcflag_t cflag, iflag;
 	int baud;
 	int status;
-	int port_number = port->number - port->serial->minor;
+	int port_number = port->port_number;
 	unsigned int mcr;
 
 	cflag = tty->termios.c_cflag;
@@ -1255,7 +1263,7 @@ static int ti_get_lsr(struct ti_port *tport, u8 *lsr)
 	int size, status;
 	struct ti_device *tdev = tport->tp_tdev;
 	struct usb_serial_port *port = tport->tp_port;
-	int port_number = port->number - port->serial->minor;
+	int port_number = port->port_number;
 	struct ti_port_status *data;
 
 	size = sizeof(struct ti_port_status);
@@ -1301,8 +1309,8 @@ static int ti_get_serial_info(struct ti_port *tport,
 	memset(&ret_serial, 0, sizeof(ret_serial));
 
 	ret_serial.type = PORT_16550A;
-	ret_serial.line = port->serial->minor;
-	ret_serial.port = port->number - port->serial->minor;
+	ret_serial.line = port->minor;
+	ret_serial.port = port->port_number;
 	ret_serial.flags = tport->tp_flags;
 	ret_serial.xmit_fifo_size = TI_WRITE_BUF_SIZE;
 	ret_serial.baud_base = tport->tp_tdev->td_is_3410 ? 921600 : 460800;

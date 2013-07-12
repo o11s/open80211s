@@ -254,8 +254,6 @@ static int nop_usb_xceiv_remove(struct platform_device *pdev)
 
 	usb_remove_phy(&nop->phy);
 
-	platform_set_drvdata(pdev, NULL);
-
 	return 0;
 }
 
@@ -272,7 +270,7 @@ static struct platform_driver nop_usb_xceiv_driver = {
 	.driver		= {
 		.name	= "nop_usb_xceiv",
 		.owner	= THIS_MODULE,
-		.of_match_table = of_match_ptr(nop_xceiv_dt_ids),
+		.of_match_table = nop_xceiv_dt_ids,
 	},
 };
 

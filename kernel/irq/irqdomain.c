@@ -16,12 +16,6 @@
 #include <linux/smp.h>
 #include <linux/fs.h>
 
-#define IRQ_DOMAIN_MAP_LEGACY 0 /* driver allocated fixed range of irqs.
-				 * ie. legacy 8259, gets irqs 1..15 */
-#define IRQ_DOMAIN_MAP_NOMAP 1 /* no fast reverse mapping */
-#define IRQ_DOMAIN_MAP_LINEAR 2 /* linear map of interrupts */
-#define IRQ_DOMAIN_MAP_TREE 3 /* radix tree */
-
 static LIST_HEAD(irq_domain_list);
 static DEFINE_MUTEX(irq_domain_mutex);
 
@@ -143,7 +137,10 @@ static unsigned int irq_domain_legacy_revmap(struct irq_domain *domain,
  * irq_domain_add_simple() - Allocate and register a simple irq_domain.
  * @of_node: pointer to interrupt controller's device tree node.
  * @size: total number of irqs in mapping
- * @first_irq: first number of irq block assigned to the domain
+ * @first_irq: first number of irq block assigned to the domain,
+ *	pass zero to assign irqs on-the-fly. This will result in a
+ *	linear IRQ domain so it is important to use irq_create_mapping()
+ *	for each used IRQ, especially when SPARSE_IRQ is enabled.
  * @ops: map/unmap domain callbacks
  * @host_data: Controller private data pointer
  *
@@ -191,6 +188,7 @@ struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
 	/* A linear domain is the default */
 	return irq_domain_add_linear(of_node, size, ops, host_data);
 }
+EXPORT_SYMBOL_GPL(irq_domain_add_simple);
 
 /**
  * irq_domain_add_legacy() - Allocate and register a legacy revmap irq_domain.
@@ -397,11 +395,12 @@ static void irq_domain_disassociate_many(struct irq_domain *domain,
 	while (count--) {
 		int irq = irq_base + count;
 		struct irq_data *irq_data = irq_get_irq_data(irq);
-		irq_hw_number_t hwirq = irq_data->hwirq;
+		irq_hw_number_t hwirq;
 
 		if (WARN_ON(!irq_data || irq_data->domain != domain))
 			continue;
 
+		hwirq = irq_data->hwirq;
 		irq_set_status_flags(irq, IRQ_NOREQUEST);
 
 		/* remove chip and handler */
@@ -693,7 +692,7 @@ unsigned int irq_create_of_mapping(struct device_node *controller,
 
 	/* Set type if specified and different than the current one */
 	if (type != IRQ_TYPE_NONE &&
-	    type != (irqd_get_trigger_type(irq_get_irq_data(virq))))
+	    type != irq_get_trigger_type(virq))
 		irq_set_irq_type(virq, type);
 	return virq;
 }

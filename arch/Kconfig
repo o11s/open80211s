@@ -213,6 +213,9 @@ config USE_GENERIC_SMP_HELPERS
 config GENERIC_SMP_IDLE_THREAD
        bool
 
+config GENERIC_IDLE_POLL_SETUP
+       bool
+
 # Select if arch init_task initializer is different to init/init_task.c
 config ARCH_INIT_TASK
        bool
@@ -360,6 +363,9 @@ config HAVE_IRQ_TIME_ACCOUNTING
 	  support irq time accounting and then call enable_sched_clock_irqtime().
 
 config HAVE_ARCH_TRANSPARENT_HUGEPAGE
+	bool
+
+config HAVE_ARCH_SOFT_DIRTY
 	bool
 
 config HAVE_MOD_ARCH_SPECIFIC

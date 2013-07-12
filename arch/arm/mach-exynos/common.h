@@ -19,9 +19,7 @@ void exynos_init_time(void);
 extern unsigned long xxti_f, xusbxti_f;
 
 struct map_desc;
-void exynos_init_io(struct map_desc *mach_desc, int size);
-void exynos4_init_irq(void);
-void exynos5_init_irq(void);
+void exynos_init_io(void);
 void exynos4_restart(char mode, const char *cmd);
 void exynos5_restart(char mode, const char *cmd);
 void exynos_init_late(void);
@@ -31,6 +29,8 @@ void exynos4_clk_init(struct device_node *np, int is_exynos4210, void __iomem *r
 void exynos4_clk_register_fixed_ext(unsigned long, unsigned long);
 
 void exynos_firmware_init(void);
+
+void exynos_set_timer_source(u8 channels);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 int exynos_pm_late_initcall(void);

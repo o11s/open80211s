@@ -22,6 +22,9 @@ config GENERIC_STRNCPY_FROM_USER
 config GENERIC_STRNLEN_USER
 	bool
 
+config GENERIC_NET_UTILS
+	bool
+
 config GENERIC_FIND_FIRST_BIT
 	bool
 
@@ -406,5 +409,7 @@ config OID_REGISTRY
 
 config UCS2_STRING
         tristate
+
+source "lib/fonts/Kconfig"
 
 endmenu

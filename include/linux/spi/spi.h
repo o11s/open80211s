@@ -57,7 +57,7 @@ extern struct bus_type spi_bus_type;
  * @modalias: Name of the driver to use with this device, or an alias
  *	for that name.  This appears in the sysfs "modalias" attribute
  *	for driver coldplugging, and in uevents used for hotplugging
- * @cs_gpio: gpio number of the chipselect line (optional, -EINVAL when
+ * @cs_gpio: gpio number of the chipselect line (optional, -ENOENT when
  *	when not using a GPIO line)
  *
  * A @spi_device is used to interchange data between an SPI slave
@@ -266,7 +266,7 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  *	queue so the subsystem notifies the driver that it may relax the
  *	hardware by issuing this call
  * @cs_gpios: Array of GPIOs to use as chip select lines; one per CS
- *	number. Any individual value may be -EINVAL for CS lines that
+ *	number. Any individual value may be -ENOENT for CS lines that
  *	are not GPIOs (driven by the SPI controller itself).
  *
  * Each SPI master controller can communicate with one or more @spi_device
@@ -308,6 +308,9 @@ struct spi_master {
 
 	/* bitmask of supported bits_per_word for transfers */
 	u32			bits_per_word_mask;
+#define SPI_BPW_MASK(bits) BIT((bits) - 1)
+#define SPI_BIT_MASK(bits) (((bits) == 32) ? ~0UL : (BIT(bits) - 1))
+#define SPI_BPW_RANGE_MASK(min, max) (SPI_BIT_MASK(max) - SPI_BIT_MASK(min - 1))
 
 	/* other constraints relevant to this driver */
 	u16			flags;

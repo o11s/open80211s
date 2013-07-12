@@ -274,7 +274,7 @@ static int max8998_rtc_probe(struct platform_device *pdev)
 	if (IS_ERR(info->rtc_dev)) {
 		ret = PTR_ERR(info->rtc_dev);
 		dev_err(&pdev->dev, "Failed to register RTC device: %d\n", ret);
-		goto out_rtc;
+		return ret;
 	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, info->irq, NULL,
@@ -285,21 +285,12 @@ static int max8998_rtc_probe(struct platform_device *pdev)
 			info->irq, ret);
 
 	dev_info(&pdev->dev, "RTC CHIP NAME: %s\n", pdev->id_entry->name);
-	if (pdata->rtc_delay) {
+	if (pdata && pdata->rtc_delay) {
 		info->lp3974_bug_workaround = true;
 		dev_warn(&pdev->dev, "LP3974 with RTC REGERR option."
 				" RTC updates will be extremely slow.\n");
 	}
 
-	return 0;
-
-out_rtc:
-	platform_set_drvdata(pdev, NULL);
-	return ret;
-}
-
-static int max8998_rtc_remove(struct platform_device *pdev)
-{
 	return 0;
 }
 
@@ -315,7 +306,6 @@ static struct platform_driver max8998_rtc_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe		= max8998_rtc_probe,
-	.remove		= max8998_rtc_remove,
 	.id_table	= max8998_rtc_id,
 };
 

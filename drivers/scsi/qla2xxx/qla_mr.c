@@ -148,9 +148,6 @@ qlafx00_mailbox_command(scsi_qla_host_t *vha, struct mbx_cmd_32 *mcp)
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
 		wait_for_completion_timeout(&ha->mbx_intr_comp, mcp->tov * HZ);
-
-		clear_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags);
-
 	} else {
 		ql_dbg(ql_dbg_mbx, vha, 0x112c,
 		    "Cmd=%x Polling Mode.\n", command);
@@ -2934,13 +2931,10 @@ qlafx00_intr_handler(int irq, void *dev_id)
 		QLAFX00_CLR_INTR_REG(ha, clr_intr);
 		QLAFX00_RD_INTR_REG(ha);
 	}
+
+	qla2x00_handle_mbx_completion(ha, status);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 
-	if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags) &&
-	    (status & MBX_INTERRUPT) && ha->flags.mbox_int) {
-		set_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
-		complete(&ha->mbx_intr_comp);
-	}
 	return IRQ_HANDLED;
 }
 
@@ -3003,12 +2997,10 @@ qlafx00_build_scsi_iocbs(srb_t *sp, struct cmd_type_7_fx00 *cmd_pkt,
 
 	/* Set transfer direction */
 	if (cmd->sc_data_direction == DMA_TO_DEVICE) {
-		lcmd_pkt->cntrl_flags =
-		    __constant_cpu_to_le16(TMF_WRITE_DATA);
+		lcmd_pkt->cntrl_flags = TMF_WRITE_DATA;
 		vha->qla_stats.output_bytes += scsi_bufflen(cmd);
 	} else if (cmd->sc_data_direction == DMA_FROM_DEVICE) {
-		lcmd_pkt->cntrl_flags =
-		    __constant_cpu_to_le16(TMF_READ_DATA);
+		lcmd_pkt->cntrl_flags = TMF_READ_DATA;
 		vha->qla_stats.input_bytes += scsi_bufflen(cmd);
 	}
 

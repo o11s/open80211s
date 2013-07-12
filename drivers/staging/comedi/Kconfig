@@ -110,15 +110,6 @@ menuconfig COMEDI_ISA_DRIVERS
 
 if COMEDI_ISA_DRIVERS
 
-config COMEDI_ACL7225B
-	tristate "ADlink NuDAQ ACL-7225b and compatibles support"
-	---help---
-	  Enable support for ADlink NuDAQ ACL-7225b and compatibles,
-	  ADlink ACL-7225b (acl7225b), ICP P16R16DIO (p16r16dio)
-
-	  To compile this driver as a module, choose M here: the module will be
-	  called acl7225b.
-
 config COMEDI_PCL711
 	tristate "Advantech PCL-711/711b and ADlink ACL-8112 ISA card support"
 	---help---
@@ -137,14 +128,6 @@ config COMEDI_PCL724
 	  To compile this driver as a module, choose M here: the module will be
 	  called pcl724.
 
-config COMEDI_PCL725
-	tristate "Advantech PCL-725 and compatible ISA card support"
-	---help---
-	  Enable support for Advantech PCL-725 and compatible ISA cards.
-
-	  To compile this driver as a module, choose M here: the module will be
-	  called pcl725.
-
 config COMEDI_PCL726
 	tristate "Advantech PCL-726 and compatible ISA card support"
 	---help---
@@ -154,10 +137,21 @@ config COMEDI_PCL726
 	  called pcl726.
 
 config COMEDI_PCL730
-	tristate "Advantech PCL-730 and ADlink ACL-7130 ISA card support"
+	tristate "Simple Digital I/O board support (8-bit ports)"
 	---help---
-	  Enable support for Advantech PCL-730, ICP ISO-730 and ADlink
-	  ACL-7130 ISA cards
+	  Enable support for various simple ISA or PC/104 Digital I/O boards.
+	  These boards all use 8-bit I/O ports.
+
+	  Advantech PCL-730   isolated - 16 in/16 out  ttl - 16 in/16 out
+	  ICP ISO-730         isolated - 16 in/16 out  ttl - 16 in/16 out
+	  ADlink ACL-7130     isolated - 16 in/16 out  ttl - 16 in/16 out
+	  Advantech PCM-3730  isolated - 8 in/8 out    ttl - 16 in/16 out
+	  Advantech PCL-725   isolated - 8 in/8 out
+	  ICP P8R8-DIO        isolated - 8 in/8 out
+	  ADlink ACL-7225b    isolated - 16 in/16 out
+	  ICP P16R16-DIO      isolated - 16 in/16 out
+	  Advantech PCL-733   isolated - 32 in
+	  Advantech PCL-734   isolated - 32 out
 
 	  To compile this driver as a module, choose M here: the module will be
 	  called pcl730.
@@ -200,14 +194,6 @@ config COMEDI_PCM3724
 
 	  To compile this driver as a module, choose M here: the module will be
 	  called pcm3724.
-
-config COMEDI_PCM3730
-	tristate "Advantech PCM-3730 and clone PC/104 board support"
-	---help---
-	  Enable support for Advantech PCM-3730 and clone PC/104 boards
-
-	  To compile this driver as a module, choose M here: the module will be
-	  called pcm3730.
 
 config COMEDI_AMPLC_DIO200_ISA
 	tristate "Amplicon PC212E/PC214E/PC215E/PC218E/PC272E"
@@ -543,11 +529,18 @@ config COMEDI_POC
 	tristate "Generic driver for very simple devices"
 	---help---
 	  Enable generic support for very simple / POC (Piece of Crap) boards,
-	  Keithley Metrabyte DAC-02 (dac02), Advantech PCL-733 (pcl733) and
-	  PCL-734 (pcl734)
+	  Keithley Metrabyte DAC-02 (dac02).
 
 	  To compile this driver as a module, choose M here: the module will be
 	  called poc.
+
+config COMEDI_S526
+	tristate "Sensoray s526 support"
+	---help---
+	  Enable support for Sensoray s526
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called s526.
 
 endif # COMEDI_ISA_DRIVERS
 
@@ -981,6 +974,7 @@ config COMEDI_ME_DAQ
 
 config COMEDI_NI_6527
 	tristate "NI 6527 support"
+	depends on HAS_DMA
 	select COMEDI_MITE
 	---help---
 	  Enable support for the National Instruments 6527 PCI card
@@ -990,6 +984,7 @@ config COMEDI_NI_6527
 
 config COMEDI_NI_65XX
 	tristate "NI 65xx static dio PCI card support"
+	depends on HAS_DMA
 	select COMEDI_MITE
 	---help---
 	  Enable support for National Instruments 65xx static dio boards.
@@ -1003,6 +998,7 @@ config COMEDI_NI_65XX
 
 config COMEDI_NI_660X
 	tristate "NI 660x counter/timer PCI card support"
+	depends on HAS_DMA
 	select COMEDI_NI_TIOCMD
 	---help---
 	  Enable support for National Instruments PCI-6601 (ni_660x), PCI-6602,
@@ -1013,6 +1009,7 @@ config COMEDI_NI_660X
 
 config COMEDI_NI_670X
 	tristate "NI 670x PCI card support"
+	depends on HAS_DMA
 	select COMEDI_MITE
 	---help---
 	  Enable support for National Instruments PCI-6703 and PCI-6704
@@ -1022,6 +1019,7 @@ config COMEDI_NI_670X
 
 config COMEDI_NI_LABPC_PCI
 	tristate "NI Lab-PC PCI-1200 support"
+	depends on HAS_DMA
 	select COMEDI_NI_LABPC
 	select COMEDI_MITE
 	---help---
@@ -1032,6 +1030,7 @@ config COMEDI_NI_LABPC_PCI
 
 config COMEDI_NI_PCIDIO
 	tristate "NI PCI-DIO32HS, PCI-6533, PCI-6534 support"
+	depends on HAS_DMA
 	select COMEDI_MITE
 	select COMEDI_8255
 	---help---
@@ -1043,6 +1042,7 @@ config COMEDI_NI_PCIDIO
 
 config COMEDI_NI_PCIMIO
 	tristate "NI PCI-MIO-E series and M series support"
+	depends on HAS_DMA
 	select COMEDI_NI_TIOCMD
 	select COMEDI_8255
 	select COMEDI_FC
@@ -1069,14 +1069,6 @@ config COMEDI_RTD520
 	  To compile this driver as a module, choose M here: the module will be
 	  called rtd520.
 
-config COMEDI_S526
-	tristate "Sensoray s526 support"
-	---help---
-	  Enable support for Sensoray s526
-
-	  To compile this driver as a module, choose M here: the module will be
-	  called s526.
-
 config COMEDI_S626
 	tristate "Sensoray 626 support"
 	select COMEDI_FC
@@ -1095,10 +1087,12 @@ config COMEDI_SSV_DNP
 	  called ssv_dnp.
 
 config COMEDI_MITE
+	depends on HAS_DMA
 	tristate
 
 config COMEDI_NI_TIOCMD
 	tristate
+	depends on HAS_DMA
 	select COMEDI_NI_TIO
 	select COMEDI_MITE
 

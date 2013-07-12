@@ -435,7 +435,7 @@ static const struct dev_pm_ops i2c_device_pm_ops = {
 	SET_RUNTIME_PM_OPS(
 		pm_generic_runtime_suspend,
 		pm_generic_runtime_resume,
-		pm_generic_runtime_idle
+		NULL
 	)
 };
 
@@ -892,7 +892,8 @@ i2c_sysfs_delete_device(struct device *dev, struct device_attribute *attr,
 }
 
 static DEVICE_ATTR(new_device, S_IWUSR, NULL, i2c_sysfs_new_device);
-static DEVICE_ATTR(delete_device, S_IWUSR, NULL, i2c_sysfs_delete_device);
+static DEVICE_ATTR_IGNORE_LOCKDEP(delete_device, S_IWUSR, NULL,
+				   i2c_sysfs_delete_device);
 
 static struct attribute *i2c_adapter_attrs[] = {
 	&dev_attr_name.attr,

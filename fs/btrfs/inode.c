@@ -715,8 +715,10 @@ retry:
 					async_extent->ram_size - 1, 0);
 
 		em = alloc_extent_map();
-		if (!em)
+		if (!em) {
+			ret = -ENOMEM;
 			goto out_free_reserve;
+		}
 		em->start = async_extent->start;
 		em->len = async_extent->ram_size;
 		em->orig_start = em->start;
@@ -923,8 +925,10 @@ static noinline int __cow_file_range(struct btrfs_trans_handle *trans,
 		}
 
 		em = alloc_extent_map();
-		if (!em)
+		if (!em) {
+			ret = -ENOMEM;
 			goto out_reserve;
+		}
 		em->start = start;
 		em->orig_start = em->start;
 		ram_size = ins.offset;
@@ -4724,6 +4728,7 @@ void btrfs_evict_inode(struct inode *inode)
 	btrfs_end_transaction(trans, root);
 	btrfs_btree_balance_dirty(root);
 no_delete:
+	btrfs_remove_delayed_node(inode);
 	clear_inode(inode);
 	return;
 }
@@ -4839,14 +4844,13 @@ static void inode_tree_add(struct inode *inode)
 	struct rb_node **p;
 	struct rb_node *parent;
 	u64 ino = btrfs_ino(inode);
-again:
-	p = &root->inode_tree.rb_node;
-	parent = NULL;
 
 	if (inode_unhashed(inode))
 		return;
-
+again:
+	parent = NULL;
 	spin_lock(&root->inode_lock);
+	p = &root->inode_tree.rb_node;
 	while (*p) {
 		parent = *p;
 		entry = rb_entry(parent, struct btrfs_inode, rb_node);
@@ -5133,10 +5137,9 @@ unsigned char btrfs_filetype_table[] = {
 	DT_UNKNOWN, DT_REG, DT_DIR, DT_CHR, DT_BLK, DT_FIFO, DT_SOCK, DT_LNK
 };
 
-static int btrfs_real_readdir(struct file *filp, void *dirent,
-			      filldir_t filldir)
+static int btrfs_real_readdir(struct file *file, struct dir_context *ctx)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(file);
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_item *item;
 	struct btrfs_dir_item *di;
@@ -5157,29 +5160,15 @@ static int btrfs_real_readdir(struct file *filp, void *dirent,
 	char tmp_name[32];
 	char *name_ptr;
 	int name_len;
-	int is_curr = 0;	/* filp->f_pos points to the current index? */
+	int is_curr = 0;	/* ctx->pos points to the current index? */
 
 	/* FIXME, use a real flag for deciding about the key type */
 	if (root->fs_info->tree_root == root)
 		key_type = BTRFS_DIR_ITEM_KEY;
 
-	/* special case for "." */
-	if (filp->f_pos == 0) {
-		over = filldir(dirent, ".", 1,
-			       filp->f_pos, btrfs_ino(inode), DT_DIR);
-		if (over)
-			return 0;
-		filp->f_pos = 1;
-	}
-	/* special case for .., just use the back ref */
-	if (filp->f_pos == 1) {
-		u64 pino = parent_ino(filp->f_path.dentry);
-		over = filldir(dirent, "..", 2,
-			       filp->f_pos, pino, DT_DIR);
-		if (over)
-			return 0;
-		filp->f_pos = 2;
-	}
+	if (!dir_emit_dots(file, ctx))
+		return 0;
+
 	path = btrfs_alloc_path();
 	if (!path)
 		return -ENOMEM;
@@ -5193,7 +5182,7 @@ static int btrfs_real_readdir(struct file *filp, void *dirent,
 	}
 
 	btrfs_set_key_type(&key, key_type);
-	key.offset = filp->f_pos;
+	key.offset = ctx->pos;
 	key.objectid = btrfs_ino(inode);
 
 	ret = btrfs_search_slot(NULL, root, &key, path, 0, 0);
@@ -5219,14 +5208,14 @@ static int btrfs_real_readdir(struct file *filp, void *dirent,
 			break;
 		if (btrfs_key_type(&found_key) != key_type)
 			break;
-		if (found_key.offset < filp->f_pos)
+		if (found_key.offset < ctx->pos)
 			goto next;
 		if (key_type == BTRFS_DIR_INDEX_KEY &&
 		    btrfs_should_delete_dir_index(&del_list,
 						  found_key.offset))
 			goto next;
 
-		filp->f_pos = found_key.offset;
+		ctx->pos = found_key.offset;
 		is_curr = 1;
 
 		di = btrfs_item_ptr(leaf, slot, struct btrfs_dir_item);
@@ -5270,9 +5259,8 @@ static int btrfs_real_readdir(struct file *filp, void *dirent,
 				over = 0;
 				goto skip;
 			}
-			over = filldir(dirent, name_ptr, name_len,
-				       found_key.offset, location.objectid,
-				       d_type);
+			over = !dir_emit(ctx, name_ptr, name_len,
+				       location.objectid, d_type);
 
 skip:
 			if (name_ptr != tmp_name)
@@ -5291,9 +5279,8 @@ next:
 
 	if (key_type == BTRFS_DIR_INDEX_KEY) {
 		if (is_curr)
-			filp->f_pos++;
-		ret = btrfs_readdir_delayed_dir_index(filp, dirent, filldir,
-						      &ins_list);
+			ctx->pos++;
+		ret = btrfs_readdir_delayed_dir_index(ctx, &ins_list);
 		if (ret)
 			goto nopos;
 	}
@@ -5304,9 +5291,9 @@ next:
 		 * 32-bit glibc will use getdents64, but then strtol -
 		 * so the last number we can serve is this.
 		 */
-		filp->f_pos = 0x7fffffff;
+		ctx->pos = 0x7fffffff;
 	else
-		filp->f_pos++;
+		ctx->pos++;
 nopos:
 	ret = 0;
 err:
@@ -6928,7 +6915,11 @@ struct btrfs_dio_private {
 	/* IO errors */
 	int errors;
 
+	/* orig_bio is our btrfs_io_bio */
 	struct bio *orig_bio;
+
+	/* dio_bio came from fs/direct-io.c */
+	struct bio *dio_bio;
 };
 
 static void btrfs_endio_direct_read(struct bio *bio, int err)
@@ -6938,6 +6929,7 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 	struct bio_vec *bvec = bio->bi_io_vec;
 	struct inode *inode = dip->inode;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
+	struct bio *dio_bio;
 	u64 start;
 
 	start = dip->logical_offset;
@@ -6977,14 +6969,15 @@ failed:
 
 	unlock_extent(&BTRFS_I(inode)->io_tree, dip->logical_offset,
 		      dip->logical_offset + dip->bytes - 1);
-	bio->bi_private = dip->private;
+	dio_bio = dip->dio_bio;
 
 	kfree(dip);
 
 	/* If we had a csum failure make sure to clear the uptodate flag */
 	if (err)
-		clear_bit(BIO_UPTODATE, &bio->bi_flags);
-	dio_end_io(bio, err);
+		clear_bit(BIO_UPTODATE, &dio_bio->bi_flags);
+	dio_end_io(dio_bio, err);
+	bio_put(bio);
 }
 
 static void btrfs_endio_direct_write(struct bio *bio, int err)
@@ -6995,6 +6988,7 @@ static void btrfs_endio_direct_write(struct bio *bio, int err)
 	struct btrfs_ordered_extent *ordered = NULL;
 	u64 ordered_offset = dip->logical_offset;
 	u64 ordered_bytes = dip->bytes;
+	struct bio *dio_bio;
 	int ret;
 
 	if (err)
@@ -7022,14 +7016,15 @@ out_test:
 		goto again;
 	}
 out_done:
-	bio->bi_private = dip->private;
+	dio_bio = dip->dio_bio;
 
 	kfree(dip);
 
 	/* If we had an error make sure to clear the uptodate flag */
 	if (err)
-		clear_bit(BIO_UPTODATE, &bio->bi_flags);
-	dio_end_io(bio, err);
+		clear_bit(BIO_UPTODATE, &dio_bio->bi_flags);
+	dio_end_io(dio_bio, err);
+	bio_put(bio);
 }
 
 static int __btrfs_submit_bio_start_direct_io(struct inode *inode, int rw,
@@ -7065,10 +7060,10 @@ static void btrfs_end_dio_bio(struct bio *bio, int err)
 	if (!atomic_dec_and_test(&dip->pending_bios))
 		goto out;
 
-	if (dip->errors)
+	if (dip->errors) {
 		bio_io_error(dip->orig_bio);
-	else {
-		set_bit(BIO_UPTODATE, &dip->orig_bio->bi_flags);
+	} else {
+		set_bit(BIO_UPTODATE, &dip->dio_bio->bi_flags);
 		bio_endio(dip->orig_bio, 0);
 	}
 out:
@@ -7243,25 +7238,34 @@ out_err:
 	return 0;
 }
 
-static void btrfs_submit_direct(int rw, struct bio *bio, struct inode *inode,
-				loff_t file_offset)
+static void btrfs_submit_direct(int rw, struct bio *dio_bio,
+				struct inode *inode, loff_t file_offset)
 {
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	struct btrfs_dio_private *dip;
-	struct bio_vec *bvec = bio->bi_io_vec;
+	struct bio_vec *bvec = dio_bio->bi_io_vec;
+	struct bio *io_bio;
 	int skip_sum;
 	int write = rw & REQ_WRITE;
 	int ret = 0;
 
 	skip_sum = BTRFS_I(inode)->flags & BTRFS_INODE_NODATASUM;
 
-	dip = kmalloc(sizeof(*dip), GFP_NOFS);
-	if (!dip) {
+	io_bio = btrfs_bio_clone(dio_bio, GFP_NOFS);
+
+	if (!io_bio) {
 		ret = -ENOMEM;
 		goto free_ordered;
 	}
 
-	dip->private = bio->bi_private;
+	dip = kmalloc(sizeof(*dip), GFP_NOFS);
+	if (!dip) {
+		ret = -ENOMEM;
+		goto free_io_bio;
+	}
+
+	dip->private = dio_bio->bi_private;
+	io_bio->bi_private = dio_bio->bi_private;
 	dip->inode = inode;
 	dip->logical_offset = file_offset;
 
@@ -7269,22 +7273,27 @@ static void btrfs_submit_direct(int rw, struct bio *bio, struct inode *inode,
 	do {
 		dip->bytes += bvec->bv_len;
 		bvec++;
-	} while (bvec <= (bio->bi_io_vec + bio->bi_vcnt - 1));
+	} while (bvec <= (dio_bio->bi_io_vec + dio_bio->bi_vcnt - 1));
 
-	dip->disk_bytenr = (u64)bio->bi_sector << 9;
-	bio->bi_private = dip;
+	dip->disk_bytenr = (u64)dio_bio->bi_sector << 9;
+	io_bio->bi_private = dip;
 	dip->errors = 0;
-	dip->orig_bio = bio;
+	dip->orig_bio = io_bio;
+	dip->dio_bio = dio_bio;
 	atomic_set(&dip->pending_bios, 0);
 
 	if (write)
-		bio->bi_end_io = btrfs_endio_direct_write;
+		io_bio->bi_end_io = btrfs_endio_direct_write;
 	else
-		bio->bi_end_io = btrfs_endio_direct_read;
+		io_bio->bi_end_io = btrfs_endio_direct_read;
 
 	ret = btrfs_submit_direct_hook(rw, dip, skip_sum);
 	if (!ret)
 		return;
+
+free_io_bio:
+	bio_put(io_bio);
+
 free_ordered:
 	/*
 	 * If this is a write, we need to clean up the reserved space and kill
@@ -7300,7 +7309,7 @@ free_ordered:
 		btrfs_put_ordered_extent(ordered);
 		btrfs_put_ordered_extent(ordered);
 	}
-	bio_endio(bio, ret);
+	bio_endio(dio_bio, ret);
 }
 
 static ssize_t check_direct_IO(struct btrfs_root *root, int rw, struct kiocb *iocb,
@@ -7484,7 +7493,8 @@ static int btrfs_releasepage(struct page *page, gfp_t gfp_flags)
 	return __btrfs_releasepage(page, gfp_flags & GFP_NOFS);
 }
 
-static void btrfs_invalidatepage(struct page *page, unsigned long offset)
+static void btrfs_invalidatepage(struct page *page, unsigned int offset,
+				 unsigned int length)
 {
 	struct inode *inode = page->mapping->host;
 	struct extent_io_tree *tree;
@@ -7979,13 +7989,15 @@ void btrfs_destroy_inode(struct inode *inode)
 	inode_tree_del(inode);
 	btrfs_drop_extent_cache(inode, 0, (u64)-1, 0);
 free:
-	btrfs_remove_delayed_node(inode);
 	call_rcu(&inode->i_rcu, btrfs_i_callback);
 }
 
 int btrfs_drop_inode(struct inode *inode)
 {
 	struct btrfs_root *root = BTRFS_I(inode)->root;
+
+	if (root == NULL)
+		return 1;
 
 	/* the snap/subvol tree is on deleting */
 	if (btrfs_root_refs(&root->root_item) == 0 &&
@@ -8703,7 +8715,7 @@ static const struct inode_operations btrfs_dir_ro_inode_operations = {
 static const struct file_operations btrfs_dir_file_operations = {
 	.llseek		= generic_file_llseek,
 	.read		= generic_read_dir,
-	.readdir	= btrfs_real_readdir,
+	.iterate	= btrfs_real_readdir,
 	.unlocked_ioctl	= btrfs_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= btrfs_ioctl,

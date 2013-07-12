@@ -133,6 +133,9 @@ static void parse_user_hints(struct hda_codec *codec)
 	val = snd_hda_get_bool_hint(codec, "line_in_auto_switch");
 	if (val >= 0)
 		spec->line_in_auto_switch = !!val;
+	val = snd_hda_get_bool_hint(codec, "auto_mute_via_amp");
+	if (val >= 0)
+		spec->auto_mute_via_amp = !!val;
 	val = snd_hda_get_bool_hint(codec, "need_dac_fix");
 	if (val >= 0)
 		spec->need_dac_fix = !!val;
@@ -606,6 +609,10 @@ static bool is_active_nid(struct hda_codec *codec, hda_nid_t nid,
 	return false;
 }
 
+/* check whether the NID is referred by any active paths */
+#define is_active_nid_for_any(codec, nid) \
+	is_active_nid(codec, nid, HDA_OUTPUT, 0)
+
 /* get the default amp value for the target state */
 static int get_amp_val_to_activate(struct hda_codec *codec, hda_nid_t nid,
 				   int dir, unsigned int caps, bool enable)
@@ -759,7 +766,8 @@ static void path_power_down_sync(struct hda_codec *codec, struct nid_path *path)
 
 	for (i = 0; i < path->depth; i++) {
 		hda_nid_t nid = path->path[i];
-		if (!snd_hda_check_power_state(codec, nid, AC_PWRST_D3)) {
+		if (!snd_hda_check_power_state(codec, nid, AC_PWRST_D3) &&
+		    !is_active_nid_for_any(codec, nid)) {
 			snd_hda_codec_write(codec, nid, 0,
 					    AC_VERB_SET_POWER_STATE,
 					    AC_PWRST_D3);
@@ -783,6 +791,8 @@ static void set_pin_eapd(struct hda_codec *codec, hda_nid_t pin, bool enable)
 		return;
 	if (codec->inv_eapd)
 		enable = !enable;
+	if (spec->keep_eapd_on && !enable)
+		return;
 	snd_hda_codec_update_cache(codec, pin, 0,
 				   AC_VERB_SET_EAPD_BTLENABLE,
 				   enable ? 0x02 : 0x00);
@@ -801,6 +811,9 @@ static void resume_path_from_idx(struct hda_codec *codec, int path_idx)
  * Helper functions for creating mixer ctl elements
  */
 
+static int hda_gen_mixer_mute_put(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol);
+
 enum {
 	HDA_CTL_WIDGET_VOL,
 	HDA_CTL_WIDGET_MUTE,
@@ -808,7 +821,15 @@ enum {
 };
 static const struct snd_kcontrol_new control_templates[] = {
 	HDA_CODEC_VOLUME(NULL, 0, 0, 0),
-	HDA_CODEC_MUTE(NULL, 0, 0, 0),
+	/* only the put callback is replaced for handling the special mute */
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.subdevice = HDA_SUBDEV_AMP_FLAG,
+		.info = snd_hda_mixer_amp_switch_info,
+		.get = snd_hda_mixer_amp_switch_get,
+		.put = hda_gen_mixer_mute_put, /* replaced */
+		.private_value = HDA_COMPOSE_AMP_VAL(0, 3, 0, 0),
+	},
 	HDA_BIND_MUTE(NULL, 0, 0, 0),
 };
 
@@ -833,7 +854,7 @@ static int add_control_with_pfx(struct hda_gen_spec *spec, int type,
 				const char *pfx, const char *dir,
 				const char *sfx, int cidx, unsigned long val)
 {
-	char name[32];
+	char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 	snprintf(name, sizeof(name), "%s %s %s", pfx, dir, sfx);
 	if (!add_control(spec, type, name, cidx, val))
 		return -ENOMEM;
@@ -913,6 +934,23 @@ static int add_stereo_sw(struct hda_codec *codec, const char *pfx,
 {
 	int chs = get_default_ch_nums(codec, path, NID_PATH_MUTE_CTL);
 	return add_sw_ctl(codec, pfx, cidx, chs, path);
+}
+
+/* playback mute control with the software mute bit check */
+static int hda_gen_mixer_mute_put(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct hda_gen_spec *spec = codec->spec;
+
+	if (spec->auto_mute_via_amp) {
+		hda_nid_t nid = get_amp_nid(kcontrol);
+		bool enabled = !((spec->mute_bits >> nid) & 1);
+		ucontrol->value.integer.value[0] &= enabled;
+		ucontrol->value.integer.value[1] &= enabled;
+	}
+
+	return snd_hda_mixer_amp_switch_put(kcontrol, ucontrol);
 }
 
 /* any ctl assigned to the path with the given index? */
@@ -1893,7 +1931,7 @@ static int create_extra_outs(struct hda_codec *codec, int num_pins,
 
 	for (i = 0; i < num_pins; i++) {
 		const char *name;
-		char tmp[44];
+		char tmp[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 		int err, idx = 0;
 
 		if (num_pins == 2 && i == 1 && !strcmp(pfx, "Speaker"))
@@ -1933,17 +1971,7 @@ static int create_speaker_out_ctls(struct hda_codec *codec)
  * independent HP controls
  */
 
-/* update HP auto-mute state too */
-static void update_hp_automute_hook(struct hda_codec *codec)
-{
-	struct hda_gen_spec *spec = codec->spec;
-
-	if (spec->hp_automute_hook)
-		spec->hp_automute_hook(codec, NULL);
-	else
-		snd_hda_gen_hp_automute(codec, NULL);
-}
-
+static void call_hp_automute(struct hda_codec *codec, struct hda_jack_tbl *jack);
 static int indep_hp_info(struct snd_kcontrol *kcontrol,
 			 struct snd_ctl_elem_info *uinfo)
 {
@@ -2004,7 +2032,7 @@ static int indep_hp_put(struct snd_kcontrol *kcontrol,
 		else
 			*dacp = spec->alt_dac_nid;
 
-		update_hp_automute_hook(codec);
+		call_hp_automute(codec, NULL);
 		ret = 1;
 	}
  unlock:
@@ -2300,7 +2328,7 @@ static void update_hp_mic(struct hda_codec *codec, int adc_mux, bool force)
 		else
 			val = PIN_HP;
 		set_pin_target(codec, pin, val, true);
-		update_hp_automute_hook(codec);
+		call_hp_automute(codec, NULL);
 	}
 }
 
@@ -2456,7 +2484,7 @@ static int create_out_jack_modes(struct hda_codec *codec, int num_pins,
 		}
 		if (get_out_jack_num_items(codec, pin) > 1) {
 			struct snd_kcontrol_new *knew;
-			char name[44];
+			char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 			get_jack_mode_name(codec, pin, name, sizeof(name));
 			knew = snd_hda_gen_add_kctl(spec, name,
 						    &out_jack_mode_enum);
@@ -2588,7 +2616,7 @@ static int create_in_jack_mode(struct hda_codec *codec, hda_nid_t pin)
 {
 	struct hda_gen_spec *spec = codec->spec;
 	struct snd_kcontrol_new *knew;
-	char name[44];
+	char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 	unsigned int defcfg;
 
 	if (pin == spec->hp_mic_pin)
@@ -2709,7 +2737,7 @@ static int hp_mic_jack_mode_put(struct snd_kcontrol *kcontrol,
 			val = snd_hda_get_default_vref(codec, nid);
 	}
 	snd_hda_set_pin_ctl_cache(codec, nid, val);
-	update_hp_automute_hook(codec);
+	call_hp_automute(codec, NULL);
 
 	return 1;
 }
@@ -3288,7 +3316,7 @@ static int add_single_cap_ctl(struct hda_codec *codec, const char *label,
 			      bool inv_dmic)
 {
 	struct hda_gen_spec *spec = codec->spec;
-	char tmpname[44];
+	char tmpname[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 	int type = is_switch ? HDA_CTL_WIDGET_MUTE : HDA_CTL_WIDGET_VOL;
 	const char *sfx = is_switch ? "Switch" : "Volume";
 	unsigned int chs = inv_dmic ? 1 : 3;
@@ -3550,7 +3578,7 @@ static int parse_mic_boost(struct hda_codec *codec)
 		struct nid_path *path;
 		unsigned int val;
 		int idx;
-		char boost_label[44];
+		char boost_label[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
 
 		idx = imux->items[i].index;
 		if (idx >= imux->num_items)
@@ -3722,6 +3750,16 @@ static void do_automute(struct hda_codec *codec, int num_pins, hda_nid_t *pins,
 		unsigned int val, oldval;
 		if (!nid)
 			break;
+
+		if (spec->auto_mute_via_amp) {
+			if (mute)
+				spec->mute_bits |= (1ULL << nid);
+			else
+				spec->mute_bits &= ~(1ULL << nid);
+			set_pin_eapd(codec, nid, !mute);
+			continue;
+		}
+
 		oldval = snd_hda_codec_get_pin_target(codec, nid);
 		if (oldval & PIN_IN)
 			continue; /* no mute for inputs */
@@ -3789,6 +3827,10 @@ static void call_update_outputs(struct hda_codec *codec)
 		spec->automute_hook(codec);
 	else
 		snd_hda_gen_update_outputs(codec);
+
+	/* sync the whole vmaster slaves to reflect the new auto-mute status */
+	if (spec->auto_mute_via_amp && !codec->bus->shutdown)
+		snd_ctl_sync_vmaster(spec->vmaster_mute.sw_kctl, false);
 }
 
 /* standard HP-automute helper */
@@ -3854,20 +3896,42 @@ void snd_hda_gen_mic_autoswitch(struct hda_codec *codec, struct hda_jack_tbl *ja
 }
 EXPORT_SYMBOL_HDA(snd_hda_gen_mic_autoswitch);
 
+/* call appropriate hooks */
+static void call_hp_automute(struct hda_codec *codec, struct hda_jack_tbl *jack)
+{
+	struct hda_gen_spec *spec = codec->spec;
+	if (spec->hp_automute_hook)
+		spec->hp_automute_hook(codec, jack);
+	else
+		snd_hda_gen_hp_automute(codec, jack);
+}
+
+static void call_line_automute(struct hda_codec *codec,
+			       struct hda_jack_tbl *jack)
+{
+	struct hda_gen_spec *spec = codec->spec;
+	if (spec->line_automute_hook)
+		spec->line_automute_hook(codec, jack);
+	else
+		snd_hda_gen_line_automute(codec, jack);
+}
+
+static void call_mic_autoswitch(struct hda_codec *codec,
+				struct hda_jack_tbl *jack)
+{
+	struct hda_gen_spec *spec = codec->spec;
+	if (spec->mic_autoswitch_hook)
+		spec->mic_autoswitch_hook(codec, jack);
+	else
+		snd_hda_gen_mic_autoswitch(codec, jack);
+}
+
 /* update jack retasking */
 static void update_automute_all(struct hda_codec *codec)
 {
-	struct hda_gen_spec *spec = codec->spec;
-
-	update_hp_automute_hook(codec);
-	if (spec->line_automute_hook)
-		spec->line_automute_hook(codec, NULL);
-	else
-		snd_hda_gen_line_automute(codec, NULL);
-	if (spec->mic_autoswitch_hook)
-		spec->mic_autoswitch_hook(codec, NULL);
-	else
-		snd_hda_gen_mic_autoswitch(codec, NULL);
+	call_hp_automute(codec, NULL);
+	call_line_automute(codec, NULL);
+	call_mic_autoswitch(codec, NULL);
 }
 
 /*
@@ -4004,9 +4068,7 @@ static int check_auto_mute_availability(struct hda_codec *codec)
 		snd_printdd("hda-codec: Enable HP auto-muting on NID 0x%x\n",
 			    nid);
 		snd_hda_jack_detect_enable_callback(codec, nid, HDA_GEN_HP_EVENT,
-						    spec->hp_automute_hook ?
-						    spec->hp_automute_hook :
-						    snd_hda_gen_hp_automute);
+						    call_hp_automute);
 		spec->detect_hp = 1;
 	}
 
@@ -4019,9 +4081,7 @@ static int check_auto_mute_availability(struct hda_codec *codec)
 				snd_printdd("hda-codec: Enable Line-Out auto-muting on NID 0x%x\n", nid);
 				snd_hda_jack_detect_enable_callback(codec, nid,
 								    HDA_GEN_FRONT_EVENT,
-								    spec->line_automute_hook ?
-								    spec->line_automute_hook :
-								    snd_hda_gen_line_automute);
+								    call_line_automute);
 				spec->detect_lo = 1;
 			}
 		spec->automute_lo_possible = spec->detect_hp;
@@ -4063,9 +4123,7 @@ static bool auto_mic_check_imux(struct hda_codec *codec)
 		snd_hda_jack_detect_enable_callback(codec,
 						    spec->am_entry[i].pin,
 						    HDA_GEN_MIC_EVENT,
-						    spec->mic_autoswitch_hook ?
-						    spec->mic_autoswitch_hook :
-						    snd_hda_gen_mic_autoswitch);
+						    call_mic_autoswitch);
 	return true;
 }
 
@@ -4157,7 +4215,7 @@ static unsigned int snd_hda_gen_path_power_filter(struct hda_codec *codec,
 		return power_state;
 	if (get_wcaps_type(get_wcaps(codec, nid)) >= AC_WID_POWER)
 		return power_state;
-	if (is_active_nid(codec, nid, HDA_OUTPUT, 0))
+	if (is_active_nid_for_any(codec, nid))
 		return power_state;
 	return AC_PWRST_D3;
 }

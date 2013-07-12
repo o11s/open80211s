@@ -84,8 +84,10 @@ static int iio_hwmon_probe(struct platform_device *pdev)
 		return PTR_ERR(channels);
 
 	st = devm_kzalloc(dev, sizeof(*st), GFP_KERNEL);
-	if (st == NULL)
-		return -ENOMEM;
+	if (st == NULL) {
+		ret = -ENOMEM;
+		goto error_release_channels;
+	}
 
 	st->channels = channels;
 
@@ -159,7 +161,7 @@ static int iio_hwmon_probe(struct platform_device *pdev)
 error_remove_group:
 	sysfs_remove_group(&dev->kobj, &st->attr_group);
 error_release_channels:
-	iio_channel_release_all(st->channels);
+	iio_channel_release_all(channels);
 	return ret;
 }
 
@@ -178,6 +180,7 @@ static struct of_device_id iio_hwmon_of_match[] = {
 	{ .compatible = "iio-hwmon", },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, iio_hwmon_of_match);
 
 static struct platform_driver __refdata iio_hwmon_driver = {
 	.driver = {

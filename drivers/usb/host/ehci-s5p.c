@@ -50,6 +50,8 @@ struct s5p_ehci_hcd {
 	struct s5p_ehci_platdata *pdata;
 };
 
+static struct s5p_ehci_platdata empty_platdata;
+
 #define to_s5p_ehci(hcd)      (struct s5p_ehci_hcd *)(hcd_to_ehci(hcd)->priv)
 
 static void s5p_setup_vbus_gpio(struct platform_device *pdev)
@@ -71,8 +73,6 @@ static void s5p_setup_vbus_gpio(struct platform_device *pdev)
 		dev_err(dev, "can't request ehci vbus gpio %d", gpio);
 }
 
-static u64 ehci_s5p_dma_mask = DMA_BIT_MASK(32);
-
 static int s5p_ehci_probe(struct platform_device *pdev)
 {
 	struct s5p_ehci_platdata *pdata = pdev->dev.platform_data;
@@ -90,7 +90,7 @@ static int s5p_ehci_probe(struct platform_device *pdev)
 	 * Once we move to full device tree support this will vanish off.
 	 */
 	if (!pdev->dev.dma_mask)
-		pdev->dev.dma_mask = &ehci_s5p_dma_mask;
+		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 	if (!pdev->dev.coherent_dma_mask)
 		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
@@ -103,10 +103,18 @@ static int s5p_ehci_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 	s5p_ehci = to_s5p_ehci(hcd);
+
+	if (of_device_is_compatible(pdev->dev.of_node,
+					"samsung,exynos5440-ehci")) {
+		s5p_ehci->pdata = &empty_platdata;
+		goto skip_phy;
+	}
+
 	phy = devm_usb_get_phy(&pdev->dev, USB_PHY_TYPE_USB2);
 	if (IS_ERR(phy)) {
 		/* Fallback to pdata */
 		if (!pdata) {
+			usb_put_hcd(hcd);
 			dev_warn(&pdev->dev, "no platform data or transceiver defined\n");
 			return -EPROBE_DEFER;
 		} else {
@@ -116,6 +124,8 @@ static int s5p_ehci_probe(struct platform_device *pdev)
 		s5p_ehci->phy = phy;
 		s5p_ehci->otg = phy->otg;
 	}
+
+skip_phy:
 
 	s5p_ehci->clk = devm_clk_get(&pdev->dev, "usbhost");
 
@@ -278,6 +288,7 @@ static const struct dev_pm_ops s5p_ehci_pm_ops = {
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_ehci_match[] = {
 	{ .compatible = "samsung,exynos4210-ehci" },
+	{ .compatible = "samsung,exynos5440-ehci" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, exynos_ehci_match);

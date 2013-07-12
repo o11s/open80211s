@@ -37,15 +37,15 @@ static int clocked;
 
 static void atmel_start_clock(void)
 {
-	clk_enable(iclk);
-	clk_enable(fclk);
+	clk_prepare_enable(iclk);
+	clk_prepare_enable(fclk);
 	clocked = 1;
 }
 
 static void atmel_stop_clock(void)
 {
-	clk_disable(fclk);
-	clk_disable(iclk);
+	clk_disable_unprepare(fclk);
+	clk_disable_unprepare(iclk);
 	clocked = 0;
 }
 
@@ -62,8 +62,6 @@ static void atmel_stop_ehci(struct platform_device *pdev)
 }
 
 /*-------------------------------------------------------------------------*/
-
-static u64 at91_ehci_dma_mask = DMA_BIT_MASK(32);
 
 static int ehci_atmel_drv_probe(struct platform_device *pdev)
 {
@@ -93,7 +91,9 @@ static int ehci_atmel_drv_probe(struct platform_device *pdev)
 	 * Once we have dma capability bindings this can go away.
 	 */
 	if (!pdev->dev.dma_mask)
-		pdev->dev.dma_mask = &at91_ehci_dma_mask;
+		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
+	if (!pdev->dev.coherent_dma_mask)
+		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 
 	hcd = usb_create_hcd(driver, &pdev->dev, dev_name(&pdev->dev));
 	if (!hcd) {

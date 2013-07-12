@@ -120,6 +120,9 @@
 #define MSR_CORE_C6_RESIDENCY		0x000003fd
 #define MSR_CORE_C7_RESIDENCY		0x000003fe
 #define MSR_PKG_C2_RESIDENCY		0x0000060d
+#define MSR_PKG_C8_RESIDENCY		0x00000630
+#define MSR_PKG_C9_RESIDENCY		0x00000631
+#define MSR_PKG_C10_RESIDENCY		0x00000632
 
 /* Run Time Average Power Limiting (RAPL) Interface */
 
@@ -166,6 +169,9 @@
 #define MSR_KNC_PERFCTR1               0x00000021
 #define MSR_KNC_EVNTSEL0               0x00000028
 #define MSR_KNC_EVNTSEL1               0x00000029
+
+/* Alternative perfctr range with full access. */
+#define MSR_IA32_PMC0			0x000004c1
 
 /* AMD64 MSRs. Not complete. See the architecture manual for a more
    complete list. */

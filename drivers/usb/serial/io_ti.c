@@ -259,7 +259,7 @@ static int send_cmd(struct usb_device *dev, __u8 command,
 /* clear tx/rx buffers and fifo in TI UMP */
 static int purge_port(struct usb_serial_port *port, __u16 mask)
 {
-	int port_number = port->number - port->serial->minor;
+	int port_number = port->port_number;
 
 	dev_dbg(&port->dev, "%s - port %d, mask %x\n", __func__, port_number, mask);
 
@@ -1392,7 +1392,8 @@ stayinbootmode:
 
 static int ti_do_config(struct edgeport_port *port, int feature, int on)
 {
-	int port_number = port->port->number - port->port->serial->minor;
+	int port_number = port->port->port_number;
+
 	on = !!on;	/* 1 or 0 not bitmask */
 	return send_cmd(port->port->serial->dev,
 			feature, (__u8)(UMPM_UART1_PORT + port_number),
@@ -1637,7 +1638,7 @@ static void edge_bulk_in_callback(struct urb *urb)
 		return;
 	}
 
-	port_number = edge_port->port->number - edge_port->port->serial->minor;
+	port_number = edge_port->port->port_number;
 
 	if (edge_port->lsr_event) {
 		edge_port->lsr_event = 0;
@@ -1730,7 +1731,7 @@ static int edge_open(struct tty_struct *tty, struct usb_serial_port *port)
 	if (edge_port == NULL)
 		return -ENODEV;
 
-	port_number = port->number - port->serial->minor;
+	port_number = port->port_number;
 	switch (port_number) {
 	case 0:
 		edge_port->uart_base = UMPMEM_BASE_UART1;
@@ -1908,7 +1909,7 @@ static void edge_close(struct usb_serial_port *port)
 	spin_unlock_irqrestore(&edge_port->ep_lock, flags);
 
 	dev_dbg(&port->dev, "%s - send umpc_close_port\n", __func__);
-	port_number = port->number - port->serial->minor;
+	port_number = port->port_number;
 	send_cmd(serial->dev, UMPC_CLOSE_PORT,
 		     (__u8)(UMPM_UART1_PORT + port_number), 0, NULL, 0);
 
@@ -2019,8 +2020,6 @@ static int edge_chars_in_buffer(struct tty_struct *tty)
 	struct edgeport_port *edge_port = usb_get_serial_port_data(port);
 	int chars = 0;
 	unsigned long flags;
-	int ret;
-
 	if (edge_port == NULL)
 		return 0;
 
@@ -2028,14 +2027,20 @@ static int edge_chars_in_buffer(struct tty_struct *tty)
 	chars = kfifo_len(&edge_port->write_fifo);
 	spin_unlock_irqrestore(&edge_port->ep_lock, flags);
 
-	if (!chars) {
-		ret = tx_active(edge_port);
-		if (ret > 0)
-			chars = ret;
-	}
-
 	dev_dbg(&port->dev, "%s - returns %d\n", __func__, chars);
 	return chars;
+}
+
+static bool edge_tx_empty(struct usb_serial_port *port)
+{
+	struct edgeport_port *edge_port = usb_get_serial_port_data(port);
+	int ret;
+
+	ret = tx_active(edge_port);
+	if (ret > 0)
+		return false;
+
+	return true;
 }
 
 static void edge_throttle(struct tty_struct *tty)
@@ -2133,10 +2138,7 @@ static void change_port_settings(struct tty_struct *tty,
 	int baud;
 	unsigned cflag;
 	int status;
-	int port_number = edge_port->port->number -
-					edge_port->port->serial->minor;
-
-	dev_dbg(dev, "%s - port %d\n", __func__, edge_port->port->number);
+	int port_number = edge_port->port->port_number;
 
 	config = kmalloc (sizeof (*config), GFP_KERNEL);
 	if (!config) {
@@ -2280,7 +2282,6 @@ static void edge_set_termios(struct tty_struct *tty,
 		tty->termios.c_cflag, tty->termios.c_iflag);
 	dev_dbg(&port->dev, "%s - old clfag %08x old iflag %08x\n", __func__,
 		old_termios->c_cflag, old_termios->c_iflag);
-	dev_dbg(&port->dev, "%s - port %d\n", __func__, port->number);
 
 	if (edge_port == NULL)
 		return;
@@ -2362,8 +2363,8 @@ static int get_serial_info(struct edgeport_port *edge_port,
 	memset(&tmp, 0, sizeof(tmp));
 
 	tmp.type		= PORT_16550A;
-	tmp.line		= edge_port->port->serial->minor;
-	tmp.port		= edge_port->port->number;
+	tmp.line		= edge_port->port->minor;
+	tmp.port		= edge_port->port->port_number;
 	tmp.irq			= 0;
 	tmp.flags		= ASYNC_SKIP_TEST | ASYNC_AUTO_IRQ;
 	tmp.xmit_fifo_size	= edge_port->port->bulk_out_size;
@@ -2382,7 +2383,7 @@ static int edge_ioctl(struct tty_struct *tty,
 	struct usb_serial_port *port = tty->driver_data;
 	struct edgeport_port *edge_port = usb_get_serial_port_data(port);
 
-	dev_dbg(&port->dev, "%s - port %d, cmd = 0x%x\n", __func__, port->number, cmd);
+	dev_dbg(&port->dev, "%s - cmd = 0x%x\n", __func__, cmd);
 
 	switch (cmd) {
 	case TIOCGSERIAL:
@@ -2557,6 +2558,7 @@ static struct usb_serial_driver edgeport_1port_device = {
 	.write			= edge_write,
 	.write_room		= edge_write_room,
 	.chars_in_buffer	= edge_chars_in_buffer,
+	.tx_empty		= edge_tx_empty,
 	.break_ctl		= edge_break,
 	.read_int_callback	= edge_interrupt_callback,
 	.read_bulk_callback	= edge_bulk_in_callback,
@@ -2589,6 +2591,7 @@ static struct usb_serial_driver edgeport_2port_device = {
 	.write			= edge_write,
 	.write_room		= edge_write_room,
 	.chars_in_buffer	= edge_chars_in_buffer,
+	.tx_empty		= edge_tx_empty,
 	.break_ctl		= edge_break,
 	.read_int_callback	= edge_interrupt_callback,
 	.read_bulk_callback	= edge_bulk_in_callback,

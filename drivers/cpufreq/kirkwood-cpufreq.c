@@ -59,7 +59,7 @@ static void kirkwood_cpufreq_set_cpu_state(struct cpufreq_policy *policy,
 		unsigned int index)
 {
 	struct cpufreq_freqs freqs;
-	unsigned int state = kirkwood_freq_table[index].index;
+	unsigned int state = kirkwood_freq_table[index].driver_data;
 	unsigned long reg;
 
 	freqs.old = kirkwood_cpufreq_get_cpu_frequency(0);
@@ -171,10 +171,6 @@ static int kirkwood_cpufreq_probe(struct platform_device *pdev)
 	priv.dev = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "Cannot get memory resource\n");
-		return -ENODEV;
-	}
 	priv.base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(priv.base))
 		return PTR_ERR(priv.base);
