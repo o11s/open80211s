@@ -47,6 +47,11 @@
 
 #define MWL8787_BSS_MODE_ANY			3
 
+enum mwl8787_scan_ssid_type {
+	MWL8787_SCAN_SSID		= 0,
+	MWL8787_SCAN_WILDCARD		= 32,
+};
+
 enum mwl8787_scan_type {
 	MWL8787_SCAN_TYPE_UNCHANGED	= 0,
 	MWL8787_SCAN_TYPE_ACTIVE	= 1,
@@ -73,8 +78,9 @@ enum mwl8787_cmd_id {
 };
 
 enum mwl8787_tlv_type {
-	MWL8787_TYPE_SSID		= WLAN_EID_SSID,
-	MWL8787_TYPE_CHANLIST		= 0x0100,
+	MWL8787_TYPE_CHANLIST		= 0x0101,
+	MWL8787_TYPE_NUM_PROBES		= 0x0102,
+	MWL8787_TYPE_WILDCARD_SSID	= 0x0112,
 };
 
 struct mwl8787_cmd_hw_spec {
@@ -166,6 +172,27 @@ struct mwl8787_ssid_item {
 	u8 ssid[0];
 } __packed;
 
+
+struct mwl8787_tlv_wildcard_ssid {
+	struct mwl8787_tlv_header hdr;
+	u8 scan_ssid_type;
+	u8 ssid[0];
+} __packed;
+
+struct mwl8787_tlv_num_probes {
+	struct mwl8787_tlv_header hdr;
+	__le16 num_probes;
+} __packed;
+
+struct mwl8787_tlv_supp_rates {
+	struct mwl8787_tlv_header hdr;
+	u8 rates[0];
+} __packed;
+
+struct mwl8787_tlv_ht_cap {
+	struct ieee80211_ht_cap ht_cap;
+} __packed;
+
 struct mwl8787_channel_param {
 	u8 radio_type;
 	u8 channel;
@@ -207,6 +234,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_mode mode;
 		struct mwl8787_cmd_bssid bssid;
 		struct mwl8787_cmd_scan scan;
+		struct mwl8787_cmd_scan_resp scan_resp;
 		u8 data[0];
 	} u;
 } __packed;
