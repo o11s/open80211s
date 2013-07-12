@@ -92,6 +92,7 @@ struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);
 int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb);
+int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,

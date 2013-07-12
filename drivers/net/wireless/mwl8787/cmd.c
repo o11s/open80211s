@@ -353,3 +353,24 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 	return ret;
 }
 
+int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on)
+{
+	int ret;
+	struct mwl8787_cmd *cmd;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_RADIO_CTRL,
+				sizeof(struct mwl8787_cmd_radio_ctrl),
+				GFP_KERNEL);
+
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.radio_ctrl.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.radio_ctrl.control = cpu_to_le16(on ? 1 : 0);
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
