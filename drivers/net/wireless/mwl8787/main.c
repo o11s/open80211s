@@ -318,6 +318,13 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	mwl8787_cmd_mac_ctrl(priv, filter);
 }
 
+static int mwl8787_hw_scan(struct ieee80211_hw *hw,
+			   struct ieee80211_vif *vif,
+			   struct cfg80211_scan_request *req)
+{
+	return mwl8787_cmd_scan(hw->priv, req);
+}
+
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -326,6 +333,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.remove_interface = mwl8787_remove_interface,
 	.config = mwl8787_config,
 	.configure_filter = mwl8787_configure_filter,
+	.hw_scan = mwl8787_hw_scan,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
@@ -357,6 +365,9 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->channel_change_time = 100;
 	hw->wiphy->bands[IEEE80211_BAND_2GHZ] = &mwl8787_2ghz_band;
 	hw->wiphy->bands[IEEE80211_BAND_5GHZ] = &mwl8787_5ghz_band;
+
+	hw->wiphy->max_scan_ssids = 4;
+	hw->wiphy->max_scan_ie_len = IEEE80211_MAX_DATA_LEN;
 
 	return priv;
 }

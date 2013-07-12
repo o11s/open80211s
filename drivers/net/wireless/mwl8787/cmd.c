@@ -104,6 +104,8 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 	ret = 0;
 	cmdid &= ~MWL8787_CMD_RET_BIT;
 	switch (cmdid) {
+		/* XXX: ieee80211_scan_completed(priv->hw, false); */
+
 		case MWL8787_CMD_HW_SPEC:
 			ret = mwl8787_cmd_hw_spec_resp(priv, resp);
 			break;
@@ -201,6 +203,79 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel)
 
 	cmd->u.rf_channel.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.rf_channel.current_channel = cpu_to_le16(channel);
+
+	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
+int mwl8787_cmd_scan(struct mwl8787_priv *priv,
+		     struct cfg80211_scan_request *request)
+{
+	struct mwl8787_cmd *cmd;
+	struct mwl8787_ssid_item *ssid;
+	struct ieee80211_channel *chan;
+	struct mwl8787_channel_list *chanlist;
+	struct mwl8787_channel_param *param;
+	u16 scan_time;
+	u8 *ptr;
+	u16 chan_size;
+	size_t tlv_len = 0;
+	int i, ret;
+
+	/* compute required pkt len from params ... */
+	tlv_len += sizeof(struct mwl8787_ssid_item) * request->n_ssids;
+	for (i=0; i < request->n_ssids; i++)
+		tlv_len += request->ssids[i].ssid_len;
+
+	chan_size = sizeof(struct mwl8787_channel_param) * request->n_channels;
+	if (request->n_channels)
+		tlv_len += sizeof(struct mwl8787_channel_list) + chan_size;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_SCAN,
+				sizeof(struct mwl8787_cmd_scan) + tlv_len,
+				GFP_KERNEL);
+
+	cmd->u.scan.bss_mode = MWL8787_BSS_MODE_ANY;
+
+	ptr = cmd->u.scan.data;
+	ssid = (struct mwl8787_ssid_item *) ptr;
+	for (i=0; i < request->n_ssids; i++) {
+		ssid->hdr.type = MWL8787_TYPE_SSID;
+		ssid->hdr.len = cpu_to_le16(request->ssids[i].ssid_len);
+		memcpy(ssid->ssid, request->ssids[i].ssid,
+		       request->ssids[i].ssid_len);
+
+		ptr += sizeof(*ssid) + request->ssids[i].ssid_len;
+		ssid = (struct mwl8787_ssid_item *) ptr;
+	}
+	chanlist = (struct mwl8787_channel_list *) ptr;
+	if (request->n_channels) {
+		chanlist->hdr.type = MWL8787_TYPE_CHANLIST;
+		chanlist->hdr.len = cpu_to_le16(chan_size);
+
+		for (i=0; i < request->n_channels; i++) {
+			chan = request->channels[i];
+			param = &chanlist->channels[i];
+
+			param->radio_type = chan->hw_value;
+			param->channel = chan->band;
+			if (chan->flags & IEEE80211_CHAN_PASSIVE_SCAN) {
+				param->channel_scan_mode =
+					MWL8787_SCAN_TYPE_PASSIVE;
+				scan_time = MWL8787_PASSIVE_SCAN_TIME;
+			} else {
+				param->channel_scan_mode =
+					MWL8787_SCAN_TYPE_ACTIVE;
+				scan_time = MWL8787_ACTIVE_SCAN_TIME;
+			}
+			param->min_scan_time = cpu_to_le16(scan_time);
+			param->max_scan_time = param->max_scan_time;
+		}
+		ptr += sizeof(*chanlist) + chan_size;
+	}
 
 	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
 
