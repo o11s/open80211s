@@ -85,6 +85,32 @@ mwl8787_write_data_sync(struct mwl8787_priv *priv,
 	return ret;
 }
 
+static int mwl8787_get_write_port(struct mwl8787_priv *priv, u8 *port)
+{
+	u32 wr_bitmap = priv->mp_wr_bitmap;
+
+	dev_dbg(priv->dev, "data: mp_wr_bitmap=0x%08x\n", wr_bitmap);
+
+	if (!(wr_bitmap & priv->mp_data_port_mask)) {
+		return -1;
+	}
+
+	if (priv->mp_wr_bitmap & BIT(priv->curr_wr_port)) {
+		priv->mp_wr_bitmap &= ~BIT(priv->curr_wr_port);
+		*port = priv->curr_wr_port;
+
+		if (++priv->curr_wr_port == priv->mp_end_port)
+			priv->curr_wr_port = MWL8787_REG_START_WR_PORT;
+
+	} else {
+		return -EBUSY;
+	}
+
+	dev_dbg(priv->dev, "data: port=%d mp_wr_bitmap=0x%08x -> 0x%08x\n",
+		*port, wr_bitmap, priv->mp_wr_bitmap);
+
+	return 0;
+}
 
 /*
  * This function polls the card status.
@@ -402,6 +428,32 @@ static int mwl8787_write(struct mwl8787_priv *priv,
 	return ret;
 }
 
+static int mwl8787_sdio_send_tx(struct mwl8787_priv *priv,
+				struct sk_buff *skb)
+{
+	struct mwl8787_sdio_header *hdr;
+	size_t buf_block_len;
+	int ret;
+	u8 port;
+
+	skb_push(skb, sizeof(*hdr));
+	hdr = (struct mwl8787_sdio_header *) skb->data;
+
+	hdr->type = cpu_to_le16(MWL8787_TYPE_DATA);
+	hdr->len = cpu_to_le16(skb->len);
+
+	buf_block_len = roundup(skb->len, MWL8787_SDIO_BLOCK_SIZE);
+
+	ret = mwl8787_get_write_port(priv, &port);
+	if (ret) {
+		dev_err(priv->dev, "no wr_port available\n");
+		return ret;
+	}
+
+	ret = mwl8787_write(priv, skb->data, buf_block_len, port);
+	return ret;
+}
+
 static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 				 u8 *buf, size_t len)
 {
@@ -622,14 +674,10 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 
 		dev_dbg(priv->dev, "int: DNLD: wr_bitmap=0x%x\n",
 			priv->mp_wr_bitmap);
-#if 0
-		if (priv->data_sent &&
-		    (priv->mp_wr_bitmap & card->mp_data_port_mask)) {
+		if (priv->mp_wr_bitmap & priv->mp_data_port_mask) {
 			dev_dbg(priv->dev,
 				"info:  <--- Tx DONE Interrupt --->\n");
-			priv->data_sent = false;
 		}
-#endif
 	}
 
 	/* set mp_wr_bitmap for cmd responses */
@@ -735,6 +783,7 @@ static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
 	.send_cmd = mwl8787_sdio_send_cmd,
+	.send_tx = mwl8787_sdio_send_tx,
 	.process_int_status = mwl8787_process_int_status,
 	.enable_int = mwl8787_enable_int,
 };
@@ -787,9 +836,9 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	priv->curr_rd_port = MWL8787_REG_START_RD_PORT;
 	priv->curr_wr_port = MWL8787_REG_START_WR_PORT;
 
-	/* XXX: maybe need this stuff for RX/TX
-	card->mp_data_port_mask = reg->data_port_mask;
+	priv->mp_data_port_mask = MWL8787_DATA_PORT_MASK;
 
+	/* XXX: maybe need this stuff for RX/TX
 	card->mpa_tx.buf_len = 0;
 	card->mpa_tx.pkt_cnt = 0;
 	card->mpa_tx.start_port = 0;

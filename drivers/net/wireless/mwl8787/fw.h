@@ -47,6 +47,18 @@
 
 #define MWL8787_BSS_MODE_ANY			3
 
+enum mwl8787_tx_type {
+	MWL8787_TX_TYPE_802_3		= 0x00,
+	MWL8787_TX_TYPE_802_11		= 0x05,
+	MWL8787_TX_TYPE_MGMT		= 0xe5,
+	MWL8787_TX_TYPE_UAPSD		= 0xe6,
+};
+
+enum mwl8787_tx_flags {
+	MWL8787_NULL_DATA		= BIT(0),
+	MWL8787_LAST_FRAME		= BIT(3),
+};
+
 enum mwl8787_scan_ssid_type {
 	MWL8787_SCAN_SSID		= 0,
 	MWL8787_SCAN_WILDCARD		= 32,
@@ -221,6 +233,19 @@ struct mwl8787_cmd_scan_resp {
 	__le16 bss_size;
 	u8 num;
 	u8 data[0];
+} __packed;
+
+struct mwl8787_tx_desc {
+	u8 bss_type;
+	u8 bss_num;
+	__le16 frame_len;
+	__le16 frame_offset;
+	__le16 frame_type;
+	__le32 res1;
+	u8 priority;
+	u8 flags;
+	u8 delay;
+	u8 res2;
 } __packed;
 
 struct mwl8787_cmd {
