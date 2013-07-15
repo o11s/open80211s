@@ -54,6 +54,7 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 			     struct mwl8787_cmd *resp)
 {
 	memcpy(priv->addr, &resp->u.hw_spec.perm_addr, ETH_ALEN);
+	priv->mp_end_port = resp->u.hw_spec.mp_end_port;
 	return 0;
 }
 

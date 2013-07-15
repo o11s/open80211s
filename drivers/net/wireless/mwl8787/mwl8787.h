@@ -32,6 +32,7 @@ struct mwl8787_bus_ops
 	int (*check_fw_ready)(struct mwl8787_priv *, u32);
 	int (*enable_int) (struct mwl8787_priv *);
 	int (*send_cmd)(struct mwl8787_priv *priv, u8 *buf, size_t len);
+	int (*send_tx)(struct mwl8787_priv *priv, struct sk_buff *skb);
 	int (*process_int_status) (struct mwl8787_priv *);
 };
 
@@ -66,8 +67,10 @@ struct mwl8787_priv
 	u8 *mp_regs;
 	u32 mp_rd_bitmap;
 	u32 mp_wr_bitmap;
+	u32 mp_data_port_mask;
 	u8 curr_rd_port;
 	u8 curr_wr_port;
+	u8 mp_end_port;
 };
 
 /* main */
