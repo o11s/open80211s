@@ -18,7 +18,7 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 	memset(desc, 0, sizeof(*desc));
 
 	desc->frame_len = cpu_to_le16(frame_len);
-	desc->frame_offset = sizeof(*desc) + pad;
+	desc->frame_offset = cpu_to_le16(sizeof(*desc) + pad);
 	desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_802_11);
 	desc->priority = (u8) skb->priority;
 
