@@ -52,7 +52,7 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 		return -ENOMEM;
 
 	memcpy(cmd->u.data, buf, buf_len);
-	ret = mwl8787_send_cmd(priv, (u8*) cmd, buf_len);
+	ret = mwl8787_send_cmd(priv, (u8*) cmd, le16_to_cpu(cmd->hdr.len));
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }
