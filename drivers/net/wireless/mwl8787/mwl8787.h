@@ -62,6 +62,9 @@ struct mwl8787_priv
 	u8 cmd_sent;
 	u8 data_sent;
 
+	struct work_struct tx_work;
+	struct sk_buff_head tx_queue;
+
 	/* sdio */
 	u32 ioport;
 	u8 *mp_regs;
@@ -101,6 +104,7 @@ int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on);
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
 		struct sk_buff *skb);
+void mwl8787_tx_work(struct work_struct *work);
 
 /* testmode */
 int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len);

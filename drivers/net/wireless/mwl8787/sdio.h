@@ -127,8 +127,4 @@ enum mwl8787_sdio_type {
 	MWL8787_TYPE_EVENT = 3,
 };
 
-struct mwl8787_sdio_header {
-	__le16 len;
-	__le16 type;
-};
 #endif /* _MWL8787_SDIO_H_ */
