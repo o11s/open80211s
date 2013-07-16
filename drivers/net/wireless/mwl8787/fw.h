@@ -47,6 +47,8 @@
 
 #define MWL8787_BSS_MODE_ANY			3
 
+#define MWL8787_MONITOR_MODE_ALL		7
+
 enum mwl8787_tx_type {
 	MWL8787_TX_TYPE_802_3		= 0x00,
 	MWL8787_TX_TYPE_802_11		= 0x05,
@@ -90,12 +92,14 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
+	MWL8787_CMD_MONITOR		= 0x0102,
 };
 
 enum mwl8787_tlv_type {
 	MWL8787_TYPE_CHANLIST		= 0x0101,
 	MWL8787_TYPE_NUM_PROBES		= 0x0102,
 	MWL8787_TYPE_WILDCARD_SSID	= 0x0112,
+	MWL8787_TYPE_BAND_CHAN		= 0x012A,
 };
 
 struct mwl8787_cmd_hw_spec {
@@ -205,7 +209,18 @@ struct mwl8787_tlv_supp_rates {
 } __packed;
 
 struct mwl8787_tlv_ht_cap {
+	struct mwl8787_tlv_header hdr;
 	struct ieee80211_ht_cap ht_cap;
+} __packed;
+
+struct mwl8787_band_channel {
+	u8 band;
+	u8 channel;
+} __packed;
+
+struct mwl8787_tlv_band_channel {
+	struct mwl8787_tlv_header hdr;
+	struct mwl8787_band_channel bc[0];
 } __packed;
 
 struct mwl8787_channel_param {
@@ -233,6 +248,13 @@ struct mwl8787_cmd_scan_resp {
 	__le16 bss_size;
 	u8 num;
 	u8 data[0];
+} __packed;
+
+struct mwl8787_cmd_monitor {
+	__le16 action;
+	__le16 enable;
+	__le16 flags;
+	struct mwl8787_tlv_band_channel channel;
 } __packed;
 
 struct mwl8787_tx_desc {
@@ -263,6 +285,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_bssid bssid;
 		struct mwl8787_cmd_scan scan;
 		struct mwl8787_cmd_scan_resp scan_resp;
+		struct mwl8787_cmd_monitor monitor;
 		u8 data[0];
 	} u;
 } __packed;
