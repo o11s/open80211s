@@ -670,11 +670,13 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 	if (sdio_ireg & DN_LD_HOST_INT_STATUS) {
 		bitmap = (u32) priv->mp_regs[MWL8787_WR_BITMAP_L];
 		bitmap |= ((u32) priv->mp_regs[MWL8787_WR_BITMAP_U]) << 8;
-		priv->mp_wr_bitmap = bitmap;
+
+		/* card bitmap holds writes which have completed? */
+		priv->mp_wr_bitmap |= bitmap;
 
 		dev_dbg(priv->dev, "int: DNLD: wr_bitmap=0x%x\n",
 			priv->mp_wr_bitmap);
-		if (priv->mp_wr_bitmap & priv->mp_data_port_mask) {
+		if (bitmap & priv->mp_data_port_mask) {
 			dev_dbg(priv->dev,
 				"info:  <--- Tx DONE Interrupt --->\n");
 		}
@@ -831,7 +833,7 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	mwl8787_init_sdio_ioport(priv);
 
 	priv->mp_rd_bitmap = 0;
-	priv->mp_wr_bitmap = 0;
+	priv->mp_wr_bitmap = ~0;
 
 	priv->curr_rd_port = MWL8787_REG_START_RD_PORT;
 	priv->curr_wr_port = MWL8787_REG_START_WR_PORT;

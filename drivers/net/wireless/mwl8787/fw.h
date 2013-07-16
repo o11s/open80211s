@@ -267,4 +267,9 @@ struct mwl8787_cmd {
 	} u;
 } __packed;
 
+struct mwl8787_sdio_header {
+	__le16 len;
+	__le16 type;
+} __packed;
+
 #endif /* _MWL8787_FW_H_ */

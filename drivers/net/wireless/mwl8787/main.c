@@ -359,6 +359,8 @@ struct mwl8787_priv *mwl8787_init(void)
 	spin_lock_init(&priv->int_lock);
 	init_completion(&priv->init_wait);
 	init_completion(&priv->cmd_wait);
+	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
+	skb_queue_head_init(&priv->tx_queue);
 
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =
@@ -371,6 +373,10 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->channel_change_time = 100;
 	hw->wiphy->bands[IEEE80211_BAND_2GHZ] = &mwl8787_2ghz_band;
 	hw->wiphy->bands[IEEE80211_BAND_5GHZ] = &mwl8787_5ghz_band;
+
+	hw->extra_tx_headroom = sizeof(struct mwl8787_tx_desc) +
+				sizeof(struct mwl8787_sdio_header) +
+				4;	/* alignment */
 
 	hw->wiphy->max_scan_ssids = 4;
 	hw->wiphy->max_scan_ie_len = IEEE80211_MAX_DATA_LEN;
