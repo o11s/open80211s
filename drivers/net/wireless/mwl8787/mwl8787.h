@@ -65,6 +65,8 @@ struct mwl8787_priv
 	struct work_struct tx_work;
 	struct sk_buff_head tx_queue;
 
+	struct ieee80211_channel *channel;
+
 	/* sdio */
 	u32 ioport;
 	u8 *mp_regs;
@@ -105,6 +107,9 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
 		struct sk_buff *skb);
 void mwl8787_tx_work(struct work_struct *work);
+
+/* rx.c */
+void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
 
 /* testmode */
 int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len);

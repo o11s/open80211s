@@ -284,6 +284,7 @@ static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 	u16 channel;
 
 	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
+		priv->channel = hw->conf.chandef.chan;
 		channel = hw->conf.chandef.chan->hw_value;
 		mwl8787_cmd_rf_channel(priv, channel);
 	}
@@ -362,11 +363,16 @@ struct mwl8787_priv *mwl8787_init(void)
 	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
 	skb_queue_head_init(&priv->tx_queue);
 
+	priv->channel = &mwl8787_2ghz_chantable[0];
+
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =
 		BIT(NL80211_IFTYPE_STATION) |
 		BIT(NL80211_IFTYPE_MESH_POINT);
-	hw->flags = IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING;
+	hw->flags =
+		IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING |
+		IEEE80211_HW_SIGNAL_DBM;
+
 	hw->queues = 4;
 	hw->max_rates = 4;
 	hw->max_rate_tries = 11;

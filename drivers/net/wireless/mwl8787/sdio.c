@@ -500,9 +500,7 @@ int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 	switch (upld_typ) {
 	case MWL8787_TYPE_DATA:
 		dev_dbg(priv->dev, "info: --- Rx: Data packet ---\n");
-#if 0
-		mwifiex_handle_rx_packet(priv, skb);
-#endif
+		mwl8787_rx(priv, skb);
 		break;
 
 	case MWL8787_TYPE_CMD:
