@@ -54,8 +54,18 @@ void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
 int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 			     struct mwl8787_cmd *resp)
 {
+	u32 fw_version;
+
 	memcpy(priv->addr, &resp->u.hw_spec.perm_addr, ETH_ALEN);
 	priv->mp_end_port = resp->u.hw_spec.mp_end_port;
+
+	fw_version = le32_to_cpu(resp->u.hw_spec.fw_version);
+	dev_info(priv->dev, "loaded fw revision %u.%u.%u.p%u\n",
+		 (fw_version >> 16) & 0xff,
+		 (fw_version >> 8) & 0xff,
+		 fw_version & 0xff,
+		 fw_version >> 24);
+
 	return 0;
 }
 
