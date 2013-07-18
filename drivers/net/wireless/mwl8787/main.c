@@ -314,8 +314,6 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	if (*total_flags & FIF_PROMISC_IN_BSS) {
 		*total_flags &= ~FIF_PROMISC_IN_BSS;
 		filter |= MWL8787_FIF_ENABLE_PROMISC;
-		/* XXX try monitor mode */
-		mwl8787_cmd_monitor(priv, true);
 	}
 
 	if (*total_flags & FIF_ALLMULTI) {
