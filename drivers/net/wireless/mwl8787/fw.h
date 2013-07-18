@@ -73,6 +73,12 @@ enum mwl8787_tx_flags {
 	MWL8787_LAST_FRAME		= BIT(3),
 };
 
+enum mwl8787_rx_ht_info {
+	MWL8787_RX_HT_RATE		= BIT(0),
+	MWL8787_RX_HT_40		= BIT(1),
+	MWL8787_RX_HT_SHORT_GI		= BIT(2),
+};
+
 enum mwl8787_scan_ssid_type {
 	MWL8787_SCAN_SSID		= 0,
 	MWL8787_SCAN_WILDCARD		= 32,
@@ -280,6 +286,21 @@ struct mwl8787_tx_desc {
 	u8 flags;
 	u8 delay;
 	u8 res2;
+} __packed;
+
+struct mwl8787_rx_desc {
+	u8 bss_type;
+	u8 bss_num;
+	__le16 frame_len;
+	__le16 frame_offset;
+	__le16 frame_type;
+	__le16 seq_num;
+	u8 priority;
+	u8 rx_rate;
+	s8 snr;
+	s8 nf;
+	u8 ht_info;
+	u8 reserved;
 } __packed;
 
 struct mwl8787_cmd {
