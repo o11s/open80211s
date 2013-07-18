@@ -122,7 +122,7 @@ struct mwl8787_cmd_hw_spec {
 	u8 perm_addr[ETH_ALEN];
 	__le16 region_code;
 	__le16 num_ant;
-	__le32 fw_release_number;
+	__le32 fw_version;
 	__le32 reserved_2[3];
 	__le32 fw_cap_info;
 	__le32 dot_11n_dev_cap;
