@@ -49,6 +49,18 @@
 
 #define MWL8787_MONITOR_MODE_ALL		7
 
+#define SEQ_NO_BSS_INFO(seq, num, type) {   \
+	(((seq) & 0x00ff) |                             \
+	 (((num) & 0x000f) << 8)) |                     \
+	(((type) & 0x000f) << 12);                  }
+
+enum mwl8787_bss_type {
+	MWL8787_BSS_TYPE_CLIENT		= 0x00,
+	MWL8787_BSS_TYPE_AP		= 0x01,
+	MWL8787_BSS_TYPE_WFD		= 0x02,
+	MWL8787_BSS_TYPE_TM		= 0x03,
+};
+
 enum mwl8787_tx_type {
 	MWL8787_TX_TYPE_802_3		= 0x00,
 	MWL8787_TX_TYPE_802_11		= 0x05,

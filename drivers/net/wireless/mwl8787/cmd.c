@@ -38,7 +38,8 @@ struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 
 	cmd->hdr.id = cpu_to_le16(id);
 	cmd->hdr.len = cpu_to_le16(pktlen);
-	cmd->hdr.seq = cpu_to_le16(priv->cmd_seq++);
+	cmd->hdr.seq = cpu_to_le16(SEQ_NO_BSS_INFO(priv->cmd_seq++,
+						   0, MWL8787_BSS_TYPE_TM));
 	return cmd;
 }
 
