@@ -17,6 +17,7 @@ void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 		goto drop;
 
 	skb_pull(skb, frame_offset);
+	skb_trim(skb, frame_len);
 
 	rx_status = IEEE80211_SKB_RXCB(skb);
 	memset(rx_status, 0, sizeof(*rx_status));
