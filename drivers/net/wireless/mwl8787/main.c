@@ -292,13 +292,46 @@ static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 	return 0;
 }
 
+static u64 mwl8787_prepare_multicast(struct ieee80211_hw *hw,
+				     struct netdev_hw_addr_list *mc_list)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	struct netdev_hw_addr *ha;
+	struct mwl8787_cmd *cmd;
+	int num = 0;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_MULTICAST_ADDR,
+		sizeof(struct mwl8787_cmd_multicast_addr),
+		GFP_ATOMIC);
+
+	if (!cmd)
+		return 0;
+
+	netdev_hw_addr_list_for_each(ha, mc_list) {
+		memcpy(cmd->u.multicast_addr.mac_list[num],
+		       ha->addr, ETH_ALEN);
+		if (num++ == MWL8787_MAX_MULTICAST_LIST_SIZE)
+			break;
+	}
+
+	/*
+	 * Store requested count instead of num, so that we can set
+	 * FIF_ALLMULTI if more than max mcast addresses requested.
+	 */
+	cmd->u.multicast_addr.num = cpu_to_le16(mc_list->count);
+	cmd->u.multicast_addr.action = cpu_to_le16(MWL8787_ACT_SET);
+	return (u64) cmd;
+}
+
 static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 				     unsigned int changed_flags,
 				     unsigned int *total_flags,
 				     u64 multicast)
 {
 	struct mwl8787_priv *priv = hw->priv;
+	struct mwl8787_cmd *mcast_cmd = (struct mwl8787_cmd *) multicast;
 	int supported_flags = FIF_PROMISC_IN_BSS | FIF_ALLMULTI;
+	int mcast_num = 0;
 
 	u16 filter = MWL8787_FIF_ENABLE_RX |
 		     MWL8787_FIF_ENABLE_TX |
@@ -319,11 +352,21 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 		mwl8787_cmd_monitor(priv, true);
 	}
 
-	if (*total_flags & FIF_ALLMULTI) {
+	if (mcast_cmd)
+		mcast_num = le16_to_cpu(mcast_cmd->u.multicast_addr.num);
+
+	if (*total_flags & FIF_ALLMULTI ||
+	    mcast_num > MWL8787_MAX_MULTICAST_LIST_SIZE) {
 		*total_flags &= ~FIF_ALLMULTI;
 		filter |= MWL8787_FIF_ENABLE_ALLMULTI;
+	} else {
+		/* set mcast list previously prepared */
+		if (mcast_cmd)
+			mwl8787_send_cmd_sync(priv, (u8 *) mcast_cmd,
+					      le16_to_cpu(mcast_cmd->hdr.len));
 	}
 
+	mwl8787_cmd_free(priv, mcast_cmd);
 	mwl8787_cmd_mac_ctrl(priv, filter);
 }
 
@@ -341,6 +384,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.add_interface = mwl8787_add_interface,
 	.remove_interface = mwl8787_remove_interface,
 	.config = mwl8787_config,
+	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
 	.hw_scan = mwl8787_hw_scan,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
