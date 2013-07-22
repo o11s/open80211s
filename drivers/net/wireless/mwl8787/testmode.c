@@ -36,8 +36,9 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	u32 id;
 	u8 *buf;
 	size_t buf_len;
-	struct mwl8787_cmd *cmd;
+	struct mwl8787_cmd *cmd, *rcmd;
 	int ret;
+	struct sk_buff *reply, *resp;
 
 	if (!tb[MWL8787_TM_ATTR_CMD_ID] ||
 	    !tb[MWL8787_TM_ATTR_DATA])
@@ -47,14 +48,39 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	buf = nla_data(tb[MWL8787_TM_ATTR_DATA]);
 	buf_len = nla_len(tb[MWL8787_TM_ATTR_DATA]);
 
+	/* create cmd payload from nlmsg & send to hw */
 	cmd = mwl8787_cmd_alloc(priv, id, buf_len, GFP_KERNEL);
 	if (!cmd)
 		return -ENOMEM;
 
 	memcpy(cmd->u.data, buf, buf_len);
-	ret = mwl8787_send_cmd(priv, cmd);
+	ret = mwl8787_send_cmd_tm(priv, cmd, &resp);
 	mwl8787_cmd_free(priv, cmd);
+
+	reply = cfg80211_testmode_alloc_reply_skb(priv->hw->wiphy,
+		MWL8787_TM_MAX_DATA_LEN);
+	if (!reply)
+		goto out;
+
+	/* copy command response back to userspace */
+	rcmd = (struct mwl8787_cmd *) resp->data;
+
+	if (nla_put_u32(reply, MWL8787_TM_ATTR_CMD_ID, MWL8787_TM_CMD_FW) ||
+	    nla_put_u32(reply, MWL8787_TM_ATTR_FW_CMD_ID,
+		        le16_to_cpu(rcmd->hdr.id)) ||
+	    nla_put(reply, MWL8787_TM_ATTR_DATA,
+		    le16_to_cpu(rcmd->hdr.len) - sizeof(rcmd->hdr),
+		    rcmd->u.data))
+		goto out;
+
+	dev_kfree_skb_any(resp);
+	cfg80211_testmode_reply(reply);
 	return ret;
+
+out:
+	dev_kfree_skb_any(resp);
+	kfree_skb(reply);
+	return -ENOMEM;
 }
 
 int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
