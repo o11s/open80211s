@@ -88,8 +88,8 @@ int mwl8787_init_fw(struct mwl8787_priv *priv);
 int mwl8787_dnld_fw(struct mwl8787_priv *priv);
 
 /* cmd.c */
-int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len);
-int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, u8 *buf, size_t len);
+int mwl8787_send_cmd(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd);
+int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd);
 int mwl8787_reset(struct mwl8787_priv *priv);
 int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control);
 int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);

@@ -362,8 +362,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	} else {
 		/* set mcast list previously prepared */
 		if (mcast_cmd)
-			mwl8787_send_cmd_sync(priv, (u8 *) mcast_cmd,
-					      le16_to_cpu(mcast_cmd->hdr.len));
+			mwl8787_send_cmd_sync(priv, mcast_cmd);
 	}
 
 	mwl8787_cmd_free(priv, mcast_cmd);
