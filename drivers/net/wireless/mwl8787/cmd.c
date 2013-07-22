@@ -24,6 +24,20 @@ int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
 	return 0;
 }
 
+int mwl8787_send_cmd_tm(struct mwl8787_priv *priv,
+			struct mwl8787_cmd *cmd,
+			struct sk_buff **reply)
+{
+	int ret;
+
+	priv->keep_resp = true;
+	ret = mwl8787_send_cmd_sync(priv, cmd);
+	*reply = priv->cmd_resp_skb;
+	priv->keep_resp = false;
+	priv->cmd_resp_skb = NULL;
+	return ret;
+}
+
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags)
 {
@@ -151,8 +165,10 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 out:
 	complete(&priv->cmd_wait);
-	priv->cmd_resp_skb = NULL;
-	dev_kfree_skb_any(skb);
+	if (!priv->keep_resp) {
+		priv->cmd_resp_skb = NULL;
+		dev_kfree_skb_any(skb);
+	}
 	return ret;
 }
 
