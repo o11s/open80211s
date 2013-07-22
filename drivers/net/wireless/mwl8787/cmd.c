@@ -1,17 +1,18 @@
 #include "mwl8787.h"
 #include "fw.h"
 
-int mwl8787_send_cmd(struct mwl8787_priv *priv, u8 *buf, size_t len)
+int mwl8787_send_cmd(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
 {
-	return priv->bus_ops->send_cmd(priv, buf, len);
+	return priv->bus_ops->send_cmd(priv, (u8 *) cmd,
+				       le16_to_cpu(cmd->hdr.len));
 }
 
-int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, u8 *buf, size_t len)
+int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
 {
 	int ret = 0;
 
 	INIT_COMPLETION(priv->cmd_wait);
-	ret = priv->bus_ops->send_cmd(priv, buf, len);
+	ret = mwl8787_send_cmd(priv, cmd);
 	if (ret)
 		return ret;
 
@@ -168,7 +169,7 @@ int mwl8787_cmd_init(struct mwl8787_priv *priv)
 	if (!cmd)
 		return -ENOMEM;
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -187,7 +188,7 @@ int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv)
 	if (!cmd)
 		return -ENOMEM;
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -206,7 +207,7 @@ int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control)
 		return -ENOMEM;
 
 	cmd->u.mac_ctrl.control = cpu_to_le16(control);
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -228,7 +229,7 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel)
 	cmd->u.rf_channel.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.rf_channel.current_channel = cpu_to_le16(channel);
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -339,7 +340,7 @@ int mwl8787_cmd_scan(struct mwl8787_priv *priv,
 		ptr += sizeof(*chanlist) + chan_size;
 	}
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -359,7 +360,7 @@ int mwl8787_reset(struct mwl8787_priv *priv)
 		return -ENOMEM;
 
 	cmd->u.reset.action = cpu_to_le16(MWL8787_ACT_SET);
-	ret = mwl8787_send_cmd(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -380,7 +381,7 @@ int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on)
 
 	cmd->u.radio_ctrl.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.radio_ctrl.control = cpu_to_le16(on);
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd, le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
@@ -412,8 +413,7 @@ int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on)
 	mon->channel.bc[0].band = 0;
 	mon->channel.bc[0].channel = 1;
 
-	ret = mwl8787_send_cmd_sync(priv, (u8 *) cmd,
-				    le16_to_cpu(cmd->hdr.len));
+	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
