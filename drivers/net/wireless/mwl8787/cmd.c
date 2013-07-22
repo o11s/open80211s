@@ -148,9 +148,8 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 			break;
 	}
 
-	complete(&priv->cmd_wait);
-
 out:
+	complete(&priv->cmd_wait);
 	priv->cmd_resp_skb = NULL;
 	dev_kfree_skb_any(skb);
 	return ret;
