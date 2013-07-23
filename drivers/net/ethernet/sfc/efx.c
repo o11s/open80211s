@@ -21,8 +21,8 @@
 #include <linux/ethtool.h>
 #include <linux/topology.h>
 #include <linux/gfp.h>
-#include <linux/cpu_rmap.h>
 #include <linux/aer.h>
+#include <linux/interrupt.h>
 #include "net_driver.h"
 #include "efx.h"
 #include "nic.h"
@@ -638,14 +638,16 @@ static void efx_start_datapath(struct efx_nic *efx)
 			   EFX_MAX_FRAME_LEN(efx->net_dev->mtu) +
 			   efx->type->rx_buffer_padding);
 	rx_buf_len = (sizeof(struct efx_rx_page_state) +
-		      EFX_PAGE_IP_ALIGN + efx->rx_dma_len);
+		      NET_IP_ALIGN + efx->rx_dma_len);
 	if (rx_buf_len <= PAGE_SIZE) {
 		efx->rx_scatter = false;
 		efx->rx_buffer_order = 0;
 	} else if (efx->type->can_rx_scatter) {
+		BUILD_BUG_ON(EFX_RX_USR_BUF_SIZE % L1_CACHE_BYTES);
 		BUILD_BUG_ON(sizeof(struct efx_rx_page_state) +
-			     EFX_PAGE_IP_ALIGN + EFX_RX_USR_BUF_SIZE >
-			     PAGE_SIZE / 2);
+			     2 * ALIGN(NET_IP_ALIGN + EFX_RX_USR_BUF_SIZE,
+				       EFX_RX_BUF_ALIGNMENT) >
+			     PAGE_SIZE);
 		efx->rx_scatter = true;
 		efx->rx_dma_len = EFX_RX_USR_BUF_SIZE;
 		efx->rx_buffer_order = 0;
@@ -1281,29 +1283,6 @@ static unsigned int efx_wanted_parallelism(struct efx_nic *efx)
 	return count;
 }
 
-static int
-efx_init_rx_cpu_rmap(struct efx_nic *efx, struct msix_entry *xentries)
-{
-#ifdef CONFIG_RFS_ACCEL
-	unsigned int i;
-	int rc;
-
-	efx->net_dev->rx_cpu_rmap = alloc_irq_cpu_rmap(efx->n_rx_channels);
-	if (!efx->net_dev->rx_cpu_rmap)
-		return -ENOMEM;
-	for (i = 0; i < efx->n_rx_channels; i++) {
-		rc = irq_cpu_rmap_add(efx->net_dev->rx_cpu_rmap,
-				      xentries[i].vector);
-		if (rc) {
-			free_irq_cpu_rmap(efx->net_dev->rx_cpu_rmap);
-			efx->net_dev->rx_cpu_rmap = NULL;
-			return rc;
-		}
-	}
-#endif
-	return 0;
-}
-
 /* Probe the number and type of interrupts we are able to obtain, and
  * the resulting numbers of channels and RX queues.
  */
@@ -1356,11 +1335,6 @@ static int efx_probe_interrupts(struct efx_nic *efx)
 			} else {
 				efx->n_tx_channels = n_channels;
 				efx->n_rx_channels = n_channels;
-			}
-			rc = efx_init_rx_cpu_rmap(efx, xentries);
-			if (rc) {
-				pci_disable_msix(efx->pci_dev);
-				return rc;
 			}
 			for (i = 0; i < efx->n_channels; i++)
 				efx_get_channel(efx, i)->irq =
@@ -1425,6 +1399,10 @@ static void efx_start_interrupts(struct efx_nic *efx, bool may_keep_eventq)
 
 	BUG_ON(efx->state == STATE_DISABLED);
 
+	if (efx->eeh_disabled_legacy_irq) {
+		enable_irq(efx->legacy_irq);
+		efx->eeh_disabled_legacy_irq = false;
+	}
 	if (efx->legacy_irq)
 		efx->legacy_irq_enabled = true;
 	efx_nic_enable_interrupts(efx);
@@ -2118,7 +2096,7 @@ static void efx_update_name(struct efx_nic *efx)
 static int efx_netdev_event(struct notifier_block *this,
 			    unsigned long event, void *ptr)
 {
-	struct net_device *net_dev = ptr;
+	struct net_device *net_dev = netdev_notifier_info_to_dev(ptr);
 
 	if (net_dev->netdev_ops == &efx_netdev_ops &&
 	    event == NETDEV_CHANGENAME)
@@ -2137,7 +2115,7 @@ show_phy_type(struct device *dev, struct device_attribute *attr, char *buf)
 	struct efx_nic *efx = pci_get_drvdata(to_pci_dev(dev));
 	return sprintf(buf, "%d\n", efx->phy_type);
 }
-static DEVICE_ATTR(phy_type, 0644, show_phy_type, NULL);
+static DEVICE_ATTR(phy_type, 0444, show_phy_type, NULL);
 
 static int efx_register_netdev(struct efx_nic *efx)
 {
@@ -2363,7 +2341,7 @@ out:
  * Returns 0 if the recovery mechanisms are unsuccessful.
  * Returns a non-zero value otherwise.
  */
-static int efx_try_recovery(struct efx_nic *efx)
+int efx_try_recovery(struct efx_nic *efx)
 {
 #ifdef CONFIG_EEH
 	/* A PCI error can occur and not be seen by EEH because nothing
@@ -2601,10 +2579,6 @@ static void efx_pci_remove_main(struct efx_nic *efx)
 	BUG_ON(efx->state == STATE_READY);
 	cancel_work_sync(&efx->reset_work);
 
-#ifdef CONFIG_RFS_ACCEL
-	free_irq_cpu_rmap(efx->net_dev->rx_cpu_rmap);
-	efx->net_dev->rx_cpu_rmap = NULL;
-#endif
 	efx_stop_interrupts(efx, false);
 	efx_nic_fini_interrupt(efx);
 	efx_fini_port(efx);

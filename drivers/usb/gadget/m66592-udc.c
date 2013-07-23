@@ -1533,7 +1533,7 @@ static const struct usb_gadget_ops m66592_gadget_ops = {
 
 static int __exit m66592_remove(struct platform_device *pdev)
 {
-	struct m66592		*m66592 = dev_get_drvdata(&pdev->dev);
+	struct m66592		*m66592 = platform_get_drvdata(pdev);
 
 	usb_del_gadget_udc(&m66592->gadget);
 
@@ -1602,7 +1602,7 @@ static int __init m66592_probe(struct platform_device *pdev)
 	m66592->irq_trigger = ires->flags & IRQF_TRIGGER_MASK;
 
 	spin_lock_init(&m66592->lock);
-	dev_set_drvdata(&pdev->dev, m66592);
+	platform_set_drvdata(pdev, m66592);
 
 	m66592->gadget.ops = &m66592_gadget_ops;
 	m66592->gadget.max_speed = USB_SPEED_HIGH;
@@ -1660,8 +1660,10 @@ static int __init m66592_probe(struct platform_device *pdev)
 	m66592->epaddr2ep[0] = &m66592->ep[0];
 
 	m66592->ep0_req = m66592_alloc_request(&m66592->ep[0].ep, GFP_KERNEL);
-	if (m66592->ep0_req == NULL)
+	if (m66592->ep0_req == NULL) {
+		ret = -ENOMEM;
 		goto clean_up3;
+	}
 	m66592->ep0_req->complete = nop_completion;
 
 	init_controller(m66592);

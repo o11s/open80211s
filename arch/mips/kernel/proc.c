@@ -10,6 +10,7 @@
 #include <asm/bootinfo.h>
 #include <asm/cpu.h>
 #include <asm/cpu-features.h>
+#include <asm/idle.h>
 #include <asm/mipsregs.h>
 #include <asm/processor.h>
 #include <asm/prom.h>
@@ -65,9 +66,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 		seq_printf(m, "]\n");
 	}
 	if (cpu_has_mips_r) {
-		seq_printf(m, "isa\t\t\t:");
-		if (cpu_has_mips_1)
-			seq_printf(m, "%s", " mips1");
+		seq_printf(m, "isa\t\t\t: mips1");
 		if (cpu_has_mips_2)
 			seq_printf(m, "%s", " mips2");
 		if (cpu_has_mips_3)

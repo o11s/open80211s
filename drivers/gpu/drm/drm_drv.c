@@ -57,7 +57,7 @@ static int drm_version(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv);
 
 #define DRM_IOCTL_DEF(ioctl, _func, _flags) \
-	[DRM_IOCTL_NR(ioctl)] = {.cmd = ioctl, .func = _func, .flags = _flags, .cmd_drv = 0}
+	[DRM_IOCTL_NR(ioctl)] = {.cmd = ioctl, .func = _func, .flags = _flags, .cmd_drv = 0, .name = #ioctl}
 
 /** Ioctl table */
 static const struct drm_ioctl_desc drm_ioctls[] = {
@@ -166,6 +166,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DESTROY_DUMB, drm_mode_destroy_dumb_ioctl, DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_OBJ_GETPROPERTIES, drm_mode_obj_get_properties_ioctl, DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_OBJ_SETPROPERTY, drm_mode_obj_set_property_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
+	DRM_IOCTL_DEF(DRM_IOCTL_MODE_CURSOR2, drm_mode_cursor2_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 };
 
 #define DRM_CORE_IOCTL_COUNT	ARRAY_SIZE( drm_ioctls )
@@ -375,7 +376,7 @@ long drm_ioctl(struct file *filp,
 {
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev;
-	const struct drm_ioctl_desc *ioctl;
+	const struct drm_ioctl_desc *ioctl = NULL;
 	drm_ioctl_t *func;
 	unsigned int nr = DRM_IOCTL_NR(cmd);
 	int retcode = -EINVAL;
@@ -391,11 +392,6 @@ long drm_ioctl(struct file *filp,
 	atomic_inc(&dev->ioctl_count);
 	atomic_inc(&dev->counts[_DRM_STAT_IOCTLS]);
 	++file_priv->ioctl_count;
-
-	DRM_DEBUG("pid=%d, cmd=0x%02x, nr=0x%02x, dev 0x%lx, auth=%d\n",
-		  task_pid_nr(current), cmd, nr,
-		  (long)old_encode_dev(file_priv->minor->device),
-		  file_priv->authenticated);
 
 	if ((nr >= DRM_CORE_IOCTL_COUNT) &&
 	    ((nr < DRM_COMMAND_BASE) || (nr >= DRM_COMMAND_END)))
@@ -416,6 +412,11 @@ long drm_ioctl(struct file *filp,
 		usize = asize = _IOC_SIZE(cmd);
 	} else
 		goto err_i1;
+
+	DRM_DEBUG("pid=%d, dev=0x%lx, auth=%d, %s\n",
+		  task_pid_nr(current),
+		  (long)old_encode_dev(file_priv->minor->device),
+		  file_priv->authenticated, ioctl->name);
 
 	/* Do not trust userspace, use our own definition */
 	func = ioctl->func;
@@ -471,6 +472,12 @@ long drm_ioctl(struct file *filp,
 	}
 
       err_i1:
+	if (!ioctl)
+		DRM_DEBUG("invalid iotcl: pid=%d, dev=0x%lx, auth=%d, cmd=0x%02x, nr=0x%02x\n",
+			  task_pid_nr(current),
+			  (long)old_encode_dev(file_priv->minor->device),
+			  file_priv->authenticated, cmd, nr);
+
 	if (kdata != stack_kdata)
 		kfree(kdata);
 	atomic_dec(&dev->ioctl_count);

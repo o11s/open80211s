@@ -570,6 +570,7 @@ int mwifiex_send_cmd_async(struct mwifiex_private *priv, uint16_t cmd_no,
 		case HostCmd_CMD_UAP_SYS_CONFIG:
 		case HostCmd_CMD_UAP_BSS_START:
 		case HostCmd_CMD_UAP_BSS_STOP:
+		case HostCmd_CMD_UAP_STA_DEAUTH:
 			ret = mwifiex_uap_prepare_cmd(priv, cmd_no, cmd_action,
 						      cmd_oid, data_buf,
 						      cmd_ptr);
@@ -1191,6 +1192,7 @@ mwifiex_process_hs_config(struct mwifiex_adapter *adapter)
 	adapter->if_ops.wakeup(adapter);
 	adapter->hs_activated = false;
 	adapter->is_hs_configured = false;
+	adapter->is_suspended = false;
 	mwifiex_hs_activated_event(mwifiex_get_priv(adapter,
 						    MWIFIEX_BSS_ROLE_ANY),
 				   false);

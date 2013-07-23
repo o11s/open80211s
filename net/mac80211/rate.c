@@ -397,8 +397,14 @@ static void rate_idx_match_mask(struct ieee80211_tx_rate *rate,
 			return;
 
 		/* if HT BSS, and we handle a data frame, also try HT rates */
-		if (chan_width == NL80211_CHAN_WIDTH_20_NOHT)
+		switch (chan_width) {
+		case NL80211_CHAN_WIDTH_20_NOHT:
+		case NL80211_CHAN_WIDTH_5:
+		case NL80211_CHAN_WIDTH_10:
 			return;
+		default:
+			break;
+		}
 
 		alt_rate.idx = 0;
 		/* keep protection flags */
@@ -615,7 +621,7 @@ static void rate_control_apply_mask(struct ieee80211_sub_if_data *sdata,
 		if (rates[i].idx < 0)
 			break;
 
-		rate_idx_match_mask(&rates[i], sband, mask, chan_width,
+		rate_idx_match_mask(&rates[i], sband, chan_width, mask,
 				    mcs_mask);
 	}
 }
@@ -688,8 +694,15 @@ int rate_control_set_rates(struct ieee80211_hw *hw,
 			   struct ieee80211_sta *pubsta,
 			   struct ieee80211_sta_rates *rates)
 {
-	struct ieee80211_sta_rates *old = rcu_dereference(pubsta->rates);
+	struct ieee80211_sta_rates *old;
 
+	/*
+	 * mac80211 guarantees that this function will not be called
+	 * concurrently, so the following RCU access is safe, even without
+	 * extra locking. This can not be checked easily, so we just set
+	 * the condition to true.
+	 */
+	old = rcu_dereference_protected(pubsta->rates, true);
 	rcu_assign_pointer(pubsta->rates, rates);
 	if (old)
 		kfree_rcu(old, rcu_head);

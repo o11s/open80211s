@@ -39,6 +39,7 @@
 				 EXTENT_STATUS_DELAYED | \
 				 EXTENT_STATUS_HOLE)
 
+struct ext4_sb_info;
 struct ext4_extent;
 
 struct extent_status {
@@ -62,7 +63,8 @@ extern int ext4_es_insert_extent(struct inode *inode, ext4_lblk_t lblk,
 				 unsigned long long status);
 extern int ext4_es_remove_extent(struct inode *inode, ext4_lblk_t lblk,
 				 ext4_lblk_t len);
-extern void ext4_es_find_delayed_extent(struct inode *inode, ext4_lblk_t lblk,
+extern void ext4_es_find_delayed_extent_range(struct inode *inode,
+					ext4_lblk_t lblk, ext4_lblk_t end,
 					struct extent_status *es);
 extern int ext4_es_lookup_extent(struct inode *inode, ext4_lblk_t lblk,
 				 struct extent_status *es);
@@ -118,8 +120,8 @@ static inline void ext4_es_store_status(struct extent_status *es,
 	es->es_pblk = block;
 }
 
-extern void ext4_es_register_shrinker(struct super_block *sb);
-extern void ext4_es_unregister_shrinker(struct super_block *sb);
+extern void ext4_es_register_shrinker(struct ext4_sb_info *sbi);
+extern void ext4_es_unregister_shrinker(struct ext4_sb_info *sbi);
 extern void ext4_es_lru_add(struct inode *inode);
 extern void ext4_es_lru_del(struct inode *inode);
 

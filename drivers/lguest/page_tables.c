@@ -70,7 +70,7 @@
 /*H:320
  * The page table code is curly enough to need helper functions to keep it
  * clear and clean.  The kernel itself provides many of them; one advantage
- * of insisting that the Guest and Host use the same CONFIG_PAE setting.
+ * of insisting that the Guest and Host use the same CONFIG_X86_PAE setting.
  *
  * There are two functions which return pointers to the shadow (aka "real")
  * page tables.
@@ -1002,6 +1002,7 @@ void guest_set_pgd(struct lguest *lg, unsigned long gpgdir, u32 idx)
 			kill_guest(&lg->cpus[0],
 				   "Cannot populate switcher mapping");
 		}
+		lg->pgdirs[pgdir].last_host_cpu = -1;
 	}
 }
 

@@ -148,7 +148,7 @@ void nf_log_packet(struct net *net,
 		va_start(args, fmt);
 		vsnprintf(prefix, sizeof(prefix), fmt, args);
 		va_end(args);
-		logger->logfn(pf, hooknum, skb, in, out, loginfo, prefix);
+		logger->logfn(net, pf, hooknum, skb, in, out, loginfo, prefix);
 	}
 	rcu_read_unlock();
 }
@@ -245,7 +245,7 @@ static const struct file_operations nflog_file_ops = {
 static char nf_log_sysctl_fnames[NFPROTO_NUMPROTO-NFPROTO_UNSPEC][3];
 static struct ctl_table nf_log_sysctl_table[NFPROTO_NUMPROTO+1];
 
-static int nf_log_proc_dostring(ctl_table *table, int write,
+static int nf_log_proc_dostring(struct ctl_table *table, int write,
 			 void __user *buffer, size_t *lenp, loff_t *ppos)
 {
 	const struct nf_logger *logger;
@@ -368,17 +368,18 @@ static int __net_init nf_log_net_init(struct net *net)
 	return 0;
 
 out_sysctl:
-	/* For init_net: errors will trigger panic, don't unroll on error. */
-	if (!net_eq(net, &init_net))
-		remove_proc_entry("nf_log", net->nf.proc_netfilter);
-
+#ifdef CONFIG_PROC_FS
+	remove_proc_entry("nf_log", net->nf.proc_netfilter);
+#endif
 	return ret;
 }
 
 static void __net_exit nf_log_net_exit(struct net *net)
 {
 	netfilter_log_sysctl_exit(net);
+#ifdef CONFIG_PROC_FS
 	remove_proc_entry("nf_log", net->nf.proc_netfilter);
+#endif
 }
 
 static struct pernet_operations nf_log_net_ops = {

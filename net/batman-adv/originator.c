@@ -92,7 +92,7 @@ batadv_orig_node_get_router(struct batadv_orig_node *orig_node)
 
 struct batadv_neigh_node *
 batadv_neigh_node_new(struct batadv_hard_iface *hard_iface,
-		      const uint8_t *neigh_addr, uint32_t seqno)
+		      const uint8_t *neigh_addr)
 {
 	struct batadv_priv *bat_priv = netdev_priv(hard_iface->soft_iface);
 	struct batadv_neigh_node *neigh_node;
@@ -110,8 +110,8 @@ batadv_neigh_node_new(struct batadv_hard_iface *hard_iface,
 	atomic_set(&neigh_node->refcount, 2);
 
 	batadv_dbg(BATADV_DBG_BATMAN, bat_priv,
-		   "Creating new neighbor %pM, initial seqno %d\n",
-		   neigh_addr, seqno);
+		   "Creating new neighbor %pM on interface %s\n", neigh_addr,
+		   hard_iface->net_dev->name);
 
 out:
 	return neigh_node;
@@ -156,10 +156,26 @@ static void batadv_orig_node_free_rcu(struct rcu_head *rcu)
 	kfree(orig_node);
 }
 
+/**
+ * batadv_orig_node_free_ref - decrement the orig node refcounter and possibly
+ * schedule an rcu callback for freeing it
+ * @orig_node: the orig node to free
+ */
 void batadv_orig_node_free_ref(struct batadv_orig_node *orig_node)
 {
 	if (atomic_dec_and_test(&orig_node->refcount))
 		call_rcu(&orig_node->rcu, batadv_orig_node_free_rcu);
+}
+
+/**
+ * batadv_orig_node_free_ref_now - decrement the orig node refcounter and
+ * possibly free it (without rcu callback)
+ * @orig_node: the orig node to free
+ */
+void batadv_orig_node_free_ref_now(struct batadv_orig_node *orig_node)
+{
+	if (atomic_dec_and_test(&orig_node->refcount))
+		batadv_orig_node_free_rcu(&orig_node->rcu);
 }
 
 void batadv_originator_free(struct batadv_priv *bat_priv)

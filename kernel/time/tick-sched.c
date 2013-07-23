@@ -178,6 +178,11 @@ static bool can_stop_full_tick(void)
 	 */
 	if (!sched_clock_stable) {
 		trace_tick_stop(0, "unstable sched clock\n");
+		/*
+		 * Don't allow the user to think they can get
+		 * full NO_HZ with this machine.
+		 */
+		WARN_ONCE(1, "NO_HZ FULL will not work with unstable sched clock");
 		return false;
 	}
 #endif
@@ -306,7 +311,7 @@ static int __cpuinit tick_nohz_cpu_down_callback(struct notifier_block *nfb,
 		 * we can't safely shutdown that CPU.
 		 */
 		if (have_nohz_full_mask && tick_do_timer_cpu == cpu)
-			return -EINVAL;
+			return NOTIFY_BAD;
 		break;
 	}
 	return NOTIFY_OK;
@@ -346,16 +351,6 @@ void __init tick_nohz_init(void)
 	}
 
 	cpu_notifier(tick_nohz_cpu_down_callback, 0);
-
-	/* Make sure full dynticks CPU are also RCU nocbs */
-	for_each_cpu(cpu, nohz_full_mask) {
-		if (!rcu_is_nocb_cpu(cpu)) {
-			pr_warning("NO_HZ: CPU %d is not RCU nocb: "
-				   "cleared from nohz_full range", cpu);
-			cpumask_clear_cpu(cpu, nohz_full_mask);
-		}
-	}
-
 	cpulist_scnprintf(nohz_full_buf, sizeof(nohz_full_buf), nohz_full_mask);
 	pr_info("NO_HZ: Full dynticks CPUs: %s.\n", nohz_full_buf);
 }
@@ -717,6 +712,7 @@ static bool can_stop_idle_tick(int cpu, struct tick_sched *ts)
 	if (unlikely(!cpu_online(cpu))) {
 		if (cpu == tick_do_timer_cpu)
 			tick_do_timer_cpu = TICK_DO_TIMER_NONE;
+		return false;
 	}
 
 	if (unlikely(ts->nohz_mode == NOHZ_MODE_INACTIVE))
@@ -1168,7 +1164,7 @@ void tick_cancel_sched_timer(int cpu)
 		hrtimer_cancel(&ts->sched_timer);
 # endif
 
-	ts->nohz_mode = NOHZ_MODE_INACTIVE;
+	memset(ts, 0, sizeof(*ts));
 }
 #endif
 

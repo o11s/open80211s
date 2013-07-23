@@ -1,8 +1,8 @@
 VERSION = 3
-PATCHLEVEL = 10
+PATCHLEVEL = 11
 SUBLEVEL = 0
 EXTRAVERSION = -rc1
-NAME = Unicycling Gorilla
+NAME = Linux for Workgroups
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -794,7 +794,7 @@ PHONY += $(vmlinux-dirs)
 $(vmlinux-dirs): prepare scripts
 	$(Q)$(MAKE) $(build)=$@
 
-# Store (new) KERNELRELASE string in include/config/kernel.release
+# Store (new) KERNELRELEASE string in include/config/kernel.release
 include/config/kernel.release: include/config/auto.conf FORCE
 	$(Q)rm -f $@
 	$(Q)echo "$(KERNELVERSION)$$($(CONFIG_SHELL) $(srctree)/scripts/setlocalversion $(srctree))" > $@
@@ -981,7 +981,7 @@ _modinst_:
 # boot a modules.dep even before / is mounted read-write.  However the
 # boot script depmod is the master version.
 PHONY += _modinst_post
-_modinst_post: include/config/kernel.release _modinst_
+_modinst_post: _modinst_
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_modinst
 	$(call cmd,depmod)
 

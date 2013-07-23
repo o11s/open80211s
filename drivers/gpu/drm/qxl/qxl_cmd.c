@@ -49,6 +49,11 @@ void qxl_ring_free(struct qxl_ring *ring)
 	kfree(ring);
 }
 
+void qxl_ring_init_hdr(struct qxl_ring *ring)
+{
+	ring->ring->header.notify_on_prod = ring->n_elements;
+}
+
 struct qxl_ring *
 qxl_ring_create(struct qxl_ring_header *header,
 		int element_size,
@@ -69,7 +74,7 @@ qxl_ring_create(struct qxl_ring_header *header,
 	ring->prod_notify = prod_notify;
 	ring->push_event = push_event;
 	if (set_prod_notify)
-		header->notify_on_prod = ring->n_elements;
+		qxl_ring_init_hdr(ring);
 	spin_lock_init(&ring->lock);
 	return ring;
 }
@@ -87,7 +92,7 @@ static int qxl_check_header(struct qxl_ring *ring)
 	return ret;
 }
 
-static int qxl_check_idle(struct qxl_ring *ring)
+int qxl_check_idle(struct qxl_ring *ring)
 {
 	int ret;
 	struct qxl_ring_header *header = &(ring->ring->header);
@@ -277,7 +282,7 @@ out_unref:
 	return 0;
 }
 
-static int wait_for_io_cmd_user(struct qxl_device *qdev, uint8_t val, long port)
+static int wait_for_io_cmd_user(struct qxl_device *qdev, uint8_t val, long port, bool intr)
 {
 	int irq_num;
 	long addr = qdev->io_base + port;
@@ -285,20 +290,29 @@ static int wait_for_io_cmd_user(struct qxl_device *qdev, uint8_t val, long port)
 
 	mutex_lock(&qdev->async_io_mutex);
 	irq_num = atomic_read(&qdev->irq_received_io_cmd);
-
-
 	if (qdev->last_sent_io_cmd > irq_num) {
-		ret = wait_event_interruptible(qdev->io_cmd_event,
-					       atomic_read(&qdev->irq_received_io_cmd) > irq_num);
-		if (ret)
+		if (intr)
+			ret = wait_event_interruptible_timeout(qdev->io_cmd_event,
+							       atomic_read(&qdev->irq_received_io_cmd) > irq_num, 5*HZ);
+		else
+			ret = wait_event_timeout(qdev->io_cmd_event,
+						 atomic_read(&qdev->irq_received_io_cmd) > irq_num, 5*HZ);
+		/* 0 is timeout, just bail the "hw" has gone away */
+		if (ret <= 0)
 			goto out;
 		irq_num = atomic_read(&qdev->irq_received_io_cmd);
 	}
 	outb(val, addr);
 	qdev->last_sent_io_cmd = irq_num + 1;
-	ret = wait_event_interruptible(qdev->io_cmd_event,
-				       atomic_read(&qdev->irq_received_io_cmd) > irq_num);
+	if (intr)
+		ret = wait_event_interruptible_timeout(qdev->io_cmd_event,
+						       atomic_read(&qdev->irq_received_io_cmd) > irq_num, 5*HZ);
+	else
+		ret = wait_event_timeout(qdev->io_cmd_event,
+					 atomic_read(&qdev->irq_received_io_cmd) > irq_num, 5*HZ);
 out:
+	if (ret > 0)
+		ret = 0;
 	mutex_unlock(&qdev->async_io_mutex);
 	return ret;
 }
@@ -308,7 +322,7 @@ static void wait_for_io_cmd(struct qxl_device *qdev, uint8_t val, long port)
 	int ret;
 
 restart:
-	ret = wait_for_io_cmd_user(qdev, val, port);
+	ret = wait_for_io_cmd_user(qdev, val, port, false);
 	if (ret == -ERESTARTSYS)
 		goto restart;
 }
@@ -340,7 +354,7 @@ int qxl_io_update_area(struct qxl_device *qdev, struct qxl_bo *surf,
 	mutex_lock(&qdev->update_area_mutex);
 	qdev->ram_header->update_area = *area;
 	qdev->ram_header->update_surface = surface_id;
-	ret = wait_for_io_cmd_user(qdev, 0, QXL_IO_UPDATE_AREA_ASYNC);
+	ret = wait_for_io_cmd_user(qdev, 0, QXL_IO_UPDATE_AREA_ASYNC, true);
 	mutex_unlock(&qdev->update_area_mutex);
 	return ret;
 }
@@ -366,8 +380,8 @@ void qxl_io_destroy_primary(struct qxl_device *qdev)
 	wait_for_io_cmd(qdev, 0, QXL_IO_DESTROY_PRIMARY_ASYNC);
 }
 
-void qxl_io_create_primary(struct qxl_device *qdev, unsigned width,
-			   unsigned height, unsigned offset, struct qxl_bo *bo)
+void qxl_io_create_primary(struct qxl_device *qdev,
+			   unsigned offset, struct qxl_bo *bo)
 {
 	struct qxl_surface_create *create;
 
@@ -375,8 +389,8 @@ void qxl_io_create_primary(struct qxl_device *qdev, unsigned width,
 		 qdev->ram_header);
 	create = &qdev->ram_header->create_surface;
 	create->format = bo->surf.format;
-	create->width = width;
-	create->height = height;
+	create->width = bo->surf.width;
+	create->height = bo->surf.height;
 	create->stride = bo->surf.stride;
 	create->mem = qxl_bo_physical_address(qdev, bo, offset);
 

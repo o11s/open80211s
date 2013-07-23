@@ -265,11 +265,6 @@ static int imx_pwm_probe(struct platform_device *pdev)
 	imx->chip.npwm = 1;
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (r == NULL) {
-		dev_err(&pdev->dev, "no memory resource defined\n");
-		return -ENODEV;
-	}
-
 	imx->mmio_base = devm_ioremap_resource(&pdev->dev, r);
 	if (IS_ERR(imx->mmio_base))
 		return PTR_ERR(imx->mmio_base);
@@ -300,6 +295,7 @@ static int imx_pwm_remove(struct platform_device *pdev)
 static struct platform_driver imx_pwm_driver = {
 	.driver		= {
 		.name	= "imx-pwm",
+		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(imx_pwm_dt_ids),
 	},
 	.probe		= imx_pwm_probe,

@@ -1191,6 +1191,7 @@ static void tegra_dma_free_chan_resources(struct dma_chan *dc)
 	list_splice_init(&tdc->free_dma_desc, &dma_desc_list);
 	INIT_LIST_HEAD(&tdc->cb_desc);
 	tdc->config_init = false;
+	tdc->isr_handler = NULL;
 	spin_unlock_irqrestore(&tdc->lock, flags);
 
 	while (!list_empty(&dma_desc_list)) {
@@ -1273,11 +1274,6 @@ static int tegra_dma_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, tdma);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "No mem resource for DMA\n");
-		return -EINVAL;
-	}
-
 	tdma->base_addr = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(tdma->base_addr))
 		return PTR_ERR(tdma->base_addr);
@@ -1339,7 +1335,7 @@ static int tegra_dma_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(&pdev->dev,
 				"request_irq failed with err %d channel %d\n",
-				i, ret);
+				ret, i);
 			goto err_irq;
 		}
 

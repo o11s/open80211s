@@ -193,7 +193,6 @@ static bool ath_prepare_reset(struct ath_softc *sc)
 	ath_stop_ani(sc);
 	del_timer_sync(&sc->rx_poll_timer);
 
-	ath9k_debug_samp_bb_mac(sc);
 	ath9k_hw_disable_interrupts(ah);
 
 	if (!ath_drain_all_txq(sc))
@@ -227,13 +226,13 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 		if (!test_bit(SC_OP_BEACONS, &sc->sc_flags))
 			goto work;
 
-		ath9k_set_beacon(sc);
-
 		if (ah->opmode == NL80211_IFTYPE_STATION &&
 		    test_bit(SC_OP_PRIM_STA_VIF, &sc->sc_flags)) {
 			spin_lock_irqsave(&sc->sc_pm_lock, flags);
 			sc->ps_flags |= PS_BEACON_SYNC | PS_WAIT_FOR_BEACON;
 			spin_unlock_irqrestore(&sc->sc_pm_lock, flags);
+		} else {
+			ath9k_set_beacon(sc);
 		}
 	work:
 		ath_restart_work(sc);
@@ -1211,13 +1210,6 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 		ath_update_survey_stats(sc);
 		spin_unlock_irqrestore(&common->cc_lock, flags);
 
-		/*
-		 * Preserve the current channel values, before updating
-		 * the same channel
-		 */
-		if (ah->curchan && (old_pos == pos))
-			ath9k_hw_getnf(ah, ah->curchan);
-
 		ath9k_cmn_update_ichannel(&sc->sc_ah->channels[pos],
 					  curchan, channel_type);
 
@@ -1273,7 +1265,7 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 				curchan->center_freq);
 		} else {
 			/* perform spectral scan if requested. */
-			if (sc->scanning &&
+			if (test_bit(SC_OP_SCANNING, &sc->sc_flags) &&
 			    sc->spectral_mode == SPECTRAL_CHANSCAN)
 				ath9k_spectral_scan_trigger(hw);
 		}
@@ -1332,6 +1324,7 @@ static int ath9k_sta_add(struct ieee80211_hw *hw,
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	struct ath_node *an = (struct ath_node *) sta->drv_priv;
 	struct ieee80211_key_conf ps_key = { };
+	int key;
 
 	ath_node_attach(sc, sta, vif);
 
@@ -1339,7 +1332,9 @@ static int ath9k_sta_add(struct ieee80211_hw *hw,
 	    vif->type != NL80211_IFTYPE_AP_VLAN)
 		return 0;
 
-	an->ps_key = ath_key_config(common, vif, sta, &ps_key);
+	key = ath_key_config(common, vif, sta, &ps_key);
+	if (key > 0)
+		an->ps_key = key;
 
 	return 0;
 }
@@ -1356,6 +1351,7 @@ static void ath9k_del_ps_key(struct ath_softc *sc,
 	    return;
 
 	ath_key_delete(common, &ps_key);
+	an->ps_key = 0;
 }
 
 static int ath9k_sta_remove(struct ieee80211_hw *hw,
@@ -1683,9 +1679,10 @@ static int ath9k_ampdu_action(struct ieee80211_hw *hw,
 			      u16 tid, u16 *ssn, u8 buf_size)
 {
 	struct ath_softc *sc = hw->priv;
+	bool flush = false;
 	int ret = 0;
 
-	local_bh_disable();
+	mutex_lock(&sc->mutex);
 
 	switch (action) {
 	case IEEE80211_AMPDU_RX_START:
@@ -1699,12 +1696,14 @@ static int ath9k_ampdu_action(struct ieee80211_hw *hw,
 			ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		ath9k_ps_restore(sc);
 		break;
-	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
+		flush = true;
+	case IEEE80211_AMPDU_TX_STOP_CONT:
 		ath9k_ps_wakeup(sc);
 		ath_tx_aggr_stop(sc, sta, tid);
-		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
+		if (!flush)
+			ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		ath9k_ps_restore(sc);
 		break;
 	case IEEE80211_AMPDU_TX_OPERATIONAL:
@@ -1716,7 +1715,7 @@ static int ath9k_ampdu_action(struct ieee80211_hw *hw,
 		ath_err(ath9k_hw_common(sc->sc_ah), "Unknown AMPDU action\n");
 	}
 
-	local_bh_enable();
+	mutex_unlock(&sc->mutex);
 
 	return ret;
 }
@@ -2000,7 +1999,6 @@ static void ath9k_wow_add_disassoc_deauth_pattern(struct ath_softc *sc)
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
-	struct ath9k_hw_capabilities *pcaps = &ah->caps;
 	int pattern_count = 0;
 	int i, byte_cnt;
 	u8 dis_deauth_pattern[MAX_PATTERN_SIZE];
@@ -2070,36 +2068,9 @@ static void ath9k_wow_add_disassoc_deauth_pattern(struct ath_softc *sc)
 
 	/* Create Disassociate pattern mask */
 
-	if (pcaps->hw_caps & ATH9K_HW_WOW_PATTERN_MATCH_EXACT) {
-
-		if (pcaps->hw_caps & ATH9K_HW_WOW_PATTERN_MATCH_DWORD) {
-			/*
-			 * for AR9280, because of hardware limitation, the
-			 * first 4 bytes have to be matched for all patterns.
-			 * the mask for disassociation and de-auth pattern
-			 * matching need to enable the first 4 bytes.
-			 * also the duration field needs to be filled.
-			 */
-			dis_deauth_mask[0] = 0xf0;
-
-			/*
-			 * fill in duration field
-			 FIXME: what is the exact value ?
-			 */
-			dis_deauth_pattern[2] = 0xff;
-			dis_deauth_pattern[3] = 0xff;
-		} else {
-			dis_deauth_mask[0] = 0xfe;
-		}
-
-		dis_deauth_mask[1] = 0x03;
-		dis_deauth_mask[2] = 0xc0;
-	} else {
-		dis_deauth_mask[0] = 0xef;
-		dis_deauth_mask[1] = 0x3f;
-		dis_deauth_mask[2] = 0x00;
-		dis_deauth_mask[3] = 0xfc;
-	}
+	dis_deauth_mask[0] = 0xfe;
+	dis_deauth_mask[1] = 0x03;
+	dis_deauth_mask[2] = 0xc0;
 
 	ath_dbg(common, WOW, "Adding disassoc/deauth patterns for WoW\n");
 
@@ -2335,15 +2306,13 @@ static void ath9k_set_wakeup(struct ieee80211_hw *hw, bool enabled)
 static void ath9k_sw_scan_start(struct ieee80211_hw *hw)
 {
 	struct ath_softc *sc = hw->priv;
-
-	sc->scanning = 1;
+	set_bit(SC_OP_SCANNING, &sc->sc_flags);
 }
 
 static void ath9k_sw_scan_complete(struct ieee80211_hw *hw)
 {
 	struct ath_softc *sc = hw->priv;
-
-	sc->scanning = 0;
+	clear_bit(SC_OP_SCANNING, &sc->sc_flags);
 }
 
 struct ieee80211_ops ath9k_ops = {
@@ -2371,6 +2340,7 @@ struct ieee80211_ops ath9k_ops = {
 	.flush		    = ath9k_flush,
 	.tx_frames_pending  = ath9k_tx_frames_pending,
 	.tx_last_beacon     = ath9k_tx_last_beacon,
+	.release_buffered_frames = ath9k_release_buffered_frames,
 	.get_stats	    = ath9k_get_stats,
 	.set_antenna	    = ath9k_set_antenna,
 	.get_antenna	    = ath9k_get_antenna,
