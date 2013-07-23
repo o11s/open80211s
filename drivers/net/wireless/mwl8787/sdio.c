@@ -945,6 +945,7 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 
 disable:
 	/* FIXME unbind device */
+	release_firmware(fw);
 	return;
 }
 
