@@ -57,6 +57,9 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 	ret = mwl8787_send_cmd_tm(priv, cmd, &resp);
 	mwl8787_cmd_free(priv, cmd);
 
+	if (ret)
+		return ret;
+
 	reply = cfg80211_testmode_alloc_reply_skb(priv->hw->wiphy,
 		MWL8787_TM_MAX_DATA_LEN);
 	if (!reply)
