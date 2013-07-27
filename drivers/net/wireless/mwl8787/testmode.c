@@ -5,6 +5,7 @@
 enum mwl8787_tm_commands {
 	MWL8787_TM_CMD_UNSPEC,
 	MWL8787_TM_CMD_FW,
+	MWL8787_TM_CMD_DATA,
 
 	__MWL8787_TM_CMD_AFTER_LAST
 };
@@ -30,6 +31,32 @@ struct nla_policy mwl8787_tm_policy[MWL8787_TM_ATTR_MAX + 1] = {
 					  .len = MWL8787_TM_MAX_DATA_LEN },
 };
 
+static int mwl8787_tm_cmd_tx(struct mwl8787_priv *priv,
+			     struct nlattr *tb[])
+{
+	u8 *buf;
+	size_t buf_len;
+	struct sk_buff *skb;
+	int ret = 0;
+
+	if (!tb[MWL8787_TM_ATTR_DATA])
+		return -EINVAL;
+
+	buf = nla_data(tb[MWL8787_TM_ATTR_DATA]);
+	buf_len = nla_len(tb[MWL8787_TM_ATTR_DATA]);
+
+	skb = dev_alloc_skb(buf_len);
+	if (!skb)
+		return -ENOMEM;
+
+	skb_push(skb, buf_len);
+	memcpy(skb->data, buf, buf_len);
+
+	ret = priv->bus_ops->send_tx(priv, skb);
+
+	dev_kfree_skb(skb);
+	return ret;
+}
 static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 			     struct nlattr *tb[])
 {
@@ -105,6 +132,8 @@ int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
 
 	case MWL8787_TM_CMD_FW:
 		return mwl8787_tm_cmd_fw(priv, tb);
+	case MWL8787_TM_CMD_DATA:
+		return mwl8787_tm_cmd_tx(priv, tb);
 	default:
 		return -ENOSYS;
 	}
