@@ -33,6 +33,7 @@
 #define MGMT_MASK_BEACON			0x100
 
 #define MWL8787_MAX_MULTICAST_LIST_SIZE		32
+#define MWL8787_MAX_BEACON_SIZE			440
 
 #define MWL8787_ACT_GET				0
 #define MWL8787_ACT_SET				1
@@ -110,6 +111,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_RADIO_CTRL		= 0x001c,
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
+	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_MONITOR		= 0x0102,
 };
@@ -315,6 +317,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_mac_ctrl mac_ctrl;
 		struct mwl8787_cmd_mac_addr mac_addr;
 		struct mwl8787_cmd_beacon_ctrl beacon_ctrl;
+		struct mwl8787_cmd_beacon_set beacon_set;
 		struct mwl8787_cmd_mode mode;
 		struct mwl8787_cmd_bssid bssid;
 		struct mwl8787_cmd_scan scan;

@@ -378,6 +378,24 @@ static int mwl8787_hw_scan(struct ieee80211_hw *hw,
 	return mwl8787_cmd_scan(hw->priv, req);
 }
 
+static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
+				     struct ieee80211_vif *vif,
+				     struct ieee80211_bss_conf *info,
+				     u32 changed)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	struct sk_buff *skb;
+	u16 tim_offset, tim_len;
+
+	if (changed & BSS_CHANGED_BEACON) {
+		skb = ieee80211_beacon_get_tim(hw, vif,
+					       &tim_offset, &tim_len);
+
+		mwl8787_cmd_beacon_set(priv, skb);
+		dev_kfree_skb_any(skb);
+	}
+}
+
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -385,6 +403,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.add_interface = mwl8787_add_interface,
 	.remove_interface = mwl8787_remove_interface,
 	.config = mwl8787_config,
+	.bss_info_changed = mwl8787_bss_info_changed,
 	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
 	.hw_scan = mwl8787_hw_scan,

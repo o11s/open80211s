@@ -434,3 +434,26 @@ int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on)
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }
+
+int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb)
+{
+	struct mwl8787_cmd *cmd;
+	size_t len;
+	int ret;
+
+	if (skb->len > MWL8787_MAX_BEACON_SIZE)
+		return -ENOSPC;
+
+	len = sizeof(struct mwl8787_cmd_beacon_set) + skb->len;
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_BEACON_SET, len,
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.beacon_set.len = cpu_to_le16(len);
+	memcpy(cmd->u.beacon_set.beacon, skb->data, skb->len);
+
+	ret = mwl8787_send_cmd_sync(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
