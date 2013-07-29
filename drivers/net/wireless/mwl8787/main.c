@@ -265,6 +265,8 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 
 static void mwl8787_stop(struct ieee80211_hw *hw)
 {
+	struct mwl8787_priv *priv = hw->priv;
+	cancel_work_sync(&priv->tx_work);
 }
 
 static int mwl8787_add_interface(struct ieee80211_hw *hw,
