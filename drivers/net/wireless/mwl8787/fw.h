@@ -114,6 +114,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_MONITOR		= 0x0102,
+	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 };
 
 enum mwl8787_tlv_type {

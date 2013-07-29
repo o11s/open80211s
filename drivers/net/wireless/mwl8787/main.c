@@ -394,6 +394,11 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		mwl8787_cmd_beacon_set(priv, skb);
 		dev_kfree_skb_any(skb);
 	}
+
+	if (changed & BSS_CHANGED_BEACON_ENABLED) {
+		mwl8787_cmd_beacon_ctrl(priv, info->beacon_int,
+					info->enable_beacon);
+	}
 }
 
 const struct ieee80211_ops mwl8787_ops = {
