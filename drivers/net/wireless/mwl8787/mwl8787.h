@@ -108,6 +108,8 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb);
 int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb);
+int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
+			    bool enable_beacon);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
