@@ -49,8 +49,7 @@ static int mwl8787_tm_cmd_tx(struct mwl8787_priv *priv,
 	if (!skb)
 		return -ENOMEM;
 
-	skb_push(skb, buf_len);
-	memcpy(skb->data, buf, buf_len);
+	memcpy(skb_put(skb, buf_len), buf, buf_len);
 
 	ret = priv->bus_ops->send_tx(priv, skb);
 
