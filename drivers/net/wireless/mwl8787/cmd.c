@@ -91,15 +91,6 @@ int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
 	return 0;
 }
 
-int mwl8787_cmd_scan_resp(struct mwl8787_priv *priv,
-			  struct mwl8787_cmd *resp)
-{
-	dev_dbg(priv->dev, "scan found %d APs of size %d\n",
-		resp->u.scan_resp.num,
-		resp->u.scan_resp.bss_size);
-	return 0;
-}
-
 int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *resp;
@@ -146,11 +137,6 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 		case MWL8787_CMD_MAC_ADDR:
 			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
-			break;
-
-		case MWL8787_CMD_SCAN:
-			ret = mwl8787_cmd_scan_resp(priv, resp);
-			ieee80211_scan_completed(priv->hw, false);
 			break;
 
 		case MWL8787_CMD_FUNC_INIT:

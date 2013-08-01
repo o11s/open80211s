@@ -369,13 +369,6 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	mwl8787_cmd_mac_ctrl(priv, filter);
 }
 
-static int mwl8787_hw_scan(struct ieee80211_hw *hw,
-			   struct ieee80211_vif *vif,
-			   struct cfg80211_scan_request *req)
-{
-	return mwl8787_cmd_scan(hw->priv, req);
-}
-
 static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif,
 				     struct ieee80211_bss_conf *info,
@@ -409,7 +402,6 @@ const struct ieee80211_ops mwl8787_ops = {
 	.bss_info_changed = mwl8787_bss_info_changed,
 	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
-	.hw_scan = mwl8787_hw_scan,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
