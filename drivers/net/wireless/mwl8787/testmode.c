@@ -1,3 +1,4 @@
+#ifdef NL80211_TESTMODE
 #include <net/genetlink.h>
 
 #include "mwl8787.h"
@@ -145,3 +146,5 @@ int mwl8787_testmode_dump(struct ieee80211_hw *hw,
 {
 	return 0;
 }
+
+#endif
