@@ -322,7 +322,7 @@ static u64 mwl8787_prepare_multicast(struct ieee80211_hw *hw,
 	 */
 	cmd->u.multicast_addr.num = cpu_to_le16(mc_list->count);
 	cmd->u.multicast_addr.action = cpu_to_le16(MWL8787_ACT_SET);
-	return (u64) cmd;
+	return (unsigned long) cmd;
 }
 
 static void mwl8787_configure_filter(struct ieee80211_hw *hw,
@@ -331,7 +331,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 				     u64 multicast)
 {
 	struct mwl8787_priv *priv = hw->priv;
-	struct mwl8787_cmd *mcast_cmd = (struct mwl8787_cmd *) multicast;
+	struct mwl8787_cmd *mcast_cmd = (void *) (unsigned long) multicast;
 	int supported_flags = FIF_PROMISC_IN_BSS | FIF_ALLMULTI;
 	int mcast_num = 0;
 
