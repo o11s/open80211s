@@ -206,8 +206,6 @@ struct redrat3_dev {
 	struct timer_list rx_timeout;
 	u32 hw_timeout;
 
-	/* is the detector enabled*/
-	bool det_enabled;
 	/* Is the device currently transmitting?*/
 	bool transmitting;
 
@@ -472,30 +470,9 @@ static int redrat3_enable_detector(struct redrat3_dev *rr3)
 		return -EIO;
 	}
 
-	rr3->det_enabled = true;
 	redrat3_issue_async(rr3);
 
 	return 0;
-}
-
-/* Disables the rr3 long range detector */
-static void redrat3_disable_detector(struct redrat3_dev *rr3)
-{
-	struct device *dev = rr3->dev;
-	u8 ret;
-
-	rr3_ftr(dev, "Entering %s\n", __func__);
-
-	ret = redrat3_send_cmd(RR3_RC_DET_DISABLE, rr3);
-	if (ret != 0)
-		dev_err(dev, "%s: failure!\n", __func__);
-
-	ret = redrat3_send_cmd(RR3_RC_DET_STATUS, rr3);
-	if (ret != 0)
-		dev_warn(dev, "%s: detector status: %d, should be 0\n",
-			 __func__, ret);
-
-	rr3->det_enabled = false;
 }
 
 static inline void redrat3_delete(struct redrat3_dev *rr3,
@@ -785,10 +762,10 @@ static int redrat3_transmit_ir(struct rc_dev *rcdev, unsigned *txbuf,
 		return -EAGAIN;
 	}
 
-	count = min_t(unsigned, count, RR3_MAX_SIG_SIZE - RR3_TX_TRAILER_LEN);
+	if (count > RR3_MAX_SIG_SIZE - RR3_TX_TRAILER_LEN)
+		return -EINVAL;
 
 	/* rr3 will disable rc detector on transmit */
-	rr3->det_enabled = false;
 	rr3->transmitting = true;
 
 	sample_lens = kzalloc(sizeof(int) * RR3_DRIVER_MAXLENS, GFP_KERNEL);
@@ -825,8 +802,8 @@ static int redrat3_transmit_ir(struct rc_dev *rcdev, unsigned *txbuf,
 						&irdata->lens[curlencheck]);
 				curlencheck++;
 			} else {
-				count = i - 1;
-				break;
+				ret = -EINVAL;
+				goto out;
 			}
 		}
 		irdata->sigdata[i] = lencheck;
@@ -868,7 +845,6 @@ out:
 
 	rr3->transmitting = false;
 	/* rr3 re-enables rc detector because it was enabled before */
-	rr3->det_enabled = true;
 
 	return ret;
 }
@@ -1047,8 +1023,6 @@ static void redrat3_dev_disconnect(struct usb_interface *intf)
 
 	if (!rr3)
 		return;
-
-	redrat3_disable_detector(rr3);
 
 	usb_set_intfdata(intf, NULL);
 	rc_unregister_device(rr3->rc);

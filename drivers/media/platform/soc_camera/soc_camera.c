@@ -1475,7 +1475,7 @@ static int scan_async_group(struct soc_camera_host *ici,
 			break;
 	}
 
-	if (i == size || asd[i]->bus_type != V4L2_ASYNC_BUS_I2C) {
+	if (i == size || asd[i]->match_type != V4L2_ASYNC_MATCH_I2C) {
 		/* All useless */
 		dev_err(ici->v4l2_dev.dev, "No I2C data source found!\n");
 		return -ENODEV;
@@ -1501,7 +1501,7 @@ static int scan_async_group(struct soc_camera_host *ici,
 		return -ENOMEM;
 	}
 
-	sasc->notifier.subdev = asd;
+	sasc->notifier.subdevs = asd;
 	sasc->notifier.num_subdevs = size;
 	sasc->notifier.bound = soc_camera_async_bound;
 	sasc->notifier.unbind = soc_camera_async_unbind;
