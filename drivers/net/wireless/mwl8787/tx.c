@@ -15,6 +15,7 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	desc = (struct mwl8787_tx_desc *) skb->data;
 	memset(desc, 0, sizeof(*desc));
 
+	desc->bss_type = MWL8787_BSS_TYPE_TM;
 	desc->frame_len = cpu_to_le16(frame_len);
 	desc->frame_offset = cpu_to_le16(sizeof(*desc) + pad);
 	desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_802_11);
