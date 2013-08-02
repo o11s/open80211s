@@ -6,7 +6,6 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	struct mwl8787_tx_desc *desc;
 	size_t frame_len = skb->len;
 	int pad;
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 
 	/* frame data needs to be 4-byte aligned */
 	pad = PTR_ALIGN(skb->data, 4) - skb->data;
@@ -19,12 +18,7 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	desc->bss_type = MWL8787_BSS_TYPE_TM;
 	desc->frame_len = cpu_to_le16(frame_len);
 	desc->frame_offset = cpu_to_le16(sizeof(*desc) + pad);
-
-	if (ieee80211_is_mgmt(hdr->frame_control))
-		desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_MGMT);
-	else
-		desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_802_11);
-
+	desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_802_11);
 	desc->priority = (u8) skb->priority;
 }
 
