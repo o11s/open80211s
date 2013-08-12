@@ -67,6 +67,7 @@ struct mwl8787_priv
 	struct sk_buff_head tx_queue;
 
 	struct ieee80211_channel *channel;
+	struct dentry *dfs_dev_dir;
 
 	/* sdio */
 	u32 ioport;
