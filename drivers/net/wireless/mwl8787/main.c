@@ -4,6 +4,7 @@
 
 #include "mwl8787.h"
 #include "fw.h"
+#include "sdio.h"
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
