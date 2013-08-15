@@ -4,8 +4,9 @@
 
 enum mwl8787_tm_commands {
 	MWL8787_TM_CMD_UNSPEC,
-	MWL8787_TM_CMD_FW,
-	MWL8787_TM_CMD_DATA,
+	MWL8787_TM_CMD_FW,		/* firmware cmd */
+	MWL8787_TM_CMD_DATA,		/* data frame */
+	MWL8787_TM_CMD_EVT,		/* firmware event */
 
 	__MWL8787_TM_CMD_AFTER_LAST
 };
@@ -16,6 +17,7 @@ enum mwl8787_tm_attrs {
 	MWL8787_TM_ATTR_CMD_ID,
 	MWL8787_TM_ATTR_FW_CMD_ID,
 	MWL8787_TM_ATTR_DATA,
+	MWL8787_TM_ATTR_FW_EVT_ID,
 
 	__MWL8787_TM_ATTR_AFTER_LAST
 };
@@ -110,6 +112,36 @@ static int mwl8787_tm_cmd_fw(struct mwl8787_priv *priv,
 out:
 	dev_kfree_skb_any(resp);
 	kfree_skb(reply);
+	return -ENOMEM;
+}
+
+int mwl8787_testmode_event(struct mwl8787_priv *priv,
+			   struct mwl8787_event *ev,
+			   size_t len)
+{
+	struct sk_buff *event;
+
+	if (len > MWL8787_TM_MAX_DATA_LEN)
+		return -ENOSPC;
+
+	event = cfg80211_testmode_alloc_event_skb(priv->hw->wiphy,
+		MWL8787_TM_MAX_DATA_LEN, GFP_ATOMIC);
+
+	if (!event)
+		return -ENOMEM;
+
+	if (nla_put_u32(event, MWL8787_TM_ATTR_CMD_ID, MWL8787_TM_CMD_EVT) ||
+	    nla_put_u32(event, MWL8787_TM_ATTR_FW_EVT_ID,
+		        le16_to_cpu(ev->hdr.id)) ||
+	    nla_put(event, MWL8787_TM_ATTR_DATA,
+		    len - sizeof(ev->hdr), ev->u.data))
+		goto out;
+
+	cfg80211_testmode_event(event, GFP_ATOMIC);
+	return 0;
+
+out:
+	kfree_skb(event);
 	return -ENOMEM;
 }
 
