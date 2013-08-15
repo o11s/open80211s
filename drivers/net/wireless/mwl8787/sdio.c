@@ -495,7 +495,9 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 			     struct sk_buff *skb, u32 upld_typ)
 {
-	skb_pull(skb, sizeof(struct mwl8787_sdio_header));
+	struct mwl8787_sdio_header *hdr = (void *) skb->data;
+	skb_trim(skb, le16_to_cpu(hdr->len));
+	skb_pull(skb, sizeof(*hdr));
 
 	switch (upld_typ) {
 	case MWL8787_TYPE_DATA:
@@ -510,19 +512,7 @@ int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 
 	case MWL8787_TYPE_EVENT:
 		dev_dbg(priv->dev, "info: --- Rx: Event ---\n");
-#if 0
-		priv->event_cause = *(u32 *) skb->data;
-
-		if ((skb->len > 0) && (skb->len  < MAX_EVENT_SIZE))
-			memcpy(priv->event_body,
-			       skb->data + MWL8787_EVENT_HEADER_LEN,
-			       skb->len);
-
-		/* event cause has been saved to priv->event_cause */
-		priv->event_received = true;
-		priv->event_skb = skb;
-#endif
-
+		mwl8787_event_rx(priv, skb);
 		break;
 
 	default:

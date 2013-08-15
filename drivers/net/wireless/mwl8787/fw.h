@@ -117,6 +117,10 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 };
 
+enum mwl8787_event_id {
+	MWL8787_EVT_WAKEUP		= 0x0001,
+};
+
 enum mwl8787_tlv_type {
 	MWL8787_TYPE_CHANLIST		= 0x0101,
 	MWL8787_TYPE_NUM_PROBES		= 0x0102,
@@ -331,6 +335,19 @@ struct mwl8787_cmd {
 struct mwl8787_sdio_header {
 	__le16 len;
 	__le16 type;
+} __packed;
+
+struct mwl8787_event_header {
+	__le16 id;
+	u8 bss_num;
+	u8 bss_type;
+} __packed;
+
+struct mwl8787_event {
+	struct mwl8787_event_header hdr;
+	union {
+		u8 data[0];
+	} u;
 } __packed;
 
 #endif /* _MWL8787_FW_H_ */
