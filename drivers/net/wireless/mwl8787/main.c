@@ -267,6 +267,10 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 static void mwl8787_stop(struct ieee80211_hw *hw)
 {
 	struct mwl8787_priv *priv = hw->priv;
+
+	/* disable RX while stopped */
+	mwl8787_cmd_mac_ctrl(priv, 0);
+
 	cancel_work_sync(&priv->tx_work);
 }
 
