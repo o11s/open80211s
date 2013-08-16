@@ -769,6 +769,16 @@ static int mwl8787_enable_int(struct mwl8787_priv *priv)
 	return ret;
 }
 
+static int mwl8787_sdio_disable_int(struct mwl8787_priv *priv)
+{
+	int ret = mwl8787_write_reg(priv, HOST_INT_MASK_REG, 0);
+
+	if (ret)
+		dev_err(priv->dev, "disable host interrupt failed\n");
+
+	return ret;
+}
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
@@ -777,31 +787,6 @@ static struct mwl8787_bus_ops sdio_ops = {
 	.process_int_status = mwl8787_process_int_status,
 	.enable_int = mwl8787_enable_int,
 };
-
-/*
- * This function disables the host interrupt.
- *
- * The host interrupt mask is read, the disable bit is reset and
- * written back to the card host interrupt mask register.
- */
-static int mwl8787_sdio_disable_host_int(struct mwl8787_priv *priv)
-{
-	u8 host_int_mask, host_int_disable = HOST_INT_DISABLE;
-
-	/* Read back the host_int_mask register */
-	if (mwl8787_read_reg(priv, HOST_INT_MASK_REG, &host_int_mask))
-		return -1;
-
-	/* Update with the mask and write back to the register */
-	host_int_mask &= ~host_int_disable;
-
-	if (mwl8787_write_reg(priv, HOST_INT_MASK_REG, host_int_mask)) {
-		dev_err(priv->dev, "disable host interrupt failed\n");
-		return -1;
-	}
-
-	return 0;
-}
 
 static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 {
@@ -815,7 +800,7 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	mwl8787_read_reg(priv, HOST_INTSTATUS_REG, &sdio_ireg);
 
 	/* Disable host interrupt mask register for SDIO */
-	mwl8787_sdio_disable_host_int(priv);
+	mwl8787_sdio_disable_int(priv);
 
 	/* Get SDIO ioport */
 	mwl8787_init_sdio_ioport(priv);
