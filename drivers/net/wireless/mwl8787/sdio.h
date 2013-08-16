@@ -116,10 +116,15 @@
 #define MWL8787_REG_POLL		0x30
 #define MWL8787_REG_STATUS_0		0x60
 #define MWL8787_REG_STATUS_1		0x61
+#define MWL8787_REG_SCRATCH_START	0x62
+#define MWL8787_REG_SCRATCH_LEN		0x8
 #define MWL8787_REG_CARD_MISC_CFG	0x6c
 
 #define MWL8787_SDIO_BLOCK_SIZE            256
 
+int mwl8787_read_scratch_area(struct mwl8787_priv *priv, u64 *dat);
+void mwl8787_dev_debugfs_init(struct mwl8787_priv *priv);
+void mwl8787_dev_debugfs_remove(struct mwl8787_priv *priv);
 
 enum mwl8787_sdio_type {
 	MWL8787_TYPE_DATA = 0,
