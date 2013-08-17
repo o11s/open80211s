@@ -136,6 +136,23 @@ mwl8787_sdio_poll_card_status(struct mwl8787_priv *priv, u8 bits)
 }
 
 /*
+ * This function reads the scratch area used by firmware to report error codes.
+ */
+int mwl8787_read_scratch_area(struct mwl8787_priv *priv, u64 *dat)
+{
+	u32 i;
+	u8 scrch;
+
+	for (i = 0; i < MWL8787_REG_SCRATCH_LEN; i++) {
+		if (mwl8787_read_reg(priv, MWL8787_REG_SCRATCH_START + i, &scrch))
+			return -1;
+		*dat = ((*dat << 8) | scrch);
+	}
+
+	return 0;
+}
+
+/*
  * This function reads the firmware status.
  */
 static int
@@ -915,6 +932,9 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 
 	/* FW loaded, so register with mac80211 */
 	ret = mwl8787_register(priv);
+
+	/* create debugfs */
+	mwl8787_dev_debugfs_init(priv);
 	if (ret)
 		goto disable;
 
@@ -997,6 +1017,7 @@ static void mwl8787_sdio_remove(struct sdio_func *func)
 	sdio_release_host(func);
 
 	kfree(priv->mp_regs);
+	mwl8787_dev_debugfs_remove(priv);
 	mwl8787_free(priv);
 }
 
