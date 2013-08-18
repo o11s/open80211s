@@ -173,12 +173,8 @@ struct device_node *v4l2_of_get_next_endpoint(const struct device_node *parent,
 		if (node)
 			parent = node;
 
-		for_each_child_of_node(parent, node) {
-			if (!of_node_cmp(node->name, "port")) {
-				port = node;
-				break;
-			}
-		}
+		port = of_get_child_by_name(parent, "port");
+
 		if (port) {
 			/* Found a port, get an endpoint. */
 			endpoint = of_get_next_child(port, NULL);
@@ -190,6 +186,7 @@ struct device_node *v4l2_of_get_next_endpoint(const struct device_node *parent,
 		if (!endpoint)
 			pr_err("%s(): no endpoint nodes specified for %s\n",
 			       __func__, parent->full_name);
+		of_node_put(node);
 	} else {
 		port = of_get_parent(prev);
 		if (!port)

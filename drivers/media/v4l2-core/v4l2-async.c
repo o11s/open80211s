@@ -192,11 +192,14 @@ void v4l2_async_notifier_unregister(struct v4l2_async_notifier *notifier)
 	struct device *dev[n_subdev];
 	int i = 0;
 
+	if (!notifier->v4l2_dev)
+		return;
+
 	mutex_lock(&list_lock);
 
 	list_del(&notifier->list);
 
-	list_for_each_entry_safe(sd, tmp, &notifier->done, list) {
+	list_for_each_entry_safe(sd, tmp, &notifier->done, async_list) {
 		dev[i] = get_device(sd->dev);
 
 		v4l2_async_cleanup(sd);
@@ -225,6 +228,9 @@ void v4l2_async_notifier_unregister(struct v4l2_async_notifier *notifier)
 		}
 		put_device(d);
 	}
+
+	notifier->v4l2_dev = NULL;
+
 	/*
 	 * Don't care about the waiting list, it is initialised and populated
 	 * upon notifier registration.
