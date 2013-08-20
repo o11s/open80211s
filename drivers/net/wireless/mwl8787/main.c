@@ -261,6 +261,11 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 
 static int mwl8787_start(struct ieee80211_hw *hw)
 {
+	struct mwl8787_priv *priv = hw->priv;
+
+	/* register for tx feedback events */
+	mwl8787_cmd_subscribe_events(priv, MWL8787_EVT_SUB_TX_STATUS);
+
 	return 0;
 }
 
@@ -268,10 +273,12 @@ static void mwl8787_stop(struct ieee80211_hw *hw)
 {
 	struct mwl8787_priv *priv = hw->priv;
 
-	/* disable RX while stopped */
+	/* disable RX and events while stopped */
 	mwl8787_cmd_mac_ctrl(priv, 0);
+	mwl8787_cmd_subscribe_events(priv, 0);
 
 	cancel_work_sync(&priv->tx_work);
+	mwl8787_tx_cleanup(priv);
 }
 
 static int mwl8787_add_interface(struct ieee80211_hw *hw,
@@ -434,6 +441,7 @@ struct mwl8787_priv *mwl8787_init(void)
 	init_completion(&priv->cmd_wait);
 	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
 	skb_queue_head_init(&priv->tx_queue);
+	skb_queue_head_init(&priv->tx_status_queue);
 
 	priv->channel = &mwl8787_2ghz_chantable[0];
 

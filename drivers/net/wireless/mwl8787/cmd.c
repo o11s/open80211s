@@ -353,3 +353,23 @@ int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }
+
+
+int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SUBSCRIBE_EVENTS,
+				sizeof(struct mwl8787_cmd_subscribe_events),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.subscribe_events.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.subscribe_events.events = cpu_to_le16(events);
+
+	ret = mwl8787_send_cmd_sync(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
