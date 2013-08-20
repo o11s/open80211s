@@ -30,6 +30,41 @@ static int mwl8787_tx_frame(struct mwl8787_priv *priv,
 	return priv->bus_ops->send_tx(priv, skb);
 }
 
+void mwl8787_tx_status(struct mwl8787_priv *priv,
+		       struct mwl8787_event *tx_status_event)
+{
+	struct sk_buff *skb = skb_dequeue(&priv->tx_status_queue);
+	struct ieee80211_tx_info *info;
+	struct mwl8787_event_tx_status *tx_status =
+		&tx_status_event->u.tx_status;
+
+	if (!skb)
+		return;
+
+	info = IEEE80211_SKB_CB(skb);
+	ieee80211_tx_info_clear_status(info);
+
+	info->status.rates[0].idx = tx_status->last_rate;
+	info->status.rates[0].count = tx_status->attempts;
+	info->status.rates[1].idx = -1;
+
+	if (tx_status->acked)
+		info->flags |= IEEE80211_TX_STAT_ACK;
+
+	ieee80211_tx_status_irqsafe(priv->hw, skb);
+}
+
+void mwl8787_tx_cleanup(struct mwl8787_priv *priv)
+{
+	struct sk_buff *skb;
+
+	while ((skb = skb_dequeue(&priv->tx_queue)))
+		ieee80211_free_txskb(priv->hw, skb);
+
+	while ((skb = skb_dequeue(&priv->tx_status_queue)))
+		ieee80211_free_txskb(priv->hw, skb);
+}
+
 void mwl8787_tx_work(struct work_struct *work)
 {
 	struct mwl8787_priv *priv;
@@ -50,8 +85,9 @@ void mwl8787_tx_work(struct work_struct *work)
 			ieee80211_free_txskb(priv->hw, skb);
 			return;
 		}
-		/* TODO tx status reporting */
-		ieee80211_free_txskb(priv->hw, skb);
+
+		/* FIXME per queue? */
+		skb_queue_tail(&priv->tx_status_queue, skb);
 	}
 }
 

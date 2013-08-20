@@ -65,6 +65,7 @@ struct mwl8787_priv
 
 	struct work_struct tx_work;
 	struct sk_buff_head tx_queue;
+	struct sk_buff_head tx_status_queue;
 
 	struct ieee80211_channel *channel;
 	struct dentry *dfs_dev_dir;
@@ -111,12 +112,16 @@ int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb);
 int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 			    bool enable_beacon);
+int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
 		struct sk_buff *skb);
 void mwl8787_tx_work(struct work_struct *work);
+void mwl8787_tx_status(struct mwl8787_priv *priv,
+		       struct mwl8787_event *tx_status_event);
+void mwl8787_tx_cleanup(struct mwl8787_priv *priv);
 
 /* rx.c */
 void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb);

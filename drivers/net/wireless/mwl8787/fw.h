@@ -111,6 +111,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_RADIO_CTRL		= 0x001c,
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
+	MWL8787_CMD_SUBSCRIBE_EVENTS	= 0x0075,
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_MONITOR		= 0x0102,
@@ -119,6 +120,15 @@ enum mwl8787_cmd_id {
 
 enum mwl8787_event_id {
 	MWL8787_EVT_WAKEUP		= 0x0001,
+	MWL8787_EVT_TX_STATUS		= 0x0067,
+};
+
+enum mwl8787_event_sub_flags {
+	MWL8787_EVT_SUB_BCN_RSSI_LO	= BIT(0),
+	MWL8787_EVT_SUB_BCN_SNR_LO	= BIT(1),
+	MWL8787_EVT_SUB_MAX_FAIL	= BIT(2),
+	MWL8787_EVT_SUB_BCN_LOSS	= BIT(3),
+	MWL8787_EVT_SUB_TX_STATUS	= BIT(12),
 };
 
 enum mwl8787_tlv_type {
@@ -178,6 +188,11 @@ struct mwl8787_cmd_mac_ctrl {
 struct mwl8787_cmd_mac_addr {
 	__le16 action;
 	u8 addr[ETH_ALEN];
+} __packed;
+
+struct mwl8787_cmd_subscribe_events {
+	__le16 action;
+	__le16 events;
 } __packed;
 
 struct mwl8787_cmd_beacon_ctrl {
@@ -321,6 +336,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_rf_channel rf_channel;
 		struct mwl8787_cmd_mac_ctrl mac_ctrl;
 		struct mwl8787_cmd_mac_addr mac_addr;
+		struct mwl8787_cmd_subscribe_events subscribe_events;
 		struct mwl8787_cmd_beacon_ctrl beacon_ctrl;
 		struct mwl8787_cmd_beacon_set beacon_set;
 		struct mwl8787_cmd_mode mode;
@@ -337,6 +353,14 @@ struct mwl8787_sdio_header {
 	__le16 type;
 } __packed;
 
+
+struct mwl8787_event_tx_status {
+	u8 acked;
+	u8 last_rate;
+	u8 attempts;
+	u8 magic;
+} __packed;
+
 struct mwl8787_event_header {
 	__le16 id;
 	u8 bss_num;
@@ -346,6 +370,7 @@ struct mwl8787_event_header {
 struct mwl8787_event {
 	struct mwl8787_event_header hdr;
 	union {
+		struct mwl8787_event_tx_status tx_status;
 		u8 data[0];
 	} u;
 } __packed;
