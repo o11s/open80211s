@@ -933,11 +933,6 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 	/* FW loaded, so register with mac80211 */
 	ret = mwl8787_register(priv);
 
-	/* create debugfs */
-	mwl8787_dev_debugfs_init(priv);
-	if (ret)
-		goto disable;
-
 disable:
 	/* FIXME unbind device */
 	release_firmware(fw);
@@ -1017,7 +1012,6 @@ static void mwl8787_sdio_remove(struct sdio_func *func)
 	sdio_release_host(func);
 
 	kfree(priv->mp_regs);
-	mwl8787_dev_debugfs_remove(priv);
 	mwl8787_free(priv);
 }
 

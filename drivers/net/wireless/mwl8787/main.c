@@ -474,11 +474,19 @@ int mwl8787_register(struct mwl8787_priv *priv)
 {
 	int ret = ieee80211_register_hw(priv->hw);
 	priv->registered = (ret == 0);
+
+	if (priv->registered)
+		mwl8787_dev_debugfs_init(priv);
+
 	return ret;
 }
 
 void mwl8787_unregister(struct mwl8787_priv *priv)
 {
+	if (!priv->registered)
+		return;
+
+	mwl8787_dev_debugfs_remove(priv);
 	ieee80211_unregister_hw(priv->hw);
 	priv->registered = false;
 }
