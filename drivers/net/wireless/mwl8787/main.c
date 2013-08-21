@@ -348,10 +348,11 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 			      FIF_BCN_PRBRESP_PROMISC;
 	int mcast_num = 0;
 
-	u16 filter = MWL8787_FIF_ENABLE_RX |
-		     MWL8787_FIF_ENABLE_TX |
-		     MWL8787_FIF_ENABLE_80211 |
-		     MWL8787_FIF_ENABLE_MGMT;
+	u16 filter = MWL8787_MAC_ENABLE_RX |
+		     MWL8787_MAC_ENABLE_TX |
+		     MWL8787_MAC_ENABLE_80211 |
+		     MWL8787_MAC_ENABLE_MGMT |
+		     (priv->mac_ctrl & MWL8787_MAC_ENABLE_CTS);
 
 	/* TODO: some of these should likely set PROMISC
 	  FIF_FCSFAIL | FIF_PLCPFAIL | FIF_CONTROL |
@@ -362,12 +363,12 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 
 	if (*total_flags & FIF_BCN_PRBRESP_PROMISC) {
 		*total_flags &= ~FIF_BCN_PRBRESP_PROMISC;
-		filter |= MWL8787_FIF_ENABLE_PROMISC;
+		filter |= MWL8787_MAC_ENABLE_PROMISC;
 	}
 
 	if (*total_flags & FIF_PROMISC_IN_BSS) {
 		*total_flags &= ~FIF_PROMISC_IN_BSS;
-		filter |= MWL8787_FIF_ENABLE_PROMISC;
+		filter |= MWL8787_MAC_ENABLE_PROMISC;
 	}
 
 	if (mcast_cmd)
@@ -376,15 +377,16 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	if (*total_flags & FIF_ALLMULTI ||
 	    mcast_num > MWL8787_MAX_MULTICAST_LIST_SIZE) {
 		*total_flags &= ~FIF_ALLMULTI;
-		filter |= MWL8787_FIF_ENABLE_ALLMULTI;
+		filter |= MWL8787_MAC_ENABLE_ALLMULTI;
 	} else {
 		/* set mcast list previously prepared */
 		if (mcast_cmd)
 			mwl8787_send_cmd_sync(priv, mcast_cmd);
 	}
-
 	mwl8787_cmd_free(priv, mcast_cmd);
-	mwl8787_cmd_mac_ctrl(priv, filter);
+
+	priv->mac_ctrl = filter;
+	mwl8787_cmd_mac_ctrl(priv, priv->mac_ctrl);
 }
 
 static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
@@ -408,6 +410,14 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		mwl8787_cmd_beacon_ctrl(priv, info->beacon_int,
 					info->enable_beacon);
 	}
+
+	if (changed & BSS_CHANGED_ERP_CTS_PROT) {
+		priv->mac_ctrl &= ~MWL8787_MAC_ENABLE_CTS;
+		if (info->use_cts_prot)
+			priv->mac_ctrl |= MWL8787_MAC_ENABLE_CTS;
+		mwl8787_cmd_mac_ctrl(priv, priv->mac_ctrl);
+	}
+}
 }
 
 const struct ieee80211_ops mwl8787_ops = {
