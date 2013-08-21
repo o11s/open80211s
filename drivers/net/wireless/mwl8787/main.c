@@ -425,6 +425,12 @@ static int mwl8787_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
 	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_RTS_THRESHOLD, value);
 }
 
+static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_FRAG_THRESHOLD, value);
+}
+
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -436,6 +442,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
 	.set_rts_threshold = mwl8787_set_rts_threshold,
+	.set_frag_threshold = mwl8787_set_frag_threshold,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
