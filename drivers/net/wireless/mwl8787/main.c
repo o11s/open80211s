@@ -418,6 +418,11 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		mwl8787_cmd_mac_ctrl(priv, priv->mac_ctrl);
 	}
 }
+
+static int mwl8787_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_RTS_THRESHOLD, value);
 }
 
 const struct ieee80211_ops mwl8787_ops = {
@@ -430,6 +435,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.bss_info_changed = mwl8787_bss_info_changed,
 	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
+	.set_rts_threshold = mwl8787_set_rts_threshold,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };

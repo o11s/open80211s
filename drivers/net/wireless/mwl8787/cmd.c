@@ -373,3 +373,39 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
 }
+
+int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
+			 u16 value)
+{
+	struct mwl8787_cmd *cmd;
+	size_t payload_size;
+	int ret;
+
+	switch (oid) {
+	case MWL8787_OID_RTS_THRESHOLD:
+	case MWL8787_OID_FRAG_THRESHOLD:
+			payload_size = 2;
+			break;
+	default:
+			payload_size = 1;
+			break;
+	}
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SNMP_MIB,
+				sizeof(struct mwl8787_cmd_snmp_mib) +
+				payload_size, GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.snmp_mib.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.snmp_mib.oid = cpu_to_le16(oid);
+	cmd->u.snmp_mib.payload_size = cpu_to_le16(payload_size);
+	if (payload_size == 2)
+		put_unaligned_le16(value, cmd->u.snmp_mib.payload);
+	else
+		cmd->u.snmp_mib.payload[0] = (u8) value;
+
+	ret = mwl8787_send_cmd_sync(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}

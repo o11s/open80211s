@@ -103,11 +103,19 @@ enum mwl8787_mac_ctrl_flags {
 	MWL8787_MAC_ENABLE_MGMT		= BIT(14),
 };
 
+enum mwl8787_oid {
+	MWL8787_OID_RTS_THRESHOLD	= 0x05,
+	MWL8787_OID_SHORT_RETRY_LIMIT	= 0x06,
+	MWL8787_OID_LONG_RETRY_LIMIT	= 0x07,
+	MWL8787_OID_FRAG_THRESHOLD	= 0x08,
+};
+
 enum mwl8787_cmd_id {
 	MWL8787_CMD_HW_SPEC		= 0x0003,
 	MWL8787_CMD_RESET		= 0x0005,
 	MWL8787_CMD_SCAN		= 0x0006,
 	MWL8787_CMD_MULTICAST_ADDR	= 0x0010,
+	MWL8787_CMD_SNMP_MIB		= 0x0016,
 	MWL8787_CMD_RF_CHANNEL		= 0x001d,
 	MWL8787_CMD_RADIO_CTRL		= 0x001c,
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
@@ -214,6 +222,13 @@ struct mwl8787_cmd_mode {
 struct mwl8787_cmd_bssid {
 	u8 bssid[6];
 	u8 activate;
+} __packed;
+
+struct mwl8787_cmd_snmp_mib {
+	__le16 action;
+	__le16 oid;
+	__le16 payload_size;
+	u8 payload[0];
 } __packed;
 
 struct mwl8787_cmd_header {
@@ -345,6 +360,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_scan scan;
 		struct mwl8787_cmd_scan_resp scan_resp;
 		struct mwl8787_cmd_monitor monitor;
+		struct mwl8787_cmd_snmp_mib snmp_mib;
 		u8 data[0];
 	} u;
 } __packed;
