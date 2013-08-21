@@ -115,6 +115,8 @@ int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb);
 int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 			    bool enable_beacon);
 int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events);
+int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
+			 u16 value);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
