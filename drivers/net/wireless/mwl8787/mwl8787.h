@@ -63,6 +63,8 @@ struct mwl8787_priv
 	u8 cmd_sent;
 	u8 data_sent;
 
+	u16 mac_ctrl;			/* cache of filter flags & cts prot */
+
 	struct work_struct tx_work;
 	struct sk_buff_head tx_queue;
 	struct sk_buff_head tx_status_queue;
