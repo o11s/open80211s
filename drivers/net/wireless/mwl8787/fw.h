@@ -48,8 +48,6 @@
 
 #define MWL8787_BSS_MODE_ANY			3
 
-#define MWL8787_MONITOR_MODE_ALL		7
-
 #define SEQ_NO_BSS_INFO(seq, num, type) {   \
 	(((seq) & 0x00ff) |                             \
 	 (((num) & 0x000f) << 8)) |                     \
@@ -123,7 +121,6 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_SUBSCRIBE_EVENTS	= 0x0075,
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
-	MWL8787_CMD_MONITOR		= 0x0102,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 };
 
@@ -270,16 +267,6 @@ struct mwl8787_tlv_ht_cap {
 	struct ieee80211_ht_cap ht_cap;
 } __packed;
 
-struct mwl8787_band_channel {
-	u8 band;
-	u8 channel;
-} __packed;
-
-struct mwl8787_tlv_band_channel {
-	struct mwl8787_tlv_header hdr;
-	struct mwl8787_band_channel bc[0];
-} __packed;
-
 struct mwl8787_channel_param {
 	u8 radio_type;
 	u8 channel;
@@ -305,13 +292,6 @@ struct mwl8787_cmd_scan_resp {
 	__le16 bss_size;
 	u8 num;
 	u8 data[0];
-} __packed;
-
-struct mwl8787_cmd_monitor {
-	__le16 action;
-	__le16 enable;
-	__le16 flags;
-	struct mwl8787_tlv_band_channel channel;
 } __packed;
 
 struct mwl8787_tx_desc {
@@ -359,7 +339,6 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_bssid bssid;
 		struct mwl8787_cmd_scan scan;
 		struct mwl8787_cmd_scan_resp scan_resp;
-		struct mwl8787_cmd_monitor monitor;
 		struct mwl8787_cmd_snmp_mib snmp_mib;
 		u8 data[0];
 	} u;
