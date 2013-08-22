@@ -6,6 +6,18 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	struct mwl8787_tx_desc *desc;
 	size_t frame_len = skb->len;
 	int pad;
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+
+	/* assign sequence number, leave fragment unchanged  */
+	/* FIXME doesn't really work with beaconing, need fw flag */
+	if (info->flags & IEEE80211_TX_CTL_ASSIGN_SEQ) {
+		if (info->flags & IEEE80211_TX_CTL_FIRST_FRAGMENT) {
+			priv->tx_seq += 0x10;
+		}
+		hdr->seq_ctrl &= cpu_to_le16(IEEE80211_SCTL_FRAG);
+		hdr->seq_ctrl |= cpu_to_le16(priv->tx_seq);
+	}
 
 	/* frame data needs to be 4-byte aligned */
 	pad = PTR_ALIGN(skb->data, 4) - skb->data;
