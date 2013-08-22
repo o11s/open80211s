@@ -278,38 +278,6 @@ int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on)
 	return ret;
 }
 
-int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on)
-{
-	int ret;
-	struct mwl8787_cmd *cmd;
-	struct mwl8787_cmd_monitor *mon;
-	size_t len;
-
-	len = sizeof(struct mwl8787_cmd_monitor) +
-	      sizeof(struct mwl8787_band_channel);
-
-	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_MONITOR, len,
-				GFP_KERNEL);
-
-	if (!cmd)
-		return -ENOMEM;
-
-	mon = &cmd->u.monitor;
-	mon->action = cpu_to_le16(MWL8787_ACT_SET);
-	mon->enable = cpu_to_le16(on);
-	mon->flags = MWL8787_MONITOR_MODE_ALL;
-	mon->channel.hdr.type = cpu_to_le16(MWL8787_TYPE_BAND_CHAN);
-	mon->channel.hdr.len = sizeof(struct mwl8787_band_channel);
-	/* FIXME */
-	mon->channel.bc[0].band = 0;
-	mon->channel.bc[0].channel = 1;
-
-	ret = mwl8787_send_cmd_sync(priv, cmd);
-
-	mwl8787_cmd_free(priv, cmd);
-	return ret;
-}
-
 int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *cmd;
