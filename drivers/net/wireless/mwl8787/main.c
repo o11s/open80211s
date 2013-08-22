@@ -345,7 +345,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	struct mwl8787_priv *priv = hw->priv;
 	struct mwl8787_cmd *mcast_cmd = (void *) (unsigned long) multicast;
 	int supported_flags = FIF_PROMISC_IN_BSS | FIF_ALLMULTI |
-			      FIF_BCN_PRBRESP_PROMISC;
+			      FIF_BCN_PRBRESP_PROMISC | FIF_OTHER_BSS;
 	int mcast_num = 0;
 
 	u16 filter = MWL8787_MAC_ENABLE_RX |
@@ -356,7 +356,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 
 	/* TODO: some of these should likely set PROMISC
 	  FIF_FCSFAIL | FIF_PLCPFAIL | FIF_CONTROL |
-	  FIF_OTHER_BSS | FIF_PSPOLL | FIF_PROBE_REQ
+	  FIF_PSPOLL | FIF_PROBE_REQ
 	*/
 	changed_flags &= supported_flags;
 	*total_flags &= supported_flags;
@@ -368,6 +368,11 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 
 	if (*total_flags & FIF_PROMISC_IN_BSS) {
 		*total_flags &= ~FIF_PROMISC_IN_BSS;
+		filter |= MWL8787_MAC_ENABLE_PROMISC;
+	}
+
+	if (*total_flags & FIF_OTHER_BSS) {
+		*total_flags &= ~FIF_OTHER_BSS;
 		filter |= MWL8787_MAC_ENABLE_PROMISC;
 	}
 
