@@ -34,6 +34,7 @@ struct mwl8787_bus_ops
 	int (*send_cmd)(struct mwl8787_priv *priv, u8 *buf, size_t len);
 	int (*send_tx)(struct mwl8787_priv *priv, struct sk_buff *skb);
 	int (*process_int_status) (struct mwl8787_priv *);
+	void (*card_reset) (struct mwl8787_priv *);
 };
 
 struct mwl8787_priv

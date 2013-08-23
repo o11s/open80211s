@@ -1,3 +1,5 @@
+#include <linux/mmc/host.h>
+
 #include "mwl8787.h"
 #include "sdio.h"
 #include "fw.h"
@@ -796,6 +798,35 @@ static int mwl8787_sdio_disable_int(struct mwl8787_priv *priv)
 	return ret;
 }
 
+static struct mmc_host *reset_host;
+static void sdio_card_reset_worker(struct work_struct *work)
+{
+	struct mmc_host *target = reset_host;
+
+	/* The actual reset operation must be run outside of driver thread.
+	 * This is because mmc_remove_host() will cause the device to be
+	 * instantly destroyed, and the driver then needs to end its thread,
+	 * leading to a deadlock.
+	 *
+	 * We run it in a totally independent workqueue.
+	 */
+
+	pr_err("Resetting card...\n");
+	mmc_remove_host(target);
+	/* 20ms delay is based on experiment with sdhci controller */
+	mdelay(20);
+	mmc_add_host(target);
+}
+static DECLARE_WORK(card_reset_work, sdio_card_reset_worker);
+
+static void mwl8787_sdio_card_reset(struct mwl8787_priv *priv)
+{
+	struct sdio_func *func = priv->bus_priv;
+
+	reset_host = func->card->host;
+	schedule_work(&card_reset_work);
+}
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
@@ -803,6 +834,8 @@ static struct mwl8787_bus_ops sdio_ops = {
 	.send_tx = mwl8787_sdio_send_tx,
 	.process_int_status = mwl8787_process_int_status,
 	.enable_int = mwl8787_enable_int,
+
+	.card_reset = mwl8787_sdio_card_reset,
 };
 
 static int mwl8787_init_sdio(struct mwl8787_priv *priv)
