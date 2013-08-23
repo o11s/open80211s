@@ -67,6 +67,7 @@ struct mwl8787_priv
 	u16 mac_ctrl;			/* cache of filter flags & cts prot */
 
 	struct work_struct tx_work;
+	struct work_struct card_reset_work;
 	struct sk_buff_head tx_queue;
 	struct sk_buff_head tx_status_queue;
 	u16 tx_seq;			/* sequence number for ASSIGN_SEQ */

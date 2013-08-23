@@ -24,6 +24,7 @@ mwl8787_scratch_read(struct file *file, char __user *ubuf,
 	pos += snprintf(buf, sizeof(buf), "%016llx\n", reg_value);
 
 	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	priv->bus_ops->card_reset(priv);
 done:
 	return ret;
 }
