@@ -64,7 +64,7 @@ struct mwl8787_priv
 	u8 cmd_sent;
 	u8 data_sent;
 
-	u16 mac_ctrl;			/* cache of filter flags & cts prot */
+	u32 mac_ctrl;			/* cache of filter flags & cts prot */
 
 	struct work_struct tx_work;
 	struct work_struct card_reset_work;
@@ -102,7 +102,7 @@ int mwl8787_send_cmd_tm(struct mwl8787_priv *priv,
 			struct mwl8787_cmd *cmd,
 			struct sk_buff **reply);
 int mwl8787_reset(struct mwl8787_priv *priv);
-int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control);
+int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u32 control);
 int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);
 int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel);

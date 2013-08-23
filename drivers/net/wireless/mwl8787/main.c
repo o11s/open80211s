@@ -348,10 +348,10 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 			      FIF_BCN_PRBRESP_PROMISC | FIF_OTHER_BSS;
 	int mcast_num = 0;
 
-	u16 filter = MWL8787_MAC_ENABLE_RX |
-		     MWL8787_MAC_ENABLE_TX |
+	u32 filter = MWL8787_MAC_ENABLE_RX |
 		     MWL8787_MAC_ENABLE_80211 |
 		     MWL8787_MAC_ENABLE_MGMT |
+		     MWL8787_MAC_ENABLE_BCAST |
 		     (priv->mac_ctrl & MWL8787_MAC_ENABLE_CTS);
 
 	/* TODO: some of these should likely set PROMISC
@@ -363,17 +363,20 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 
 	if (*total_flags & FIF_BCN_PRBRESP_PROMISC) {
 		*total_flags &= ~FIF_BCN_PRBRESP_PROMISC;
-		filter |= MWL8787_MAC_ENABLE_PROMISC;
+		filter |= (MWL8787_MAC_ENABLE_OTHER_PRESP |
+			   MWL8787_MAC_ENABLE_OTHER_BCN);
 	}
 
 	if (*total_flags & FIF_PROMISC_IN_BSS) {
+		/* TODO: allmulti / all unicast? */
 		*total_flags &= ~FIF_PROMISC_IN_BSS;
 		filter |= MWL8787_MAC_ENABLE_PROMISC;
 	}
 
 	if (*total_flags & FIF_OTHER_BSS) {
 		*total_flags &= ~FIF_OTHER_BSS;
-		filter |= MWL8787_MAC_ENABLE_PROMISC;
+		filter |= (MWL8787_MAC_ENABLE_OTHER_BSS |
+			   MWL8787_MAC_ENABLE_OTHER_BCN);
 	}
 
 	if (mcast_cmd)
