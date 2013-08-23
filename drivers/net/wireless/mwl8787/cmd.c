@@ -196,7 +196,7 @@ int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv)
 	return ret;
 }
 
-int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control)
+int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u32 control)
 {
 	int ret;
 	struct mwl8787_cmd *cmd;
@@ -208,7 +208,7 @@ int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u16 control)
 	if (!cmd)
 		return -ENOMEM;
 
-	cmd->u.mac_ctrl.control = cpu_to_le16(control);
+	cmd->u.mac_ctrl.control = cpu_to_le32(control);
 	ret = mwl8787_send_cmd_sync(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
