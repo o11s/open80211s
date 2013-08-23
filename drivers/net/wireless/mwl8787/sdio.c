@@ -1,4 +1,5 @@
 #include <linux/mmc/host.h>
+#include <linux/regulator/consumer.h>
 
 #include "mwl8787.h"
 #include "sdio.h"
@@ -798,10 +799,36 @@ static int mwl8787_sdio_disable_int(struct mwl8787_priv *priv)
 	return ret;
 }
 
-static struct mmc_host *reset_host;
+static bool mwifiex_sdio_mwi87xx_reset(void)
+{
+        struct regulator *wifi_en, *wifi_rst;
+        bool ok;
+
+        wifi_en = regulator_get(NULL, "wifi-en");
+        wifi_rst = regulator_get(NULL, "wifi-rst-l");
+        ok = !IS_ERR(wifi_en) && !IS_ERR(wifi_rst);
+        if (ok) {
+                regulator_disable(wifi_rst);
+                regulator_disable(wifi_en);
+
+                regulator_enable(wifi_rst);
+                /* as per 8797 datasheet section 1.5.2 */
+                mdelay(1);
+                regulator_enable(wifi_en);
+        }
+
+        if (!IS_ERR(wifi_rst))
+                regulator_put(wifi_rst);
+        if (!IS_ERR(wifi_en))
+                regulator_put(wifi_en);
+        return ok;
+}
+
 static void sdio_card_reset_worker(struct work_struct *work)
 {
-	struct mmc_host *target = reset_host;
+	struct mwl8787_priv *priv = container_of(work, struct mwl8787_priv, card_reset_work);
+	struct sdio_func *func = priv->bus_priv;
+	struct mmc_host *target = func->card->host;
 
 	/* The actual reset operation must be run outside of driver thread.
 	 * This is because mmc_remove_host() will cause the device to be
@@ -813,18 +840,17 @@ static void sdio_card_reset_worker(struct work_struct *work)
 
 	pr_err("Resetting card...\n");
 	mmc_remove_host(target);
+        device_del(priv->dev);
+	if (!mwifiex_sdio_mwi87xx_reset())
+		pr_err("External card reset failed! Trying to reattach...\n");
 	/* 20ms delay is based on experiment with sdhci controller */
 	mdelay(20);
 	mmc_add_host(target);
 }
-static DECLARE_WORK(card_reset_work, sdio_card_reset_worker);
 
 static void mwl8787_sdio_card_reset(struct mwl8787_priv *priv)
 {
-	struct sdio_func *func = priv->bus_priv;
-
-	reset_host = func->card->host;
-	schedule_work(&card_reset_work);
+	schedule_work(&priv->card_reset_work);
 }
 
 static struct mwl8787_bus_ops sdio_ops = {
@@ -862,6 +888,8 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	priv->curr_wr_port = MWL8787_REG_START_WR_PORT;
 
 	priv->mp_data_port_mask = MWL8787_DATA_PORT_MASK;
+
+	INIT_WORK(&priv->card_reset_work, sdio_card_reset_worker);
 
 	/* XXX: maybe need this stuff for RX/TX
 	card->mpa_tx.buf_len = 0;
