@@ -49,7 +49,7 @@ static const struct v4l2_dv_timings_cap ths8200_timings_cap = {
 	.bt = {
 		.max_width = 1920,
 		.max_height = 1080,
-		.min_pixelclock = 27000000,
+		.min_pixelclock = 25000000,
 		.max_pixelclock = 148500000,
 		.standards = V4L2_DV_BT_STD_CEA861,
 		.capabilities = V4L2_DV_BT_CAP_PROGRESSIVE,
@@ -133,39 +133,6 @@ static int ths8200_s_register(struct v4l2_subdev *sd,
 }
 #endif
 
-static void ths8200_print_timings(struct v4l2_subdev *sd,
-				  struct v4l2_dv_timings *timings,
-				  const char *txt, bool detailed)
-{
-	struct v4l2_bt_timings *bt = &timings->bt;
-	u32 htot, vtot;
-
-	if (timings->type != V4L2_DV_BT_656_1120)
-		return;
-
-	htot = htotal(bt);
-	vtot = vtotal(bt);
-
-	v4l2_info(sd, "%s %dx%d%s%d (%dx%d)",
-		  txt, bt->width, bt->height, bt->interlaced ? "i" : "p",
-		  (htot * vtot) > 0 ? ((u32)bt->pixelclock / (htot * vtot)) : 0,
-		  htot, vtot);
-
-	if (detailed) {
-		v4l2_info(sd, "    horizontal: fp = %d, %ssync = %d, bp = %d\n",
-			  bt->hfrontporch,
-			  (bt->polarities & V4L2_DV_HSYNC_POS_POL) ? "+" : "-",
-			  bt->hsync, bt->hbackporch);
-		v4l2_info(sd, "    vertical: fp = %d, %ssync = %d, bp = %d\n",
-			  bt->vfrontporch,
-			  (bt->polarities & V4L2_DV_VSYNC_POS_POL) ? "+" : "-",
-			  bt->vsync, bt->vbackporch);
-		v4l2_info(sd,
-			  "    pixelclock: %lld, flags: 0x%x, standards: 0x%x\n",
-			  bt->pixelclock, bt->flags, bt->standards);
-	}
-}
-
 static int ths8200_log_status(struct v4l2_subdev *sd)
 {
 	struct ths8200_state *state = to_state(sd);
@@ -182,9 +149,8 @@ static int ths8200_log_status(struct v4l2_subdev *sd)
 		  ths8200_read(sd, THS8200_DTG2_PIXEL_CNT_LSB),
 		  (ths8200_read(sd, THS8200_DTG2_LINE_CNT_MSB) & 0x07) * 256 +
 		  ths8200_read(sd, THS8200_DTG2_LINE_CNT_LSB));
-	ths8200_print_timings(sd, &state->dv_timings,
-			      "Configured format:", true);
-
+	v4l2_print_dv_timings(sd->name, "Configured format:",
+			      &state->dv_timings, true);
 	return 0;
 }
 
@@ -412,10 +378,12 @@ static int ths8200_s_dv_timings(struct v4l2_subdev *sd,
 
 	v4l2_dbg(1, debug, sd, "%s:\n", __func__);
 
-	if (!v4l2_dv_valid_timings(timings, &ths8200_timings_cap))
+	if (!v4l2_valid_dv_timings(timings, &ths8200_timings_cap,
+				NULL, NULL))
 		return -EINVAL;
 
-	if (!v4l2_find_dv_timings_cap(timings, &ths8200_timings_cap, 10)) {
+	if (!v4l2_find_dv_timings_cap(timings, &ths8200_timings_cap, 10,
+				NULL, NULL)) {
 		v4l2_dbg(1, debug, sd, "Unsupported format\n");
 		return -EINVAL;
 	}
@@ -445,7 +413,8 @@ static int ths8200_g_dv_timings(struct v4l2_subdev *sd,
 static int ths8200_enum_dv_timings(struct v4l2_subdev *sd,
 				   struct v4l2_enum_dv_timings *timings)
 {
-	return v4l2_enum_dv_timings_cap(timings, &ths8200_timings_cap);
+	return v4l2_enum_dv_timings_cap(timings, &ths8200_timings_cap,
+			NULL, NULL);
 }
 
 static int ths8200_dv_timings_cap(struct v4l2_subdev *sd,

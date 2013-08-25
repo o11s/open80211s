@@ -2381,14 +2381,16 @@ static int coda_open(struct file *file)
 	int ret;
 	int idx;
 
-	idx = coda_next_free_instance(dev);
-	if (idx >= CODA_MAX_INSTANCES)
-		return -EBUSY;
-	set_bit(idx, &dev->instance_mask);
-
 	ctx = kzalloc(sizeof *ctx, GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
+
+	idx = coda_next_free_instance(dev);
+	if (idx >= CODA_MAX_INSTANCES) {
+		ret = -EBUSY;
+		goto err_coda_max;
+	}
+	set_bit(idx, &dev->instance_mask);
 
 	INIT_WORK(&ctx->skip_run, coda_skip_run);
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
@@ -2403,6 +2405,15 @@ static int coda_open(struct file *file)
 	default:
 		ctx->reg_idx = idx;
 	}
+
+	ret = clk_prepare_enable(dev->clk_per);
+	if (ret)
+		goto err_clk_per;
+
+	ret = clk_prepare_enable(dev->clk_ahb);
+	if (ret)
+		goto err_clk_ahb;
+
 	set_default_params(ctx);
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev, ctx,
 					 &coda_queue_init);
@@ -2411,12 +2422,12 @@ static int coda_open(struct file *file)
 
 		v4l2_err(&dev->v4l2_dev, "%s return error (%d)\n",
 			 __func__, ret);
-		goto err;
+		goto err_ctx_init;
 	}
 	ret = coda_ctrls_setup(ctx);
 	if (ret) {
 		v4l2_err(&dev->v4l2_dev, "failed to setup coda controls\n");
-		goto err;
+		goto err_ctrls_setup;
 	}
 
 	ctx->fh.ctrl_handler = &ctx->ctrls;
@@ -2424,7 +2435,7 @@ static int coda_open(struct file *file)
 	ret = coda_alloc_context_buf(ctx, &ctx->parabuf, CODA_PARA_BUF_SIZE);
 	if (ret < 0) {
 		v4l2_err(&dev->v4l2_dev, "failed to allocate parabuf");
-		goto err;
+		goto err_dma_alloc;
 	}
 
 	ctx->bitstream.size = CODA_MAX_FRAME_SIZE;
@@ -2433,7 +2444,7 @@ static int coda_open(struct file *file)
 	if (!ctx->bitstream.vaddr) {
 		v4l2_err(&dev->v4l2_dev, "failed to allocate bitstream ringbuffer");
 		ret = -ENOMEM;
-		goto err;
+		goto err_dma_writecombine;
 	}
 	kfifo_init(&ctx->bitstream_fifo,
 		ctx->bitstream.vaddr, ctx->bitstream.size);
@@ -2444,17 +2455,29 @@ static int coda_open(struct file *file)
 	list_add(&ctx->list, &dev->instances);
 	coda_unlock(ctx);
 
-	clk_prepare_enable(dev->clk_per);
-	clk_prepare_enable(dev->clk_ahb);
-
 	v4l2_dbg(1, coda_debug, &dev->v4l2_dev, "Created instance %d (%p)\n",
 		 ctx->idx, ctx);
 
 	return 0;
 
-err:
+err_dma_writecombine:
+	coda_free_context_buffers(ctx);
+	if (ctx->dev->devtype->product == CODA_DX6)
+		coda_free_aux_buf(dev, &ctx->workbuf);
+	coda_free_aux_buf(dev, &ctx->parabuf);
+err_dma_alloc:
+	v4l2_ctrl_handler_free(&ctx->ctrls);
+err_ctrls_setup:
+	v4l2_m2m_ctx_release(ctx->m2m_ctx);
+err_ctx_init:
+	clk_disable_unprepare(dev->clk_ahb);
+err_clk_ahb:
+	clk_disable_unprepare(dev->clk_per);
+err_clk_per:
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
+	clear_bit(ctx->idx, &dev->instance_mask);
+err_coda_max:
 	kfree(ctx);
 	return ret;
 }
@@ -2496,8 +2519,8 @@ static int coda_release(struct file *file)
 
 	coda_free_aux_buf(dev, &ctx->parabuf);
 	v4l2_ctrl_handler_free(&ctx->ctrls);
-	clk_disable_unprepare(dev->clk_per);
 	clk_disable_unprepare(dev->clk_ahb);
+	clk_disable_unprepare(dev->clk_per);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	clear_bit(ctx->idx, &dev->instance_mask);
@@ -2858,10 +2881,15 @@ static int coda_hw_init(struct coda_dev *dev)
 	u16 product, major, minor, release;
 	u32 data;
 	u16 *p;
-	int i;
+	int i, ret;
 
-	clk_prepare_enable(dev->clk_per);
-	clk_prepare_enable(dev->clk_ahb);
+	ret = clk_prepare_enable(dev->clk_per);
+	if (ret)
+		return ret;
+
+	ret = clk_prepare_enable(dev->clk_ahb);
+	if (ret)
+		goto err_clk_ahb;
 
 	/*
 	 * Copy the first CODA_ISRAM_SIZE in the internal SRAM.
@@ -2970,6 +2998,10 @@ static int coda_hw_init(struct coda_dev *dev)
 	}
 
 	return 0;
+
+err_clk_ahb:
+	clk_disable_unprepare(dev->clk_per);
+	return ret;
 }
 
 static void coda_fw_callback(const struct firmware *fw, void *context)
@@ -3122,11 +3154,6 @@ static int coda_probe(struct platform_device *pdev)
 
 	/* Get  memory for physical registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res == NULL) {
-		dev_err(&pdev->dev, "failed to get memory region resource\n");
-		return -ENOENT;
-	}
-
 	dev->regs_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(dev->regs_base))
 		return PTR_ERR(dev->regs_base);

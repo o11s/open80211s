@@ -443,20 +443,11 @@ static int ad9389b_log_status(struct v4l2_subdev *sd)
 				vic_detect, vic_sent);
 		}
 	}
-	if (state->dv_timings.type == V4L2_DV_BT_656_1120) {
-		struct v4l2_bt_timings *bt = bt = &state->dv_timings.bt;
-		u32 frame_width = V4L2_DV_BT_FRAME_WIDTH(bt);
-		u32 frame_height = V4L2_DV_BT_FRAME_HEIGHT(bt);
-		u32 frame_size = frame_width * frame_height;
-
-		v4l2_info(sd, "timings: %ux%u%s%u (%ux%u). Pix freq. = %u Hz. Polarities = 0x%x\n",
-			bt->width, bt->height, bt->interlaced ? "i" : "p",
-			frame_size > 0 ?  (unsigned)bt->pixelclock / frame_size : 0,
-			frame_width, frame_height,
-			(unsigned)bt->pixelclock, bt->polarities);
-	} else {
+	if (state->dv_timings.type == V4L2_DV_BT_656_1120)
+		v4l2_print_dv_timings(sd->name, "timings: ",
+				&state->dv_timings, false);
+	else
 		v4l2_info(sd, "no timings set\n");
-	}
 	return 0;
 }
 
@@ -640,7 +631,7 @@ static const struct v4l2_dv_timings_cap ad9389b_timings_cap = {
 	.bt = {
 		.max_width = 1920,
 		.max_height = 1200,
-		.min_pixelclock = 27000000,
+		.min_pixelclock = 25000000,
 		.max_pixelclock = 170000000,
 		.standards = V4L2_DV_BT_STD_CEA861 | V4L2_DV_BT_STD_DMT |
 			V4L2_DV_BT_STD_GTF | V4L2_DV_BT_STD_CVT,
@@ -657,12 +648,12 @@ static int ad9389b_s_dv_timings(struct v4l2_subdev *sd,
 	v4l2_dbg(1, debug, sd, "%s:\n", __func__);
 
 	/* quick sanity check */
-	if (!v4l2_dv_valid_timings(timings, &ad9389b_timings_cap))
+	if (!v4l2_valid_dv_timings(timings, &ad9389b_timings_cap, NULL, NULL))
 		return -EINVAL;
 
 	/* Fill the optional fields .standards and .flags in struct v4l2_dv_timings
 	   if the format is one of the CEA or DMT timings. */
-	v4l2_find_dv_timings_cap(timings, &ad9389b_timings_cap, 0);
+	v4l2_find_dv_timings_cap(timings, &ad9389b_timings_cap, 0, NULL, NULL);
 
 	timings->bt.flags &= ~V4L2_DV_FL_REDUCED_FPS;
 
@@ -700,7 +691,8 @@ static int ad9389b_g_dv_timings(struct v4l2_subdev *sd,
 static int ad9389b_enum_dv_timings(struct v4l2_subdev *sd,
 			struct v4l2_enum_dv_timings *timings)
 {
-	return v4l2_enum_dv_timings_cap(timings, &ad9389b_timings_cap);
+	return v4l2_enum_dv_timings_cap(timings, &ad9389b_timings_cap,
+			NULL, NULL);
 }
 
 static int ad9389b_dv_timings_cap(struct v4l2_subdev *sd,
@@ -855,8 +847,10 @@ static void ad9389b_edid_handler(struct work_struct *work)
 		 * (DVI connectors are particularly prone to this problem). */
 		if (state->edid.read_retries) {
 			state->edid.read_retries--;
-			/* EDID read failed, trigger a retry */
-			ad9389b_wr(sd, 0xc9, 0xf);
+			v4l2_dbg(1, debug, sd, "%s: edid read failed\n", __func__);
+			state->have_monitor = false;
+			ad9389b_s_power(sd, false);
+			ad9389b_s_power(sd, true);
 			queue_delayed_work(state->work_queue,
 					&state->edid_handler, EDID_DELAY);
 			return;
@@ -892,11 +886,9 @@ static void ad9389b_setup(struct v4l2_subdev *sd)
 	ad9389b_wr_and_or(sd, 0x15, 0xf1, 0x0);
 	/* Output format: RGB 4:4:4 */
 	ad9389b_wr_and_or(sd, 0x16, 0x3f, 0x0);
-	/* CSC fixed point: +/-2, 1st order interpolation 4:2:2 -> 4:4:4 up
-	   conversion, Aspect ratio: 16:9 */
-	ad9389b_wr_and_or(sd, 0x17, 0xe1, 0x0e);
-	/* Disable pixel repetition and CSC */
-	ad9389b_wr_and_or(sd, 0x3b, 0x9e, 0x0);
+	/* 1st order interpolation 4:2:2 -> 4:4:4 up conversion,
+	   Aspect ratio: 16:9 */
+	ad9389b_wr_and_or(sd, 0x17, 0xf9, 0x06);
 	/* Output format: RGB 4:4:4, Active Format Information is valid. */
 	ad9389b_wr_and_or(sd, 0x45, 0xc7, 0x08);
 	/* Underscanned */
@@ -981,12 +973,12 @@ static void ad9389b_check_monitor_present_status(struct v4l2_subdev *sd)
 
 static bool edid_block_verify_crc(u8 *edid_block)
 {
-	int i;
 	u8 sum = 0;
+	int i;
 
-	for (i = 0; i < 127; i++)
-		sum += *(edid_block + i);
-	return ((255 - sum + 1) == edid_block[127]);
+	for (i = 0; i < 128; i++)
+		sum += edid_block[i];
+	return sum == 0;
 }
 
 static bool edid_segment_verify_crc(struct v4l2_subdev *sd, u32 segment)
@@ -1032,6 +1024,8 @@ static bool ad9389b_check_edid_status(struct v4l2_subdev *sd)
 	}
 	if (!edid_segment_verify_crc(sd, segment)) {
 		/* edid crc error, force reread of edid segment */
+		v4l2_err(sd, "%s: edid crc error\n", __func__);
+		state->have_monitor = false;
 		ad9389b_s_power(sd, false);
 		ad9389b_s_power(sd, true);
 		return false;
@@ -1115,27 +1109,27 @@ static int ad9389b_probe(struct i2c_client *client, const struct i2c_device_id *
 	state->hdmi_mode_ctrl = v4l2_ctrl_new_std_menu(hdl, &ad9389b_ctrl_ops,
 			V4L2_CID_DV_TX_MODE, V4L2_DV_TX_MODE_HDMI,
 			0, V4L2_DV_TX_MODE_DVI_D);
-	state->hdmi_mode_ctrl->is_private = true;
 	state->hotplug_ctrl = v4l2_ctrl_new_std(hdl, NULL,
 			V4L2_CID_DV_TX_HOTPLUG, 0, 1, 0, 0);
-	state->hotplug_ctrl->is_private = true;
 	state->rx_sense_ctrl = v4l2_ctrl_new_std(hdl, NULL,
 			V4L2_CID_DV_TX_RXSENSE, 0, 1, 0, 0);
-	state->rx_sense_ctrl->is_private = true;
 	state->have_edid0_ctrl = v4l2_ctrl_new_std(hdl, NULL,
 			V4L2_CID_DV_TX_EDID_PRESENT, 0, 1, 0, 0);
-	state->have_edid0_ctrl->is_private = true;
 	state->rgb_quantization_range_ctrl =
 		v4l2_ctrl_new_std_menu(hdl, &ad9389b_ctrl_ops,
 			V4L2_CID_DV_TX_RGB_RANGE, V4L2_DV_RGB_RANGE_FULL,
 			0, V4L2_DV_RGB_RANGE_AUTO);
-	state->rgb_quantization_range_ctrl->is_private = true;
 	sd->ctrl_handler = hdl;
 	if (hdl->error) {
 		err = hdl->error;
 
 		goto err_hdl;
 	}
+	state->hdmi_mode_ctrl->is_private = true;
+	state->hotplug_ctrl->is_private = true;
+	state->rx_sense_ctrl->is_private = true;
+	state->have_edid0_ctrl->is_private = true;
+	state->rgb_quantization_range_ctrl->is_private = true;
 
 	state->pad.flags = MEDIA_PAD_FL_SINK;
 	err = media_entity_init(&sd->entity, 1, &state->pad, 0);
