@@ -5,6 +5,7 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 {
 	struct mwl8787_tx_desc *desc;
 	size_t frame_len = skb->len;
+	u32 tx_ctl = 0;
 	int pad;
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
@@ -23,10 +24,12 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	desc->priority = (u8) skb->priority;
 
 	if (info->flags & IEEE80211_TX_CTL_ASSIGN_SEQ)
-		desc->flags |= MWL8787_ASSIGN_SEQ;
+		tx_ctl |= MWL8787_ASSIGN_SEQ;
 
 	if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
-		desc->flags |= MWL8787_REQ_TX_STATUS;
+		tx_ctl |= MWL8787_REQ_TX_STATUS;
+
+	desc->tx_control = cpu_to_le32(tx_ctl);
 }
 
 
