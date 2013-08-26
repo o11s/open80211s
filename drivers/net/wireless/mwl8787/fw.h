@@ -70,6 +70,8 @@ enum mwl8787_tx_type {
 enum mwl8787_tx_flags {
 	MWL8787_NULL_DATA		= BIT(0),
 	MWL8787_LAST_FRAME		= BIT(3),
+	MWL8787_ASSIGN_SEQ		= BIT(4),
+	MWL8787_REQ_TX_STATUS		= BIT(5),
 };
 
 enum mwl8787_rx_ht_info {
