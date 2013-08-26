@@ -49,11 +49,14 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 	struct ieee80211_tx_info *info;
 	struct mwl8787_event_tx_status *tx_status =
 		&tx_status_event->u.tx_status;
+	u8 hw_queue;
 
 	if (!skb)
 		return;
 
 	info = IEEE80211_SKB_CB(skb);
+	hw_queue = info->hw_queue;
+
 	ieee80211_tx_info_clear_status(info);
 
 	info->status.rates[0].idx = tx_status->last_rate;
@@ -64,6 +67,9 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 		info->flags |= IEEE80211_TX_STAT_ACK;
 
 	ieee80211_tx_status_irqsafe(priv->hw, skb);
+
+	if (atomic_dec_return(&priv->tx_pending[hw_queue]) <= MWL8787_TX_CT_LO)
+		ieee80211_wake_queue(priv->hw, hw_queue);
 }
 
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv)
@@ -108,8 +114,12 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 		struct sk_buff *skb)
 {
 	struct mwl8787_priv *priv = hw->priv;
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	u8 hw_queue = info->hw_queue;
+
+	if (atomic_inc_return(&priv->tx_pending[hw_queue]) >= MWL8787_TX_CT_HI)
+		ieee80211_stop_queue(hw, hw_queue);
 
 	skb_queue_tail(&priv->tx_queue, skb);
 	ieee80211_queue_work(priv->hw, &priv->tx_work);
 }
-
