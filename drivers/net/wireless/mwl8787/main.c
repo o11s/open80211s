@@ -372,9 +372,9 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	}
 
 	if (*total_flags & FIF_PROMISC_IN_BSS) {
-		/* TODO: allmulti / all unicast? */
 		*total_flags &= ~FIF_PROMISC_IN_BSS;
-		filter |= MWL8787_MAC_ENABLE_PROMISC;
+		filter |= (MWL8787_MAC_ENABLE_ALLMULTI |
+			   MWL8787_MAC_ENABLE_ALL_UNICAST);
 	}
 
 	if (*total_flags & FIF_OTHER_BSS) {
