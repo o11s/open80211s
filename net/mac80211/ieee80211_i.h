@@ -487,6 +487,7 @@ struct ieee80211_if_managed {
 
 struct ieee80211_if_ibss {
 	struct timer_list timer;
+	struct work_struct csa_connection_drop_work;
 
 	unsigned long last_scan_completed;
 
@@ -1318,6 +1319,7 @@ void ieee80211_mgd_stop(struct ieee80211_sub_if_data *sdata);
 void ieee80211_mgd_conn_tx_status(struct ieee80211_sub_if_data *sdata,
 				  __le16 fc, bool acked);
 void ieee80211_sta_restart(struct ieee80211_sub_if_data *sdata);
+u32 chandef_downgrade(struct cfg80211_chan_def *c);
 
 /* IBSS code */
 void ieee80211_ibss_notify_scan_completed(struct ieee80211_local *local);
@@ -1330,6 +1332,10 @@ int ieee80211_ibss_leave(struct ieee80211_sub_if_data *sdata);
 void ieee80211_ibss_work(struct ieee80211_sub_if_data *sdata);
 void ieee80211_ibss_rx_queued_mgmt(struct ieee80211_sub_if_data *sdata,
 				   struct sk_buff *skb);
+int ieee80211_ibss_csa_beacon(struct ieee80211_sub_if_data *sdata,
+			      struct cfg80211_csa_settings *csa_settings);
+int ieee80211_ibss_finish_csa(struct ieee80211_sub_if_data *sdata);
+void ieee80211_ibss_stop(struct ieee80211_sub_if_data *sdata);
 
 /* mesh code */
 void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata);
@@ -1481,6 +1487,29 @@ void ieee80211_apply_vhtcap_overrides(struct ieee80211_sub_if_data *sdata,
 void ieee80211_process_measurement_req(struct ieee80211_sub_if_data *sdata,
 				       struct ieee80211_mgmt *mgmt,
 				       size_t len);
+/**
+ * ieee80211_parse_ch_switch_ie - parses channel switch IEs
+ * @sdata: the sdata of the interface which has received the frame
+ * @elems: parsed 802.11 elements received with the frame
+ * @beacon: indicates if the frame was a beacon or probe response
+ * @current_band: indicates the current band
+ * @sta_flags: contains information about own capabilities and restrictions
+ *	to decide which channel switch announcements can be accepted. Only the
+ *	following subset of &enum ieee80211_sta_flags are evaluated:
+ *	%IEEE80211_STA_DISABLE_HT, %IEEE80211_STA_DISABLE_VHT,
+ *	%IEEE80211_STA_DISABLE_40MHZ, %IEEE80211_STA_DISABLE_80P80MHZ,
+ *	%IEEE80211_STA_DISABLE_160MHZ.
+ * @count: to be filled with the counter until the switch (on success only)
+ * @bssid: the currently connected bssid (for reporting)
+ * @mode: to be filled with CSA mode (on success only)
+ * @new_chandef: to be filled with destination chandef (on success only)
+ * Return: 0 on success, <0 on error and >0 if there is nothing to parse.
+ */
+int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
+				 struct ieee802_11_elems *elems, bool beacon,
+				 enum ieee80211_band current_band,
+				 u32 sta_flags, u8 *bssid, u8 *count, u8 *mode,
+				 struct cfg80211_chan_def *new_chandef);
 
 /* Suspend/resume and hw reconfiguration */
 int ieee80211_reconfig(struct ieee80211_local *local);
