@@ -27,9 +27,6 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 
 	if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
 		desc->flags |= MWL8787_REQ_TX_STATUS;
-
-	/* FIXME remove when firmware supports them... */
-	desc->flags &= ~(MWL8787_ASSIGN_SEQ | MWL8787_REQ_TX_STATUS);
 }
 
 
