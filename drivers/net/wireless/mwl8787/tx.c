@@ -127,6 +127,10 @@ void mwl8787_tx_work(struct work_struct *work)
 
 		if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
 			skb_queue_tail(&priv->tx_status_queue[hw_queue], skb);
+		else {
+			atomic_dec_return(&priv->tx_pending[hw_queue]);
+			ieee80211_free_txskb(priv->hw, skb);
+		}
 	}
 }
 
