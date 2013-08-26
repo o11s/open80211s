@@ -87,7 +87,7 @@ void mwl8787_tx_work(struct work_struct *work)
 {
 	struct mwl8787_priv *priv;
 	struct sk_buff *skb;
-	u8 *data_ptr;
+	u8 *data_ptr, hw_queue;
 	int ret;
 
 	priv = container_of(work, struct mwl8787_priv, tx_work);
@@ -100,6 +100,9 @@ void mwl8787_tx_work(struct work_struct *work)
 		/* move skb->data back to 802.11 header */
 		skb_pull(skb, data_ptr - skb->data);
 		if (ret) {
+			/* on other errors, drop the frame */
+			hw_queue = IEEE80211_SKB_CB(skb)->hw_queue;
+			atomic_dec_return(&priv->tx_pending[hw_queue]);
 			ieee80211_free_txskb(priv->hw, skb);
 			return;
 		}
