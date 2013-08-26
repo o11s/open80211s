@@ -70,8 +70,11 @@ enum mwl8787_tx_type {
 enum mwl8787_tx_flags {
 	MWL8787_NULL_DATA		= BIT(0),
 	MWL8787_LAST_FRAME		= BIT(3),
-	MWL8787_ASSIGN_SEQ		= BIT(4),
-	MWL8787_REQ_TX_STATUS		= BIT(5),
+};
+
+enum mwl8787_tx_ctl {
+	MWL8787_ASSIGN_SEQ		= BIT(16),
+	MWL8787_REQ_TX_STATUS		= BIT(17),
 };
 
 enum mwl8787_rx_ht_info {
@@ -311,7 +314,7 @@ struct mwl8787_tx_desc {
 	__le16 frame_len;
 	__le16 frame_offset;
 	__le16 frame_type;
-	__le32 res1;
+	__le32 tx_control;
 	u8 priority;
 	u8 flags;
 	u8 delay;
