@@ -14,6 +14,9 @@
 #define MWL8787_UPLD_SIZE               (2312)
 #define MWL8787_RX_DATA_BUF_SIZE     (4 * 1024)
 
+#define MWL8787_TX_CT_HI		100
+#define MWL8787_TX_CT_LO		80
+
 enum mwl8787_hw_status {
 	MWL8787_HW_STATUS_READY,
 	MWL8787_HW_STATUS_INITIALIZING,
@@ -71,6 +74,8 @@ struct mwl8787_priv
 	struct sk_buff_head tx_queue;
 	struct sk_buff_head tx_status_queue;
 	u16 tx_seq;			/* sequence number for ASSIGN_SEQ */
+
+	atomic_t tx_pending[IEEE80211_NUM_ACS];
 
 	struct ieee80211_channel *channel;
 	struct dentry *dfs_dev_dir;
