@@ -72,7 +72,7 @@ struct mwl8787_priv
 	struct work_struct tx_work;
 	struct work_struct card_reset_work;
 	struct sk_buff_head tx_queue;
-	struct sk_buff_head tx_status_queue;
+	struct sk_buff_head tx_status_queue[IEEE80211_NUM_ACS];
 	u16 tx_seq;			/* sequence number for ASSIGN_SEQ */
 
 	atomic_t tx_pending[IEEE80211_NUM_ACS];

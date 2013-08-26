@@ -358,7 +358,7 @@ struct mwl8787_event_tx_status {
 	u8 acked;
 	u8 last_rate;
 	u8 attempts;
-	u8 magic;
+	u8 hw_queue;
 } __packed;
 
 struct mwl8787_event_header {

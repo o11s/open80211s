@@ -45,18 +45,20 @@ static int mwl8787_tx_frame(struct mwl8787_priv *priv,
 void mwl8787_tx_status(struct mwl8787_priv *priv,
 		       struct mwl8787_event *tx_status_event)
 {
-	struct sk_buff *skb = skb_dequeue(&priv->tx_status_queue);
+	struct sk_buff *skb;
 	struct ieee80211_tx_info *info;
 	struct mwl8787_event_tx_status *tx_status =
 		&tx_status_event->u.tx_status;
-	u8 hw_queue;
+	u8 hw_queue = tx_status->hw_queue;
 
+	if (WARN_ON(hw_queue >= IEEE80211_NUM_ACS))
+		return;
+
+	skb = skb_dequeue(&priv->tx_status_queue[hw_queue]);
 	if (!skb)
 		return;
 
 	info = IEEE80211_SKB_CB(skb);
-	hw_queue = info->hw_queue;
-
 	ieee80211_tx_info_clear_status(info);
 
 	info->status.rates[0].idx = tx_status->last_rate;
@@ -75,12 +77,15 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv)
 {
 	struct sk_buff *skb;
+	int i;
 
 	while ((skb = skb_dequeue(&priv->tx_queue)))
 		ieee80211_free_txskb(priv->hw, skb);
 
-	while ((skb = skb_dequeue(&priv->tx_status_queue)))
-		ieee80211_free_txskb(priv->hw, skb);
+	for (i=0; i < IEEE80211_NUM_ACS; i++) {
+		while ((skb = skb_dequeue(&priv->tx_status_queue[i])))
+			ieee80211_free_txskb(priv->hw, skb);
+	}
 }
 
 void mwl8787_tx_work(struct work_struct *work)
@@ -89,10 +94,14 @@ void mwl8787_tx_work(struct work_struct *work)
 	struct sk_buff *skb;
 	u8 *data_ptr, hw_queue;
 	int ret;
+	struct ieee80211_tx_info *info;
 
 	priv = container_of(work, struct mwl8787_priv, tx_work);
 
 	while ((skb = skb_dequeue(&priv->tx_queue))) {
+
+		info = IEEE80211_SKB_CB(skb);
+		hw_queue = info->hw_queue;
 
 		data_ptr = skb->data;
 		ret = mwl8787_tx_frame(priv, skb);
@@ -111,14 +120,13 @@ void mwl8787_tx_work(struct work_struct *work)
 
 		if (ret) {
 			/* on other errors, drop the frame */
-			hw_queue = IEEE80211_SKB_CB(skb)->hw_queue;
 			atomic_dec_return(&priv->tx_pending[hw_queue]);
 			ieee80211_free_txskb(priv->hw, skb);
 			return;
 		}
 
-		/* FIXME per queue? */
-		skb_queue_tail(&priv->tx_status_queue, skb);
+		if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
+			skb_queue_tail(&priv->tx_status_queue[hw_queue], skb);
 	}
 }
 

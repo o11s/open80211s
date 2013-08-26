@@ -463,6 +463,7 @@ struct mwl8787_priv *mwl8787_init(void)
 {
 	struct mwl8787_priv *priv;
 	struct ieee80211_hw *hw;
+	int i;
 
 	hw = ieee80211_alloc_hw(sizeof(*priv), &mwl8787_ops);
 	if (!hw)
@@ -476,7 +477,9 @@ struct mwl8787_priv *mwl8787_init(void)
 	init_completion(&priv->cmd_wait);
 	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
 	skb_queue_head_init(&priv->tx_queue);
-	skb_queue_head_init(&priv->tx_status_queue);
+
+	for (i=0; i < IEEE80211_NUM_ACS; i++)
+		skb_queue_head_init(&priv->tx_status_queue[i]);
 
 	priv->channel = &mwl8787_2ghz_chantable[0];
 
@@ -489,7 +492,7 @@ struct mwl8787_priv *mwl8787_init(void)
 		IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING |
 		IEEE80211_HW_SIGNAL_DBM;
 
-	hw->queues = 4;
+	hw->queues = IEEE80211_NUM_ACS;
 	hw->max_rates = 4;
 	hw->max_rate_tries = 11;
 	hw->channel_change_time = 100;
