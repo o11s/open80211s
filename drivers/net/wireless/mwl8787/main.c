@@ -256,6 +256,10 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 	if (priv->cmd_resp_skb)
 		mwl8787_process_cmdresp(priv, priv->cmd_resp_skb);
 
+	/* I/O ports may now be available if tx stalled, so resume */
+	if (!skb_queue_empty(&priv->tx_queue))
+		ieee80211_queue_work(priv->hw, &priv->tx_work);
+
 	return ret;
 }
 

@@ -99,6 +99,16 @@ void mwl8787_tx_work(struct work_struct *work)
 
 		/* move skb->data back to 802.11 header */
 		skb_pull(skb, data_ptr - skb->data);
+
+		if (ret == -EBUSY) {
+			/*
+			 * No free write ports; requeue the frame at the head
+			 * then wait until we're rescheduled by tx done irq
+			 */
+			skb_queue_head(&priv->tx_queue, skb);
+			return;
+		}
+
 		if (ret) {
 			/* on other errors, drop the frame */
 			hw_queue = IEEE80211_SKB_CB(skb)->hw_queue;
