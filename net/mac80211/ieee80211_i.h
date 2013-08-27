@@ -602,6 +602,7 @@ struct ieee80211_if_mesh {
 	/* Channel Switching Support */
 	bool chsw_init;
 	__le16 pre_value;
+	u8 chsw_ttl;
 };
 
 #ifdef CONFIG_MAC80211_MESH

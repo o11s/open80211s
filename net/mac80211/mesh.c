@@ -603,7 +603,8 @@ static void ieee80211_mesh_rootpath(struct ieee80211_sub_if_data *sdata)
 }
 
 static int
-ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
+ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh,
+			    struct cfg80211_csa_settings *csa_settings)
 {
 	struct beacon_data *bcn;
 	int head_len, tail_len;
@@ -624,6 +625,10 @@ ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
 
 	head_len = hdr_len +
 		   2 + /* NULL SSID */
+		   /* Channel Switch Announcement */
+		   2 + sizeof(struct ieee80211_channel_sw_ie) +
+		   /* Mesh Channel Swith Parameters */
+		   2 + sizeof(struct ieee80211_mesh_chansw_params_ie) +
 		   2 + 8 + /* supported rates */
 		   2 + 3; /* DS params */
 	tail_len = 2 + (IEEE80211_MAX_SUPP_RATES - 8) +
@@ -665,6 +670,36 @@ ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
 	*pos++ = WLAN_EID_SSID;
 	*pos++ = 0x0;
 
+	if (csa_settings) {
+		struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+		__le16 reason;
+
+		pos = skb_put(skb, 13);
+		memset(pos, 0, 13);
+		*pos++ = WLAN_EID_CHANNEL_SWITCH;
+		*pos++ = 3;
+		*pos++ = 0x0;
+		*pos++ = ieee80211_frequency_to_channel(
+				csa_settings->chandef.chan->center_freq);
+		sdata->csa_counter_offset_beacon = hdr_len + 6;
+		*pos++ = csa_settings->count;
+		*pos++ = WLAN_EID_CHAN_SWITCH_PARAM;
+		*pos++ = 6;
+		if (ifmsh->chsw_init) {
+			*pos++ = ifmsh->mshcfg.dot11MeshTTL;
+			*pos |= WLAN_EID_CHAN_SWITCH_PARAM_INITIATOR;
+		} else {
+			*pos++ = ifmsh->chsw_ttl;
+		}
+		*pos++ |= csa_settings->block_tx ?
+			  WLAN_EID_CHAN_SWITCH_PARAM_TX_RESTRICT : 0x00;
+		reason = cpu_to_le16(WLAN_REASON_MESH_CHAN);
+		memcpy(pos, &reason, 2);
+		pos += 2;
+		memcpy(pos, &ifmsh->pre_value, 2);
+		pos += 2;
+	}
+
 	if (ieee80211_add_srates_ie(sdata, skb, true, band) ||
 	    mesh_add_ds_params_ie(sdata, skb))
 		goto out_free;
@@ -699,14 +734,15 @@ out_free:
 }
 
 static int
-ieee80211_mesh_rebuild_beacon(struct ieee80211_sub_if_data *sdata)
+ieee80211_mesh_rebuild_beacon(struct ieee80211_sub_if_data *sdata,
+			      struct cfg80211_csa_settings *csa_settings)
 {
 	struct beacon_data *old_bcn;
 	int ret;
 
 	old_bcn = rcu_dereference_protected(sdata->u.mesh.beacon,
 					    lockdep_is_held(&sdata->wdev.mtx));
-	ret = ieee80211_mesh_build_beacon(&sdata->u.mesh);
+	ret = ieee80211_mesh_build_beacon(&sdata->u.mesh, csa_settings);
 	if (ret)
 		/* just reuse old beacon */
 		return ret;
@@ -762,7 +798,7 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 
 	changed |= ieee80211_mps_local_status_update(sdata);
 
-	if (ieee80211_mesh_build_beacon(ifmsh)) {
+	if (ieee80211_mesh_build_beacon(ifmsh, NULL)) {
 		ieee80211_stop_mesh(sdata);
 		return -ENOMEM;
 	}
@@ -940,9 +976,11 @@ static int mesh_fwd_csa_frame(struct ieee80211_sub_if_data *sdata,
 	if (len < 42) {
 		*(pos + 7) -= 1;
 		*(pos + 8) &= ~WLAN_EID_CHAN_SWITCH_PARAM_INITIATOR;
+		sdata->u.mesh.chsw_ttl = *(pos + 7);
 	} else {
 		*(pos + 10) -= 1;
 		*(pos + 11) &= ~WLAN_EID_CHAN_SWITCH_PARAM_INITIATOR;
+		sdata->u.mesh.chsw_ttl = *(pos + 10);
 	}
 
 	memcpy(mgmt_fwd, mgmt, len);
@@ -1071,7 +1109,7 @@ static void mesh_bss_info_changed(struct ieee80211_sub_if_data *sdata)
 			BSS_CHANGED_HT |
 			BSS_CHANGED_BASIC_RATES |
 			BSS_CHANGED_BEACON_INT)))
-		if (ieee80211_mesh_rebuild_beacon(sdata))
+		if (ieee80211_mesh_rebuild_beacon(sdata, NULL))
 			return;
 
 	ieee80211_bss_info_change_notify(sdata, changed);
