@@ -25,7 +25,7 @@ int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
 				 struct ieee802_11_elems *elems, bool beacon,
 				 enum ieee80211_band current_band,
 				 u32 sta_flags, u8 *bssid, u8 *count, u8 *mode,
-				 struct cfg80211_chan_def *new_chandef)
+				 u8 *ttl, struct cfg80211_chan_def *new_chandef)
 {
 	enum ieee80211_band new_band;
 	int new_freq;
@@ -72,6 +72,12 @@ int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
 	} else {
 		/* nothing here we understand */
 		return 1;
+	}
+
+	/* Mesh Channel Switch Parameters Element */
+	if (elems->mesh_chansw_params_ie) {
+		*ttl = elems->mesh_chansw_params_ie->mesh_ttl;
+		*mode = elems->mesh_chansw_params_ie->mesh_flags;
 	}
 
 	new_freq = ieee80211_channel_to_frequency(new_chan_no, new_band);

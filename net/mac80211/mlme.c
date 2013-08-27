@@ -992,7 +992,7 @@ ieee80211_sta_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_chanctx *chanctx;
 	enum ieee80211_band current_band;
 	u8 count;
-	u8 mode;
+	u8 mode, ttl;
 	struct cfg80211_chan_def new_chandef = {};
 	int res;
 
@@ -1012,7 +1012,7 @@ ieee80211_sta_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	res = ieee80211_parse_ch_switch_ie(sdata, elems, beacon, current_band,
 					   ifmgd->flags,
 					   ifmgd->associated->bssid, &count,
-					   &mode, &new_chandef);
+					   &mode, &ttl, &new_chandef);
 	if (res	< 0)
 		ieee80211_queue_work(&local->hw,
 				     &ifmgd->csa_connection_drop_work);

@@ -1511,6 +1511,7 @@ void ieee80211_process_measurement_req(struct ieee80211_sub_if_data *sdata,
  * @count: to be filled with the counter until the switch (on success only)
  * @bssid: the currently connected bssid (for reporting)
  * @mode: to be filled with CSA mode (on success only)
+ * @ttl: to be filled with mesh TTL related to channel switch
  * @new_chandef: to be filled with destination chandef (on success only)
  * Return: 0 on success, <0 on error and >0 if there is nothing to parse.
  */
@@ -1518,6 +1519,7 @@ int ieee80211_parse_ch_switch_ie(struct ieee80211_sub_if_data *sdata,
 				 struct ieee802_11_elems *elems, bool beacon,
 				 enum ieee80211_band current_band,
 				 u32 sta_flags, u8 *bssid, u8 *count, u8 *mode,
+				 u8 *ttl,
 				 struct cfg80211_chan_def *new_chandef);
 
 /* Suspend/resume and hw reconfiguration */

@@ -688,7 +688,7 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	enum nl80211_channel_type ch_type;
 	int err, num_chanctx;
 	u32 sta_flags;
-	u8 mode;
+	u8 mode, ttl;
 
 	if (sdata->vif.csa_active)
 		return true;
@@ -714,7 +714,7 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	err = ieee80211_parse_ch_switch_ie(sdata, elems, beacon,
 					   ifibss->chandef.chan->band,
 					   sta_flags, ifibss->bssid,
-					   &params.count, &mode,
+					   &params.count, &mode, &ttl,
 					   &params.chandef);
 
 	/* can't switch to destination channel, fail */
