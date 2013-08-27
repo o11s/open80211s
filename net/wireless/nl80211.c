@@ -10755,7 +10755,8 @@ void cfg80211_ch_switch_notify(struct net_device *dev,
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_AP &&
 		    wdev->iftype != NL80211_IFTYPE_P2P_GO &&
-		    wdev->iftype != NL80211_IFTYPE_ADHOC))
+		    wdev->iftype != NL80211_IFTYPE_ADHOC &&
+		    wdev->iftype != NL80211_IFTYPE_MESH_POINT))
 		goto out;
 
 	wdev->channel = chandef->chan;

@@ -12,6 +12,7 @@
 #include <asm/unaligned.h>
 #include "ieee80211_i.h"
 #include "mesh.h"
+#include "driver-ops.h"
 
 static int mesh_allocated;
 static struct kmem_cache *rm_cache;
@@ -956,6 +957,44 @@ static void ieee80211_mesh_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			stype, mgmt, &elems, rx_status);
 }
 
+int ieee80211_mesh_finish_csa(struct ieee80211_sub_if_data *sdata)
+{
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	int ret = 0;
+
+	/* Remove the CSA and MCSP elements from the beacon */
+	ret = ieee80211_mesh_rebuild_beacon(sdata, NULL);
+	if (ret)
+		return -EINVAL;
+
+	/* Reset the TTL value and Initiator flag */
+	ifmsh->chsw_init = false;
+	ifmsh->chsw_ttl = 0;
+
+	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON);
+
+	mcsa_dbg(sdata, "complete switching to center freq %d MHz",
+		 sdata->vif.bss_conf.chandef.chan->center_freq);
+	return ret;
+}
+
+int ieee80211_mesh_csa_beacon(struct ieee80211_sub_if_data *sdata,
+			      struct cfg80211_csa_settings *csa_settings,
+			      bool csa_action)
+{
+	int ret = 0;
+
+	if (csa_action)
+		ieee80211_send_action_csa(sdata, csa_settings);
+
+	ret = ieee80211_mesh_rebuild_beacon(sdata, csa_settings);
+	if (ret)
+		return -EINVAL;
+
+	ieee80211_bss_info_change_notify(sdata, BSS_CHANGED_BEACON);
+	return ret;
+}
+
 static int mesh_fwd_csa_frame(struct ieee80211_sub_if_data *sdata,
 			       struct ieee80211_mgmt *mgmt, size_t len)
 {
@@ -1181,6 +1220,7 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 	ifmsh->last_preq = jiffies;
 	ifmsh->next_perr = jiffies;
 	ifmsh->chsw_init = false;
+	ifmsh->chsw_ttl = 0;
 	ifmsh->pre_value = 0;
 	/* Allocate all mesh structures when creating the first mesh interface. */
 	if (!mesh_allocated)

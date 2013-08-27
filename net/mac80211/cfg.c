@@ -2885,6 +2885,11 @@ void ieee80211_csa_finalize_work(struct work_struct *work)
 	case NL80211_IFTYPE_ADHOC:
 		ieee80211_ibss_finish_csa(sdata);
 		break;
+	case NL80211_IFTYPE_MESH_POINT:
+		err = ieee80211_mesh_finish_csa(sdata);
+		if (err < 0)
+			return;
+		break;
 	default:
 		WARN_ON(1);
 		return;
@@ -3003,7 +3008,7 @@ static int ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 		    params->chandef.chan->band)
 			return -EINVAL;
 
-		err = ieee80211_send_action_csa(sdata, params);
+		err = ieee80211_mesh_csa_beacon(sdata, params, true);
 		if (err < 0)
 			return err;
 		break;
