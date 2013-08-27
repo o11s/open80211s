@@ -91,6 +91,13 @@ int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
 	return 0;
 }
 
+int mwl8787_cmd_get_tsf_resp(struct mwl8787_priv *priv,
+			     struct mwl8787_cmd *resp)
+{
+	priv->get_tsf_resp = le64_to_cpu(resp->u.get_tsf.tsf);
+	return 0;
+}
+
 int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *resp;
@@ -137,6 +144,10 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 		case MWL8787_CMD_MAC_ADDR:
 			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
+			break;
+
+		case MWL8787_CMD_GET_TSF:
+			ret = mwl8787_cmd_get_tsf_resp(priv, resp);
 			break;
 
 		case MWL8787_CMD_FUNC_INIT:
@@ -372,6 +383,22 @@ int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
 		put_unaligned_le16(value, cmd->u.snmp_mib.payload);
 	else
 		cmd->u.snmp_mib.payload[0] = (u8) value;
+
+	ret = mwl8787_send_cmd_sync(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
+int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_GET_TSF,
+				sizeof(struct mwl8787_cmd_get_tsf),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
 
 	ret = mwl8787_send_cmd_sync(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);
