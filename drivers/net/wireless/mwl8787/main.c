@@ -443,6 +443,14 @@ static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_FRAG_THRESHOLD, value);
 }
 
+static int mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	priv->get_tsf_resp = -1;
+	mwl8787_cmd_get_tsf(priv);
+	return priv->get_tsf_resp;
+}
+
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -455,6 +463,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.configure_filter = mwl8787_configure_filter,
 	.set_rts_threshold = mwl8787_set_rts_threshold,
 	.set_frag_threshold = mwl8787_set_frag_threshold,
+	.get_tsf = mwl8787_get_tsf,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };

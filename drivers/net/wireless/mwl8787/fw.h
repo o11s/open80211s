@@ -125,6 +125,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
 	MWL8787_CMD_SUBSCRIBE_EVENTS	= 0x0075,
+	MWL8787_CMD_GET_TSF		= 0x0080,
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
@@ -232,6 +233,10 @@ struct mwl8787_cmd_snmp_mib {
 	__le16 oid;
 	__le16 payload_size;
 	u8 payload[0];
+} __packed;
+
+struct mwl8787_cmd_get_tsf {
+	__le64 tsf;
 } __packed;
 
 struct mwl8787_cmd_header {
@@ -346,6 +351,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_scan scan;
 		struct mwl8787_cmd_scan_resp scan_resp;
 		struct mwl8787_cmd_snmp_mib snmp_mib;
+		struct mwl8787_cmd_get_tsf get_tsf;
 		u8 data[0];
 	} u;
 } __packed;
