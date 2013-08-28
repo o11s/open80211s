@@ -461,6 +461,13 @@ static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 	return tsf;
 }
 
+static int mwl8787_get_stats(struct ieee80211_hw *hw,
+			     struct ieee80211_low_level_stats *stats)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	return mwl8787_cmd_log(priv, stats);
+}
+
 const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -474,6 +481,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.set_rts_threshold = mwl8787_set_rts_threshold,
 	.set_frag_threshold = mwl8787_set_frag_threshold,
 	.get_tsf = mwl8787_get_tsf,
+	.get_stats = mwl8787_get_stats,
 	.sta_rc_update = mwl8787_sta_rc_update,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
