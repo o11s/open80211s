@@ -443,3 +443,34 @@ int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf)
 	}
 	return ret;
 }
+
+int mwl8787_cmd_log(struct mwl8787_priv *priv,
+		    struct ieee80211_low_level_stats *stats)
+{
+	struct mwl8787_cmd *cmd, *resp;
+	struct mwl8787_cmd_log *log;
+	struct sk_buff *reply_skb;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_LOG,
+				sizeof(struct mwl8787_cmd_log),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	ret = mwl8787_send_cmd_reply(priv, cmd, &reply_skb);
+	mwl8787_cmd_free(priv, cmd);
+	if (ret)
+		return ret;
+
+	resp = (struct mwl8787_cmd *) reply_skb->data;
+
+	log = &resp->u.log;
+	stats->dot11ACKFailureCount = le32_to_cpu(log->dot11ACKFailureCount);
+	stats->dot11RTSFailureCount = le32_to_cpu(log->dot11RTSFailureCount);
+	stats->dot11FCSErrorCount = le32_to_cpu(log->dot11FCSErrorCount);
+	stats->dot11RTSSuccessCount = le32_to_cpu(log->dot11RTSSuccessCount);
+
+	dev_kfree_skb_any(reply_skb);
+	return 0;
+}
