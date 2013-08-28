@@ -445,10 +445,11 @@ static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 
 static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 {
+	u64 tsf = -1;
+
 	struct mwl8787_priv *priv = hw->priv;
-	priv->get_tsf_resp = -1;
-	mwl8787_cmd_get_tsf(priv);
-	return priv->get_tsf_resp;
+	mwl8787_cmd_get_tsf(priv, &tsf);
+	return tsf;
 }
 
 const struct ieee80211_ops mwl8787_ops = {
