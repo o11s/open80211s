@@ -245,10 +245,42 @@ int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u32 control)
 	return ret;
 }
 
-int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel)
+int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
+			   struct cfg80211_chan_def *chandef)
 {
 	int ret;
 	struct mwl8787_cmd *cmd;
+	u16 channel;
+	u16 rftype = 0;
+
+	/* set up band/channel flags in rftype field based on chandef */
+	channel = chandef->chan->hw_value;
+	switch (chandef->chan->band) {
+	case IEEE80211_BAND_2GHZ:
+		rftype |= MWL8787_BAND_2GHZ;
+		break;
+	case IEEE80211_BAND_5GHZ:
+		rftype |= MWL8787_BAND_5GHZ;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	switch (chandef->width) {
+	case NL80211_CHAN_WIDTH_20_NOHT:
+	case NL80211_CHAN_WIDTH_20:
+		rftype |= MWL8787_CHAN_WIDTH_20;
+		break;
+	case NL80211_CHAN_WIDTH_40:
+		rftype |= MWL8787_CHAN_WIDTH_40;
+		if (chandef->center_freq1 > chandef->chan->center_freq)
+			rftype |= MWL8787_SEC_OFF_ABOVE;
+		else
+			rftype |= MWL8787_SEC_OFF_BELOW;
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	cmd = mwl8787_cmd_alloc(priv,
 				MWL8787_CMD_RF_CHANNEL,
@@ -260,6 +292,7 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel)
 
 	cmd->u.rf_channel.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.rf_channel.current_channel = cpu_to_le16(channel);
+	cmd->u.rf_channel.rftype = cpu_to_le16(rftype);
 
 	ret = mwl8787_send_cmd(priv, cmd);
 

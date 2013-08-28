@@ -43,8 +43,8 @@ void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 	if (desc->ht_info & MWL8787_RX_HT_SHORT_GI)
 		rx_status->flag |= RX_FLAG_SHORT_GI;
 
-	rx_status->freq = priv->channel->center_freq;
-	rx_status->band = priv->channel->band;
+	rx_status->freq = priv->hw->conf.chandef.chan->center_freq;
+	rx_status->band = priv->hw->conf.chandef.chan->band;
 
 	ieee80211_rx_irqsafe(priv->hw, skb);
 	return;
