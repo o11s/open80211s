@@ -443,7 +443,7 @@ static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_FRAG_THRESHOLD, value);
 }
 
-static int mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
+static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 {
 	struct mwl8787_priv *priv = hw->priv;
 	priv->get_tsf_resp = -1;
