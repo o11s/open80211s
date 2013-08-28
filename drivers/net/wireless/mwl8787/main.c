@@ -454,9 +454,9 @@ static void mwl8787_sta_rc_update(struct ieee80211_hw *hw,
 
 static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 {
+	struct mwl8787_priv *priv = hw->priv;
 	u64 tsf = -1;
 
-	struct mwl8787_priv *priv = hw->priv;
 	mwl8787_cmd_get_tsf(priv, &tsf);
 	return tsf;
 }

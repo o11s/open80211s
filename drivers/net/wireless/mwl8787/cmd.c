@@ -436,12 +436,13 @@ int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf)
 	ret = mwl8787_send_cmd_reply(priv, cmd, &reply_skb);
 	mwl8787_cmd_free(priv, cmd);
 
-	if (!ret) {
-		resp = (struct mwl8787_cmd *) reply_skb->data;
-		*tsf = le64_to_cpu(resp->u.get_tsf.tsf);
-		dev_kfree_skb_any(reply_skb);
-	}
-	return ret;
+	if (ret)
+		return ret;
+
+	resp = (struct mwl8787_cmd *) reply_skb->data;
+	*tsf = le64_to_cpu(resp->u.get_tsf.tsf);
+	dev_kfree_skb_any(reply_skb);
+	return 0;
 }
 
 int mwl8787_cmd_log(struct mwl8787_priv *priv,
