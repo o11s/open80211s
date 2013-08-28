@@ -107,7 +107,6 @@ int mwl8787_send_cmd_sync(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd);
 int mwl8787_send_cmd_tm(struct mwl8787_priv *priv,
 			struct mwl8787_cmd *cmd,
 			struct sk_buff **reply);
-int mwl8787_reset(struct mwl8787_priv *priv);
 int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u32 control);
 int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);

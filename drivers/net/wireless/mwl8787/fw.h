@@ -119,7 +119,6 @@ enum mwl8787_oid {
 
 enum mwl8787_cmd_id {
 	MWL8787_CMD_HW_SPEC		= 0x0003,
-	MWL8787_CMD_RESET		= 0x0005,
 	MWL8787_CMD_SCAN		= 0x0006,
 	MWL8787_CMD_MULTICAST_ADDR	= 0x0010,
 	MWL8787_CMD_SNMP_MIB		= 0x0016,
@@ -172,10 +171,6 @@ struct mwl8787_cmd_hw_spec {
 	__le32 reserved_3[2];
 	__le32 dot_11ac_dev_cap;
 	__le32 dot_11ac_mcs_support;
-} __packed;
-
-struct mwl8787_cmd_reset {
-	__le16 action;
 } __packed;
 
 struct mwl8787_cmd_multicast_addr {
@@ -340,7 +335,6 @@ struct mwl8787_cmd {
 	struct mwl8787_cmd_header hdr;
 	union {
 		struct mwl8787_cmd_hw_spec hw_spec;
-		struct mwl8787_cmd_reset reset;
 		struct mwl8787_cmd_multicast_addr multicast_addr;
 		struct mwl8787_cmd_radio_ctrl radio_ctrl;
 		struct mwl8787_cmd_rf_channel rf_channel;
