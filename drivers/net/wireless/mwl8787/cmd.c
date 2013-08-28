@@ -23,6 +23,7 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 			   struct sk_buff **reply)
 {
 	int ret = 0;
+	struct mwl8787_cmd *resp;
 
 	priv->keep_resp = reply != NULL;
 
@@ -40,6 +41,14 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 	if (reply) {
 		*reply = priv->cmd_resp_skb;
 		priv->cmd_resp_skb = NULL;
+
+		/* verify reply skb matches cmd */
+		resp = (struct mwl8787_cmd *) (*reply)->data;
+		if ((resp->hdr.id & ~cpu_to_le16(MWL8787_CMD_RET_BIT)) !=
+		    cmd->hdr.id) {
+			dev_kfree_skb_any(*reply);
+			return -EIO;
+		}
 	}
 
 	return 0;
