@@ -8,9 +8,23 @@ static int __mwl8787_send_cmd(struct mwl8787_priv *priv,
 				       le16_to_cpu(cmd->hdr.len));
 }
 
-int mwl8787_send_cmd(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
+/**
+ * mwl8787_send_cmd_reply() - send a cmd to the fw and wait for reply
+ * @priv: mwl8787 driver context
+ * @cmd: command structure to send
+ * @reply: response returned here
+ *
+ * Synchronously sends a firmware command.  If @reply is not null
+ * and the command is successful, the response skb is saved in the
+ * passed pointer, and the caller must free it.
+ */
+int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
+			   struct mwl8787_cmd *cmd,
+			   struct sk_buff **reply)
 {
 	int ret = 0;
+
+	priv->keep_resp = reply != NULL;
 
 	INIT_COMPLETION(priv->cmd_wait);
 	ret = __mwl8787_send_cmd(priv, cmd);
@@ -22,21 +36,27 @@ int mwl8787_send_cmd(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
 		dev_err(priv->dev, "cmd_wait timed out\n");
 		return -ETIMEDOUT;
 	}
+
+	if (reply) {
+		*reply = priv->cmd_resp_skb;
+		priv->cmd_resp_skb = NULL;
+	}
+
 	return 0;
 }
 
-int mwl8787_send_cmd_tm(struct mwl8787_priv *priv,
-			struct mwl8787_cmd *cmd,
-			struct sk_buff **reply)
+/**
+ * mwl8787_send_cmd() - send a cmd to the fw, no reply requested
+ * @priv: mwl8787 driver context
+ * @cmd: command structure to send
+ *
+ * Convenience function for the normal case where caller is not
+ * interested in the contents of the firmware response to a command.
+ * This function still waits for the response.
+ */
+int mwl8787_send_cmd(struct mwl8787_priv *priv, struct mwl8787_cmd *cmd)
 {
-	int ret;
-
-	priv->keep_resp = true;
-	ret = mwl8787_send_cmd(priv, cmd);
-	*reply = priv->cmd_resp_skb;
-	priv->keep_resp = false;
-	priv->cmd_resp_skb = NULL;
-	return ret;
+	return mwl8787_send_cmd_reply(priv, cmd, NULL);
 }
 
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
