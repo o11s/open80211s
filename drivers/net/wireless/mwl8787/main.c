@@ -134,7 +134,7 @@ int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 
 #if 0
 	/* Reconfigure tx buf size */
-	ret = mwifiex_send_cmd_sync(priv,
+	ret = mwifiex_send_cmd(priv,
 				    HostCmd_CMD_RECONFIGURE_TX_BUFF,
 				    HostCmd_ACT_GEN_SET, 0,
 				    &priv->adapter->tx_buf_size);
@@ -142,21 +142,21 @@ int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 		return ret;
 
 	/* get tx rate */
-	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_TX_RATE_CFG,
+	ret = mwifiex_send_cmd(priv, HostCmd_CMD_TX_RATE_CFG,
 				    HostCmd_ACT_GEN_GET, 0, NULL);
 	if (ret)
 		return ret;
 	priv->data_rate = 0;
 
 	/* get tx power */
-	ret = mwifiex_send_cmd_sync(priv, HostCmd_CMD_RF_TX_PWR,
+	ret = mwifiex_send_cmd(priv, HostCmd_CMD_RF_TX_PWR,
 				    HostCmd_ACT_GEN_GET, 0, NULL);
 	if (ret)
 		return ret;
 
 	if (priv->bss_type == MWL8787_BSS_TYPE_STA) {
 		/* set ibss coalescing_status */
-		ret = mwifiex_send_cmd_sync(
+		ret = mwifiex_send_cmd(
 				priv, HostCmd_CMD_802_11_IBSS_COALESCING_STATUS,
 				HostCmd_ACT_GEN_SET, 0, &enable);
 		if (ret)
@@ -393,7 +393,7 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	} else {
 		/* set mcast list previously prepared */
 		if (mcast_cmd)
-			mwl8787_send_cmd_sync(priv, mcast_cmd);
+			mwl8787_send_cmd(priv, mcast_cmd);
 	}
 	mwl8787_cmd_free(priv, mcast_cmd);
 

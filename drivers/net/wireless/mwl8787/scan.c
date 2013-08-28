@@ -105,7 +105,7 @@ int mwl8787_cmd_scan(struct mwl8787_priv *priv,
 		ptr += sizeof(*chanlist) + chan_size;
 	}
 
-	ret = mwl8787_send_cmd_sync(priv, cmd);
+	ret = mwl8787_send_cmd(priv, cmd);
 
 	mwl8787_cmd_free(priv, cmd);
 	return ret;
