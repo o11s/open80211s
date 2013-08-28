@@ -439,6 +439,19 @@ static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_FRAG_THRESHOLD, value);
 }
 
+static void mwl8787_sta_rc_update(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct ieee80211_sta *sta,
+				  u32 changed)
+{
+	/*
+	 * FIXME what to do here?
+	 *
+	 * we can maybe use cmd_tx_rate_cfg, and map stas to cfgindex, if
+	 * we can also tell fw which cfgindex to use for a frame.
+	 */
+}
+
 static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 {
 	u64 tsf = -1;
@@ -461,6 +474,7 @@ const struct ieee80211_ops mwl8787_ops = {
 	.set_rts_threshold = mwl8787_set_rts_threshold,
 	.set_frag_threshold = mwl8787_set_frag_threshold,
 	.get_tsf = mwl8787_get_tsf,
+	.sta_rc_update = mwl8787_sta_rc_update,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
