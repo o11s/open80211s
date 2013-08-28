@@ -299,13 +299,9 @@ static void mwl8787_remove_interface(struct ieee80211_hw *hw,
 static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 {
 	struct mwl8787_priv *priv = hw->priv;
-	u16 channel;
 
-	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
-		priv->channel = hw->conf.chandef.chan;
-		channel = hw->conf.chandef.chan->hw_value;
-		mwl8787_cmd_rf_channel(priv, channel);
-	}
+	if (changed & IEEE80211_CONF_CHANGE_CHANNEL)
+		mwl8787_cmd_rf_channel(priv, &hw->conf.chandef);
 
 	return 0;
 }
@@ -490,8 +486,6 @@ struct mwl8787_priv *mwl8787_init(void)
 
 	for (i=0; i < IEEE80211_NUM_ACS; i++)
 		skb_queue_head_init(&priv->tx_status_queue[i]);
-
-	priv->channel = &mwl8787_2ghz_chantable[0];
 
 	/* TODO revisit all this */
 	hw->wiphy->interface_modes =

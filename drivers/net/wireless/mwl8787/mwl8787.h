@@ -76,7 +76,6 @@ struct mwl8787_priv
 
 	atomic_t tx_pending[IEEE80211_NUM_ACS];
 
-	struct ieee80211_channel *channel;
 	struct dentry *dfs_dev_dir;
 
 	/* sdio */
@@ -107,7 +106,8 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 int mwl8787_cmd_mac_ctrl(struct mwl8787_priv *priv, u32 control);
 int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);
-int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv, u16 channel);
+int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
+			   struct cfg80211_chan_def *chandef);
 int mwl8787_cmd_scan(struct mwl8787_priv *priv,
 		     struct cfg80211_scan_request *request);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,

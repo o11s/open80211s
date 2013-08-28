@@ -184,6 +184,29 @@ struct mwl8787_cmd_radio_ctrl {
 	__le16 control;
 } __packed;
 
+
+/*
+ * band, channel, and secondary offset are all combined into rftype field.
+ */
+enum mwl8787_band {
+	MWL8787_BAND_2GHZ	= 0,
+	MWL8787_BAND_5GHZ	= 1,
+	MWL8787_BAND_4GHZ	= 2
+};
+
+#define MWL8787_CHAN_WIDTH_SHIFT	2
+enum mwl8787_chan_width {
+	MWL8787_CHAN_WIDTH_20	= 0 << MWL8787_CHAN_WIDTH_SHIFT,
+	MWL8787_CHAN_WIDTH_40	= 2 << MWL8787_CHAN_WIDTH_SHIFT,
+};
+
+#define MWL8787_SEC_OFF_SHIFT		4
+enum mwl8787_secondary_offset {
+	MWL8787_SEC_OFF_NONE	= 0 << MWL8787_SEC_OFF_SHIFT,
+	MWL8787_SEC_OFF_ABOVE	= 1 << MWL8787_SEC_OFF_SHIFT,
+	MWL8787_SEC_OFF_BELOW	= 3 << MWL8787_SEC_OFF_SHIFT,
+};
+
 struct mwl8787_cmd_rf_channel {
 	__le16 action;
 	__le16 current_channel;
