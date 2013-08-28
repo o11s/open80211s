@@ -48,8 +48,6 @@ struct mwl8787_priv
 
 	u8 addr[ETH_ALEN];
 
-	u64 get_tsf_resp;
-
 	struct mwl8787_bus_ops *bus_ops;
 	void *bus_priv;
 	int bus_headroom;
@@ -124,7 +122,7 @@ int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events);
 int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
 			 u16 value);
-int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv);
+int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
