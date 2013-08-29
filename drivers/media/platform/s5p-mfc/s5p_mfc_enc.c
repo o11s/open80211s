@@ -978,6 +978,11 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 			return -EINVAL;
 		}
 
+		if (!IS_MFCV7(dev) && (fmt->fourcc == V4L2_PIX_FMT_VP8)) {
+			mfc_err("VP8 is supported only in MFC v7\n");
+			return -EINVAL;
+		}
+
 		if (pix_fmt_mp->plane_fmt[0].sizeimage == 0) {
 			mfc_err("must be set encoding output size\n");
 			return -EINVAL;
@@ -992,12 +997,12 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 			return -EINVAL;
 		}
 
-		if (!IS_MFCV6(dev)) {
+		if (!IS_MFCV6_PLUS(dev)) {
 			if (fmt->fourcc == V4L2_PIX_FMT_NV12MT_16X16) {
 				mfc_err("Not supported format.\n");
 				return -EINVAL;
 			}
-		} else if (IS_MFCV6(dev)) {
+		} else if (IS_MFCV6_PLUS(dev)) {
 			if (fmt->fourcc == V4L2_PIX_FMT_NV12MT) {
 				mfc_err("Not supported format.\n");
 				return -EINVAL;
@@ -1033,15 +1038,8 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		goto out;
 	}
 	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		fmt = find_format(f, MFC_FMT_ENC);
-		if (!fmt) {
-			mfc_err("failed to set capture format\n");
-			return -EINVAL;
-		}
-		if (!IS_MFCV7(dev) && (fmt->fourcc == V4L2_PIX_FMT_VP8)) {
-			mfc_err("VP8 is supported only in MFC v7\n");
-			return -EINVAL;
-		}
+		/* dst_fmt is validated by call to vidioc_try_fmt */
+		ctx->dst_fmt = find_format(f, MFC_FMT_ENC);
 		ctx->state = MFCINST_INIT;
 		ctx->codec_mode = ctx->dst_fmt->codec_mode;
 		ctx->enc_dst_buf_size =	pix_fmt_mp->plane_fmt[0].sizeimage;
@@ -1063,28 +1061,8 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		}
 		mfc_debug(2, "Got instance number: %d\n", ctx->inst_no);
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		fmt = find_format(f, MFC_FMT_RAW);
-		if (!fmt) {
-			mfc_err("failed to set output format\n");
-			return -EINVAL;
-		}
-
-		if (!IS_MFCV6_PLUS(dev) &&
-				(fmt->fourcc == V4L2_PIX_FMT_NV12MT_16X16)) {
-			mfc_err("Not supported format.\n");
-			return -EINVAL;
-		} else if (IS_MFCV6_PLUS(dev) &&
-				(fmt->fourcc == V4L2_PIX_FMT_NV12MT)) {
-			mfc_err("Not supported format.\n");
-			return -EINVAL;
-		}
-
-		if (fmt->num_planes != pix_fmt_mp->num_planes) {
-			mfc_err("failed to set output format\n");
-			ret = -EINVAL;
-			goto out;
-		}
-		ctx->src_fmt = fmt;
+		/* src_fmt is validated by call to vidioc_try_fmt */
+		ctx->src_fmt = find_format(f, MFC_FMT_RAW);
 		ctx->img_width = pix_fmt_mp->width;
 		ctx->img_height = pix_fmt_mp->height;
 		mfc_debug(2, "codec number: %d\n", ctx->src_fmt->codec_mode);

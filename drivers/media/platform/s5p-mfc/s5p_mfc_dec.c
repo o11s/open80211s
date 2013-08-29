@@ -390,7 +390,7 @@ static int vidioc_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
 			mfc_err("Not supported format.\n");
 			return -EINVAL;
 		}
-		if (!IS_MFCV6(dev)) {
+		if (!IS_MFCV6_PLUS(dev)) {
 			if (fmt->fourcc == V4L2_PIX_FMT_VP8) {
 				mfc_err("Not supported format.\n");
 				return -EINVAL;
@@ -435,31 +435,9 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		goto out;
 	}
 	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		fmt = find_format(f, MFC_FMT_RAW);
-		if (!fmt) {
-			mfc_err("Unsupported format for source.\n");
-			return -EINVAL;
-		}
-		if (!IS_MFCV6_PLUS(dev) &&
-				(fmt->fourcc != V4L2_PIX_FMT_NV12MT)) {
-			mfc_err("Not supported format.\n");
-			return -EINVAL;
-		} else if (IS_MFCV6_PLUS(dev) &&
-				(fmt->fourcc == V4L2_PIX_FMT_NV12MT)) {
-			mfc_err("Not supported format.\n");
-			return -EINVAL;
-		}
-		ctx->dst_fmt = fmt;
-		mfc_debug_leave();
-		return ret;
-	} else if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		mfc_err("Wrong type error for S_FMT : %d", f->type);
-		return -EINVAL;
-	}
-	fmt = find_format(f, MFC_FMT_DEC);
-	if (!fmt || fmt->codec_mode == S5P_MFC_CODEC_NONE) {
-		mfc_err("Unknown codec\n");
-		ret = -EINVAL;
+		/* dst_fmt is validated by call to vidioc_try_fmt */
+		ctx->dst_fmt = find_format(f, MFC_FMT_RAW);
+		ret = 0;
 		goto out;
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		/* src_fmt is validated by call to vidioc_try_fmt */
@@ -482,22 +460,7 @@ static int vidioc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 		ret = -EINVAL;
 		goto out;
 	}
-	if (!IS_MFCV6_PLUS(dev) && (fmt->fourcc == V4L2_PIX_FMT_VP8)) {
-		mfc_err("Not supported format.\n");
-		return -EINVAL;
-	}
-	ctx->src_fmt = fmt;
-	ctx->codec_mode = fmt->codec_mode;
-	mfc_debug(2, "The codec number is: %d\n", ctx->codec_mode);
-	pix_mp->height = 0;
-	pix_mp->width = 0;
-	if (pix_mp->plane_fmt[0].sizeimage)
-		ctx->dec_src_buf_size = pix_mp->plane_fmt[0].sizeimage;
-	else
-		pix_mp->plane_fmt[0].sizeimage = ctx->dec_src_buf_size =
-								DEF_CPB_SIZE;
-	pix_mp->plane_fmt[0].bytesperline = 0;
-	ctx->state = MFCINST_INIT;
+
 out:
 	mfc_debug_leave();
 	return ret;
