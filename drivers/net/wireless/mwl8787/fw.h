@@ -132,6 +132,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
+	MWL8787_CMD_SET_TSF		= 0x010f,
 };
 
 enum mwl8787_event_id {
@@ -391,6 +392,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_scan_resp scan_resp;
 		struct mwl8787_cmd_snmp_mib snmp_mib;
 		struct mwl8787_cmd_get_tsf get_tsf;
+		struct mwl8787_cmd_get_tsf set_tsf;
 		u8 data[0];
 	} u;
 } __packed;
