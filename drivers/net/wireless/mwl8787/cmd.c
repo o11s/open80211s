@@ -22,36 +22,38 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 			   struct mwl8787_cmd *cmd,
 			   struct sk_buff **reply)
 {
-	int ret = 0;
-	struct mwl8787_cmd *resp;
+	int ret;
 
+	/* only one command may be in flight at a time */
+	mutex_lock(&priv->cmd_mutex);
+
+	spin_lock(&priv->cmd_resp_lock);
+	priv->cmd_id = le16_to_cpu(cmd->hdr.id);
+	priv->cmd_resp_skb = NULL;
 	priv->keep_resp = reply != NULL;
-
 	INIT_COMPLETION(priv->cmd_wait);
+	spin_unlock(&priv->cmd_resp_lock);
+
 	ret = __mwl8787_send_cmd(priv, cmd);
 	if (ret)
-		return ret;
+		goto out;
 
 	ret = wait_for_completion_timeout(&priv->cmd_wait, HZ);
 	if (ret == 0) {
 		dev_err(priv->dev, "cmd_wait timed out\n");
-		return -ETIMEDOUT;
+		ret = -ETIMEDOUT;
+		goto out;
 	}
 
-	if (reply) {
+	ret = 0;
+	spin_lock(&priv->cmd_resp_lock);
+	if (reply)
 		*reply = priv->cmd_resp_skb;
-		priv->cmd_resp_skb = NULL;
+	spin_unlock(&priv->cmd_resp_lock);
 
-		/* verify reply skb matches cmd */
-		resp = (struct mwl8787_cmd *) (*reply)->data;
-		if ((resp->hdr.id & ~cpu_to_le16(MWL8787_CMD_RET_BIT)) !=
-		    cmd->hdr.id) {
-			dev_kfree_skb_any(*reply);
-			return -EIO;
-		}
-	}
-
-	return 0;
+out:
+	mutex_unlock(&priv->cmd_mutex);
+	return ret;
 }
 
 /**
@@ -121,13 +123,14 @@ int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
 	return 0;
 }
 
-int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
+int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 {
 	struct mwl8787_cmd *resp;
 	int ret;
 	u16 cmdid;
 	u16 result;
 	struct timeval tstamp;
+	bool free_skb = true;
 
 	if (!skb) {
 		dev_err(priv->dev, "CMD_RESP: no response?,\n");
@@ -158,8 +161,9 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 		goto out;
 	}
 
-	ret = 0;
 	cmdid &= ~MWL8787_CMD_RET_BIT;
+	/* FIXME check that skb is large enough for response struct */
+
 	switch (cmdid) {
 		case MWL8787_CMD_HW_SPEC:
 			ret = mwl8787_cmd_hw_spec_resp(priv, resp);
@@ -179,12 +183,28 @@ int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb)
 			break;
 	}
 
-out:
-	complete(&priv->cmd_wait);
-	if (!priv->keep_resp || ret) {
-		priv->cmd_resp_skb = NULL;
-		dev_kfree_skb_any(skb);
+	/*
+	 * Complete the pending command only on successful response,
+	 * and if this cmd id matches that of the waiting thread.
+	 * If a different response is received (or none) then the
+	 * pending command will timeout.
+	 */
+	ret = 0;
+	spin_lock(&priv->cmd_resp_lock);
+	if (cmdid != priv->cmd_id)
+		goto out_unlock;
+
+	if (priv->keep_resp) {
+		priv->cmd_resp_skb = skb;
+		free_skb = false;
 	}
+	complete(&priv->cmd_wait);
+
+out_unlock:
+	spin_unlock(&priv->cmd_resp_lock);
+out:
+	if (free_skb)
+		dev_kfree_skb_any(skb);
 	return ret;
 }
 

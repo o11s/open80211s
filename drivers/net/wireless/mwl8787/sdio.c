@@ -527,7 +527,7 @@ int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 
 	case MWL8787_TYPE_CMD:
 		dev_dbg(priv->dev, "info: --- Rx: Cmd Response ---\n");
-		priv->cmd_resp_skb = skb;
+		mwl8787_cmd_rx(priv, skb);
 		break;
 
 	case MWL8787_TYPE_EVENT:

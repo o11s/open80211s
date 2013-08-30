@@ -53,7 +53,6 @@ struct mwl8787_priv
 	int bus_headroom;
 
 	struct completion init_wait;
-	struct completion cmd_wait;
 
 	enum mwl8787_hw_status hw_status;
 
@@ -61,9 +60,15 @@ struct mwl8787_priv
 	spinlock_t int_lock;
 	u32 int_status;
 
-	int cmd_seq;
-	struct sk_buff *cmd_resp_skb;
-	bool keep_resp;
+	/* information about pending command */
+	struct mutex cmd_mutex;
+	spinlock_t cmd_resp_lock;	/* protects next 3 fields */
+	u16 cmd_id;			/* fw id of submitted command */
+	struct sk_buff *cmd_resp_skb;	/* stores return result */
+	bool keep_resp;			/* true if caller wants response */
+	struct completion cmd_wait;	/* completed on command response */
+	int cmd_seq;			/* next cmd sequence number */
+
 	u8 cmd_sent;
 	u8 data_sent;
 
@@ -113,7 +118,7 @@ int mwl8787_cmd_scan(struct mwl8787_priv *priv,
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);
-int mwl8787_process_cmdresp(struct mwl8787_priv *priv, struct sk_buff *skb);
+int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
 int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb);
