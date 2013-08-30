@@ -165,22 +165,22 @@ int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 	/* FIXME check that skb is large enough for response struct */
 
 	switch (cmdid) {
-		case MWL8787_CMD_HW_SPEC:
-			ret = mwl8787_cmd_hw_spec_resp(priv, resp);
-			break;
+	case MWL8787_CMD_HW_SPEC:
+		ret = mwl8787_cmd_hw_spec_resp(priv, resp);
+		break;
 
-		case MWL8787_CMD_MAC_ADDR:
-			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
-			break;
+	case MWL8787_CMD_MAC_ADDR:
+		ret = mwl8787_cmd_mac_addr_resp(priv, resp);
+		break;
 
-		case MWL8787_CMD_FUNC_INIT:
-			if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING) {
-				priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
-				complete(&priv->init_wait);
-			}
-			break;
-		default:
-			break;
+	case MWL8787_CMD_FUNC_INIT:
+		if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING) {
+			priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
+			complete(&priv->init_wait);
+		}
+		break;
+	default:
+		break;
 	}
 
 	/*
