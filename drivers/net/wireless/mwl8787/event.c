@@ -7,7 +7,7 @@ void mwl8787_event_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 	event = (struct mwl8787_event *) skb->data;
 	mwl8787_testmode_event(priv, event, skb->len);
 
-	switch (event->hdr.id)
+	switch (le16_to_cpu(event->hdr.id))
 	{
 	case MWL8787_EVT_TX_STATUS:
 		mwl8787_tx_status(priv, event);
