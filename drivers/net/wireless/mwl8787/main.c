@@ -284,12 +284,16 @@ static void mwl8787_stop(struct ieee80211_hw *hw)
 static int mwl8787_add_interface(struct ieee80211_hw *hw,
 				 struct ieee80211_vif *vif)
 {
+	mwl8787_cmd_set_mac_addr(hw->priv, vif->addr);
 	return 0;
 }
 
 static void mwl8787_remove_interface(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif)
 {
+	u8 zero_addr[ETH_ALEN] = {};
+
+	mwl8787_cmd_set_mac_addr(hw->priv, zero_addr);
 }
 
 static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)

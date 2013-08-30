@@ -498,3 +498,22 @@ int mwl8787_cmd_log(struct mwl8787_priv *priv,
 	dev_kfree_skb_any(reply_skb);
 	return 0;
 }
+
+int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_MAC_ADDR,
+				sizeof(struct mwl8787_cmd_mac_addr),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.mac_addr.action = cpu_to_le16(MWL8787_ACT_SET);
+	memcpy(&cmd->u.mac_addr.addr, addr, ETH_ALEN);
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}

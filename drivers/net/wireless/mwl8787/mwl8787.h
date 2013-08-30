@@ -130,6 +130,7 @@ int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
 int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf);
 int mwl8787_cmd_log(struct mwl8787_priv *priv,
 		    struct ieee80211_low_level_stats *stats);
+int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
