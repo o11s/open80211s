@@ -5,3 +5,6 @@ obj-$(CONFIG_MWL8787) += mwl8787_sdio.o
 
 # for tracing
 CFLAGS_main.o	:= -I$(src)
+
+ccflags-y += -D__CHECK_ENDIAN__
+
