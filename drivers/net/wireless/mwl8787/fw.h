@@ -370,6 +370,7 @@ struct mwl8787_rx_desc {
 	s8 snr;
 	s8 nf;
 	u8 ht_info;
+	__le64 mactime;
 	u8 reserved;
 } __packed;
 

@@ -24,6 +24,8 @@ void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 	rx_status->signal = desc->snr - desc->nf;
 	rx_status->rate_idx = desc->rx_rate;
+	rx_status->mactime = le64_to_cpu(desc->mactime);
+	rx_status->flag |= RX_FLAG_MACTIME_END;
 
 	if (desc->ht_info & MWL8787_RX_HT_RATE)
 		rx_status->flag |= RX_FLAG_HT;
