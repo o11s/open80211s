@@ -252,10 +252,6 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 	if (priv->int_status)
 		priv->bus_ops->process_int_status(priv);
 
-	/* Check for Cmd Resp */
-	if (priv->cmd_resp_skb)
-		mwl8787_process_cmdresp(priv, priv->cmd_resp_skb);
-
 	/* I/O ports may now be available if tx stalled, so resume */
 	if (!skb_queue_empty(&priv->tx_queue))
 		ieee80211_queue_work(priv->hw, &priv->tx_work);
@@ -503,6 +499,9 @@ struct mwl8787_priv *mwl8787_init(void)
 	spin_lock_init(&priv->int_lock);
 	init_completion(&priv->init_wait);
 	init_completion(&priv->cmd_wait);
+	mutex_init(&priv->cmd_mutex);
+	spin_lock_init(&priv->cmd_resp_lock);
+
 	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
 	skb_queue_head_init(&priv->tx_queue);
 
