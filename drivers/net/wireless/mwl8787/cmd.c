@@ -40,7 +40,8 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 
 	ret = wait_for_completion_timeout(&priv->cmd_wait, HZ);
 	if (ret == 0) {
-		dev_err(priv->dev, "cmd_wait timed out\n");
+		dev_err(priv->dev, "cmd_wait timed out (cmdid %x)\n",
+			priv->cmd_id);
 		ret = -ETIMEDOUT;
 		goto out;
 	}
