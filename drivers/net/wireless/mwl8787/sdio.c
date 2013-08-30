@@ -512,6 +512,7 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
  * a command response, or an event, and the correct handler
  * function is invoked.
  */
+static
 int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 			     struct sk_buff *skb, u32 upld_typ)
 {

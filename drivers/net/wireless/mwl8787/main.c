@@ -114,7 +114,7 @@ static struct ieee80211_supported_band mwl8787_5ghz_band = {
  *      - Get Tx power
  *      - Set MAC control (this must be the last command to initialize firmware)
  */
-int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
+static int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 {
 	int ret;
 
@@ -464,7 +464,7 @@ static int mwl8787_get_stats(struct ieee80211_hw *hw,
 	return mwl8787_cmd_log(priv, stats);
 }
 
-const struct ieee80211_ops mwl8787_ops = {
+static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
 	.stop = mwl8787_stop,
