@@ -98,6 +98,7 @@ void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr)
 	return kfree(ptr - priv->bus_headroom);
 }
 
+static
 int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 			     struct mwl8787_cmd *resp)
 {
@@ -116,6 +117,7 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 	return 0;
 }
 
+static
 int mwl8787_cmd_mac_addr_resp(struct mwl8787_priv *priv,
 			      struct mwl8787_cmd *resp)
 {
