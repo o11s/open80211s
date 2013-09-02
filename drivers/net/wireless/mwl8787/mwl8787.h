@@ -60,6 +60,13 @@ struct mwl8787_priv
 	spinlock_t int_lock;
 	u32 int_status;
 
+	/* device capabilities */
+	u16 region_code;		/* regulatory region */
+	u16 num_ant;			/* number of antennas */
+	u32 fw_cap_info;		/* firmware capability flags */
+	u32 dot_11n_dev_cap;		/* 802.11n capabilities */
+	u8 dev_mcs_support;		/* highest supported mcs rate / 8 */
+
 	/* information about pending command */
 	struct mutex cmd_mutex;
 	spinlock_t cmd_resp_lock;	/* protects next 3 fields */
