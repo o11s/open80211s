@@ -104,9 +104,7 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 			     struct mwl8787_cmd *resp)
 {
 	u32 fw_version;
-
-	memcpy(priv->addr, &resp->u.hw_spec.perm_addr, ETH_ALEN);
-	priv->mp_end_port = le16_to_cpu(resp->u.hw_spec.mp_end_port);
+	struct mwl8787_cmd_hw_spec *hw_spec = &resp->u.hw_spec;
 
 	fw_version = le32_to_cpu(resp->u.hw_spec.fw_version);
 	dev_info(priv->dev, "loaded fw revision %u.%u.%u.p%u\n",
@@ -114,6 +112,14 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 		 (fw_version >> 8) & 0xff,
 		 fw_version & 0xff,
 		 fw_version >> 24);
+
+	memcpy(priv->addr, hw_spec->perm_addr, ETH_ALEN);
+	priv->region_code = le16_to_cpu(hw_spec->region_code);
+	priv->num_ant = le16_to_cpu(hw_spec->num_ant);
+	priv->fw_cap_info = le32_to_cpu(hw_spec->fw_cap_info);
+	priv->dot_11n_dev_cap = le32_to_cpu(hw_spec->dot_11n_dev_cap);
+	priv->dev_mcs_support = hw_spec->dev_mcs_support & 0x0f;
+	priv->mp_end_port = le16_to_cpu(hw_spec->mp_end_port);
 
 	return 0;
 }

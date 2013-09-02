@@ -99,6 +99,41 @@ static struct ieee80211_supported_band mwl8787_5ghz_band = {
 };
 
 /*
+ * Setup the ht capabilities based on firmware response.
+ */
+static void mwl8787_setup_ht_cap(struct mwl8787_priv *priv,
+				 struct ieee80211_sta_ht_cap *ht_cap)
+{
+	ht_cap->ht_supported = true;
+	ht_cap->ampdu_factor = IEEE80211_HT_MAX_AMPDU_64K;
+	ht_cap->ampdu_density = IEEE80211_HT_MPDU_DENSITY_NONE;
+
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SUP_WIDTH_20_40)
+		ht_cap->cap |= IEEE80211_HT_CAP_GRN_FLD;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SGI_20)
+		ht_cap->cap |= IEEE80211_HT_CAP_SGI_20;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SGI_40)
+		ht_cap->cap |= IEEE80211_HT_CAP_SGI_40;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_TX_STBC)
+		ht_cap->cap |= IEEE80211_HT_CAP_TX_STBC;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_RX_STBC)
+		ht_cap->cap |= IEEE80211_HT_CAP_RX_STBC;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_GRN_FLD)
+		ht_cap->cap |= IEEE80211_HT_CAP_GRN_FLD;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_LDPC_CODING)
+		ht_cap->cap |= IEEE80211_HT_CAP_LDPC_CODING;
+	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_40MHZ_INTOLERANT)
+		ht_cap->cap |= IEEE80211_HT_CAP_40MHZ_INTOLERANT;
+
+	memset(ht_cap->mcs.rx_mask, 0xff,
+	       min_t(u8, priv->dev_mcs_support, IEEE80211_HT_MCS_MASK_LEN));
+	/* enable MCS 32 */
+	ht_cap->mcs.rx_mask[4] |= 1;
+
+	ht_cap->mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
+}
+
+/*
  * This function issues commands to initialize firmware.
  *
  * This is called after firmware download to bring the card to
@@ -126,6 +161,12 @@ static int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 	ret = mwl8787_cmd_hw_spec(priv);
 	if (ret)
 		return ret;
+
+	/* setup caps for each band */
+	mwl8787_setup_ht_cap(priv,
+		&priv->hw->wiphy->bands[IEEE80211_BAND_2GHZ]->ht_cap);
+	mwl8787_setup_ht_cap(priv,
+		&priv->hw->wiphy->bands[IEEE80211_BAND_5GHZ]->ht_cap);
 
 	/* turn on the radio */
 	ret = mwl8787_cmd_radio_ctrl(priv, true);
