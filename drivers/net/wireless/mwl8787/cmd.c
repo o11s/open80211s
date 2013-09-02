@@ -468,6 +468,23 @@ int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf)
 	return 0;
 }
 
+int mwl8787_cmd_set_tsf(struct mwl8787_priv *priv, const u64 tsf)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SET_TSF,
+				sizeof(struct mwl8787_cmd_get_tsf),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.set_tsf.tsf = cpu_to_le64(tsf);
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
 int mwl8787_cmd_log(struct mwl8787_priv *priv,
 		    struct ieee80211_low_level_stats *stats)
 {
