@@ -640,6 +640,183 @@ static int mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 	return 0;
 }
 
+static int mwl8787_sdio_card_to_host_aggr(struct mwl8787_priv *priv,
+					  struct sk_buff *skb, u8 port)
+{
+	s32 f_do_rx_aggr = 0;
+	s32 f_do_rx_cur = 0;
+	s32 f_aggr_cur = 0;
+	struct sk_buff *skb_deaggr;
+	u32 pind;
+	u32 pkt_len, pkt_type = 0;
+	u8 *curr_ptr;
+	u32 rx_len = skb->len;
+	int ret;
+
+	if (port == CTRL_PORT) {
+		/* Read the command Resp without aggr */
+		dev_dbg(priv->dev, "info: %s: no aggregation for cmd "
+			"response\n", __func__);
+
+		f_do_rx_cur = 1;
+		goto rx_curr_single;
+	}
+
+	if (!priv->mpa_rx.enabled) {
+		dev_dbg(priv->dev, "info: %s: rx aggregation disabled\n",
+			__func__);
+
+		f_do_rx_cur = 1;
+		goto rx_curr_single;
+	}
+
+	if (priv->mp_rd_bitmap & (~((u16) CTRL_PORT_MASK))) {
+		/* Some more data RX pending */
+		dev_dbg(priv->dev, "info: %s: not last packet\n", __func__);
+
+		if (priv->mpa_rx.pkt_cnt) {
+			if ((priv->mpa_rx.buf_len + rx_len) <= priv->mpa_rx.buf_size) {
+				f_aggr_cur = 1;
+			} else {
+				/* No room in Aggr buf, do rx aggr now */
+				f_do_rx_aggr = 1;
+				f_do_rx_cur = 1;
+			}
+		} else {
+			/* Rx aggr not in progress */
+			f_aggr_cur = 1;
+		}
+
+	} else {
+		/* No more data RX pending */
+		dev_dbg(priv->dev, "info: %s: last packet\n", __func__);
+
+		if (priv->mpa_rx.pkt_cnt) {
+			f_do_rx_aggr = 1;
+			if ((priv->mpa_rx.buf_len + skb->len) <= priv->mpa_rx.buf_size) {
+				f_aggr_cur = 1;
+			}
+			else
+				/* No room in Aggr buf, do rx aggr now */
+				f_do_rx_cur = 1;
+		} else {
+			f_do_rx_cur = 1;
+		}
+	}
+
+	if (f_aggr_cur) {
+		dev_dbg(priv->dev, "info: current packet aggregation\n");
+		/* Curr pkt can be aggregated */
+		MP_RX_AGGR_SETUP(priv, skb, port);
+
+		if (MP_RX_AGGR_PKT_LIMIT_REACHED(priv) ||
+		    MP_RX_AGGR_PORT_LIMIT_REACHED(priv)) {
+			dev_dbg(priv->dev, "info: %s: aggregated packet "
+				"limit reached\n", __func__);
+			/* No more pkts allowed in Aggr buf, rx it */
+			f_do_rx_aggr = 1;
+		}
+	}
+
+	if (f_do_rx_aggr) {
+		/* do aggr RX now */
+		dev_dbg(priv->dev, "info: do_rx_aggr: num of packets: %d\n",
+			priv->mpa_rx.pkt_cnt);
+
+		if (mwl8787_read_data_sync(priv, priv->mpa_rx.buf,
+					   priv->mpa_rx.buf_len,
+					   (priv->ioport | 0x1000 |
+					    (priv->mpa_rx.ports << 4)) +
+					   priv->mpa_rx.start_port, 1))
+			goto error;
+
+		curr_ptr = priv->mpa_rx.buf;
+
+		for (pind = 0; pind < priv->mpa_rx.pkt_cnt; pind++) {
+
+			/* get curr PKT len & type */
+			pkt_len = *(u16 *) &curr_ptr[0];
+			pkt_type = *(u16 *) &curr_ptr[2];
+
+			/* copy pkt to deaggr buf */
+			skb_deaggr = priv->mpa_rx.skb_arr[pind];
+
+			if ((pkt_type == MWL8787_TYPE_DATA) && (pkt_len <=
+					 priv->mpa_rx.len_arr[pind])) {
+
+				memcpy(skb_deaggr->data, curr_ptr, pkt_len);
+
+				skb_trim(skb_deaggr, pkt_len);
+
+				/* Process de-aggr packet */
+				mwl8787_decode_rx_packet(priv, skb_deaggr,
+							 pkt_type);
+			} else {
+				dev_err(priv->dev, "wrong aggr pkt:"
+					" type=%d len=%d max_len=%d\n",
+					pkt_type, pkt_len,
+					priv->mpa_rx.len_arr[pind]);
+				dev_kfree_skb_any(skb_deaggr);
+			}
+			curr_ptr += priv->mpa_rx.len_arr[pind];
+		}
+		MP_RX_AGGR_BUF_RESET(priv);
+	}
+
+rx_curr_single:
+	if (f_do_rx_cur) {
+		ret = mwl8787_sdio_card_to_host(priv, skb, port);
+		if (ret)
+			goto error;
+	}
+
+	return 0;
+
+error:
+	if (priv->mpa_rx.pkt_cnt) {
+		/* Multiport-aggregation transfer failed - cleanup */
+		for (pind = 0; pind < priv->mpa_rx.pkt_cnt; pind++) {
+			/* copy pkt to deaggr buf */
+			skb_deaggr = priv->mpa_rx.skb_arr[pind];
+			dev_kfree_skb_any(skb_deaggr);
+		}
+		MP_RX_AGGR_BUF_RESET(priv);
+	}
+	return -1;
+}
+
+/*
+ * Allocate aggregation buffers.
+ */
+static int mwl8787_alloc_sdio_mpa_buffers(struct mwl8787_priv *priv,
+					  u32 mpa_tx_buf_size,
+					  u32 mpa_rx_buf_size)
+{
+	int ret;
+
+	ret = -ENOMEM;
+	priv->mpa_tx.buf = kzalloc(mpa_tx_buf_size, GFP_KERNEL);
+	if (!priv->mpa_tx.buf)
+		goto error;
+
+	priv->mpa_tx.buf_size = mpa_tx_buf_size;
+
+	priv->mpa_rx.buf = kzalloc(mpa_rx_buf_size, GFP_KERNEL);
+	if (!priv->mpa_rx.buf)
+		goto error;
+
+	ret = 0;
+	priv->mpa_rx.buf_size = mpa_rx_buf_size;
+
+error:
+	if (ret) {
+		kfree(priv->mpa_tx.buf);
+		kfree(priv->mpa_rx.buf);
+	}
+
+	return ret;
+}
+
 /*
  * This function checks the current interrupt status.
  *
@@ -741,15 +918,7 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 			dev_dbg(priv->dev, "info: rx_len = %d skb->len = %d\n",
 				rx_len, skb->len);
 
-			/* XXX: no host/fw aggregation for now
-			if (mwifiex_sdio_card_to_host_mp_aggr(priv, skb,
-							      port)) {
-				dev_err(priv->dev, "card_to_host_mpa failed:"
-					" int status=%#x\n", sdio_ireg);
-				goto term_cmd;
-			}
-			*/
-			if (mwl8787_sdio_card_to_host(priv, skb, port)) {
+			if (mwl8787_sdio_card_to_host_aggr(priv, skb, port)) {
 				dev_err(priv->dev, "card_to_host failed:"
 					" int status=%#x\n", sdio_ireg);
 				goto term_cmd;
@@ -874,6 +1043,7 @@ static struct mwl8787_bus_ops sdio_ops = {
 static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 {
 	u8 sdio_ireg;
+	int ret;
 
 	/*
 	 * Read the HOST_INT_STATUS_REG for ACK the first interrupt got
@@ -898,26 +1068,32 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 
 	INIT_WORK(&priv->card_reset_work, sdio_card_reset_worker);
 
-	/* XXX: maybe need this stuff for RX/TX
-	card->mpa_tx.buf_len = 0;
-	card->mpa_tx.pkt_cnt = 0;
-	card->mpa_tx.start_port = 0;
+	priv->mpa_tx.buf_len = 0;
+	priv->mpa_tx.pkt_cnt = 0;
+	priv->mpa_tx.start_port = 0;
 
-	card->mpa_tx.enabled = 1;
-	card->mpa_tx.pkt_aggr_limit = card->mp_agg_pkt_limit;
+	priv->mpa_tx.enabled = 1;
+	priv->mpa_tx.pkt_aggr_limit = MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
-	card->mpa_rx.buf_len = 0;
-	card->mpa_rx.pkt_cnt = 0;
-	card->mpa_rx.start_port = 0;
+	priv->mpa_rx.buf_len = 0;
+	priv->mpa_rx.pkt_cnt = 0;
+	priv->mpa_rx.start_port = 0;
 
-	card->mpa_rx.enabled = 1;
-	card->mpa_rx.pkt_aggr_limit = card->mp_agg_pkt_limit;
-	*/
+	priv->mpa_rx.enabled = 1;
+	priv->mpa_rx.pkt_aggr_limit = MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
 	/* Allocate buffers for SDIO MP-A */
 	priv->mp_regs = kzalloc(MWL8787_MAX_MP_REGS, GFP_KERNEL);
 	if (!priv->mp_regs)
 		return -ENOMEM;
+
+	ret = mwl8787_alloc_sdio_mpa_buffers(priv,
+					     MWL8787_SDIO_MP_TX_AGGR_DEF_BUF_SIZE,
+					     MWL8787_SDIO_MP_RX_AGGR_DEF_BUF_SIZE);
+	if (ret) {
+		kfree(priv->mp_regs);
+		return -ENOMEM;
+	}
 
 	return 0;
 }

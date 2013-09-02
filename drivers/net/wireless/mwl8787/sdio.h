@@ -122,6 +122,9 @@
 
 #define MWL8787_SDIO_BLOCK_SIZE            256
 
+#define MWL8787_SDIO_MP_TX_AGGR_DEF_BUF_SIZE        (8192)	/* 8K */
+#define MWL8787_SDIO_MP_RX_AGGR_DEF_BUF_SIZE        (16384)	/* 16K */
+
 int mwl8787_read_scratch_area(struct mwl8787_priv *priv, u64 *dat);
 void mwl8787_dev_debugfs_init(struct mwl8787_priv *priv);
 void mwl8787_dev_debugfs_remove(struct mwl8787_priv *priv);
@@ -132,4 +135,34 @@ enum mwl8787_sdio_type {
 	MWL8787_TYPE_EVENT = 3,
 };
 
+#define MP_RX_AGGR_SETUP(a, skb, port) do {				\
+	a->mpa_rx.buf_len += skb->len;					\
+	if (!a->mpa_rx.pkt_cnt)						\
+		a->mpa_rx.start_port = port;				\
+	if (a->mpa_rx.start_port <= port)				\
+		a->mpa_rx.ports |= (1<<(a->mpa_rx.pkt_cnt));		\
+	else								\
+		a->mpa_rx.ports |= (1<<(a->mpa_rx.pkt_cnt+1));		\
+	a->mpa_rx.skb_arr[a->mpa_rx.pkt_cnt] = skb;			\
+	a->mpa_rx.len_arr[a->mpa_rx.pkt_cnt] = skb->len;		\
+	a->mpa_rx.pkt_cnt++;						\
+} while (0)
+
+/* SDIO Rx aggregation limit ? */
+#define MP_RX_AGGR_PKT_LIMIT_REACHED(a)					\
+			(a->mpa_rx.pkt_cnt == a->mpa_rx.pkt_aggr_limit)
+
+/* SDIO Rx aggregation port limit ? */
+#define MP_RX_AGGR_PORT_LIMIT_REACHED(a) ((a->curr_rd_port <		\
+			a->mpa_rx.start_port) && (((MWL8787_MAX_PORTS -		\
+			a->mpa_rx.start_port) + a->curr_rd_port) >=	\
+			MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT))
+
+/* Reset SDIO Rx aggregation buffer parameters */
+#define MP_RX_AGGR_BUF_RESET(a) do {					\
+	a->mpa_rx.pkt_cnt = 0;						\
+	a->mpa_rx.buf_len = 0;						\
+	a->mpa_rx.ports = 0;						\
+	a->mpa_rx.start_port = 0;					\
+} while (0)
 #endif /* _MWL8787_SDIO_H_ */
