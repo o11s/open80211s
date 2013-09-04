@@ -170,40 +170,6 @@ static int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 
 	/* turn on the radio */
 	ret = mwl8787_cmd_radio_ctrl(priv, true);
-	if (ret)
-		return ret;
-
-#if 0
-	/* Reconfigure tx buf size */
-	ret = mwifiex_send_cmd(priv,
-				    HostCmd_CMD_RECONFIGURE_TX_BUFF,
-				    HostCmd_ACT_GEN_SET, 0,
-				    &priv->adapter->tx_buf_size);
-	if (ret)
-		return ret;
-
-	/* get tx rate */
-	ret = mwifiex_send_cmd(priv, HostCmd_CMD_TX_RATE_CFG,
-				    HostCmd_ACT_GEN_GET, 0, NULL);
-	if (ret)
-		return ret;
-	priv->data_rate = 0;
-
-	/* get tx power */
-	ret = mwifiex_send_cmd(priv, HostCmd_CMD_RF_TX_PWR,
-				    HostCmd_ACT_GEN_GET, 0, NULL);
-	if (ret)
-		return ret;
-
-	if (priv->bss_type == MWL8787_BSS_TYPE_STA) {
-		/* set ibss coalescing_status */
-		ret = mwifiex_send_cmd(
-				priv, HostCmd_CMD_802_11_IBSS_COALESCING_STATUS,
-				HostCmd_ACT_GEN_SET, 0, &enable);
-		if (ret)
-			return ret;
-	}
-#endif
 	return ret;
 }
 /*
