@@ -435,8 +435,7 @@ static int mwl8787_write(struct mwl8787_priv *priv,
 	int ret;
 
 	for (i=0; i < MAX_WRITE_IOMEM_RETRY; i++) {
-		ret = mwl8787_write_data_sync(priv, buf, len,
-					      priv->ioport + port);
+		ret = mwl8787_write_data_sync(priv, buf, len, port);
 		if (!ret)
 			break;
 
@@ -448,8 +447,124 @@ static int mwl8787_write(struct mwl8787_priv *priv,
 	return ret;
 }
 
+static int mwl8787_host_to_card_mp_aggr(struct mwl8787_priv *priv,
+					u8 *payload, u32 pkt_len, u8 port,
+					u32 next_pkt_len)
+{
+	int ret = 0;
+	s32 f_send_aggr_buf = 0;
+	s32 f_send_cur_buf = 0;
+	s32 f_precopy_cur_buf = 0;
+	s32 f_postcopy_cur_buf = 0;
+
+	trace_printk("mwl8787_h2c: pkt_len %d, port %d, more %d\n",
+		     pkt_len, port, next_pkt_len);
+
+	if ((!priv->mpa_tx.enabled) || (port == CTRL_PORT)) {
+		dev_dbg(priv->dev, "info: %s: tx aggregation disabled\n",
+			__func__);
+
+		f_send_cur_buf = 1;
+		goto tx_curr_single;
+	}
+
+	if (next_pkt_len) {
+		/* More pkt in TX queue */
+		dev_dbg(priv->dev, "info: %s: more packets in queue.\n",
+			__func__);
+
+		if (MP_TX_AGGR_IN_PROGRESS(priv)) {
+			if (!MP_TX_AGGR_PORT_LIMIT_REACHED(priv) &&
+			    MP_TX_AGGR_BUF_HAS_ROOM(priv, pkt_len)) {
+				f_precopy_cur_buf = 1;
+
+				if (!(priv->mp_wr_bitmap &
+				      (1 << priv->curr_wr_port)) ||
+				    !MP_TX_AGGR_BUF_HAS_ROOM(
+					    priv, pkt_len + next_pkt_len))
+					f_send_aggr_buf = 1;
+			} else {
+				/* No room in Aggr buf, send it */
+				f_send_aggr_buf = 1;
+
+				if (MP_TX_AGGR_PORT_LIMIT_REACHED(priv) ||
+				    !(priv->mp_wr_bitmap &
+				      (1 << priv->curr_wr_port)))
+					f_send_cur_buf = 1;
+				else
+					f_postcopy_cur_buf = 1;
+			}
+		} else {
+			if (MP_TX_AGGR_BUF_HAS_ROOM(priv, pkt_len) &&
+			    (priv->mp_wr_bitmap & (1 << priv->curr_wr_port)))
+				f_precopy_cur_buf = 1;
+			else
+				f_send_cur_buf = 1;
+		}
+	} else {
+		/* Last pkt in TX queue */
+		dev_dbg(priv->dev, "info: %s: Last packet in Tx Queue.\n",
+			__func__);
+
+		if (MP_TX_AGGR_IN_PROGRESS(priv)) {
+			/* some packs in Aggr buf already */
+			f_send_aggr_buf = 1;
+
+			if (MP_TX_AGGR_BUF_HAS_ROOM(priv, pkt_len))
+				f_precopy_cur_buf = 1;
+			else
+				/* No room in Aggr buf, send it */
+				f_send_cur_buf = 1;
+		} else {
+			f_send_cur_buf = 1;
+		}
+	}
+	trace_printk("mwl8787_h2c: state: precopy %d, send_aggr %d, send_cur %d, postcopy %d\n",
+		     f_precopy_cur_buf, f_send_aggr_buf, f_send_cur_buf, f_postcopy_cur_buf);
+
+
+	if (f_precopy_cur_buf) {
+		dev_dbg(priv->dev, "data: %s: precopy current buffer\n",
+			__func__);
+		MP_TX_AGGR_BUF_PUT(priv, payload, pkt_len, port);
+
+		if (MP_TX_AGGR_PKT_LIMIT_REACHED(priv) ||
+		    MP_TX_AGGR_PORT_LIMIT_REACHED(priv))
+			/* No more pkts allowed in Aggr buf, send it */
+			f_send_aggr_buf = 1;
+	}
+
+	if (f_send_aggr_buf) {
+		dev_dbg(priv->dev, "data: %s: send aggr buffer: %d %d\n",
+			__func__,
+				priv->mpa_tx.start_port, priv->mpa_tx.ports);
+		ret = mwl8787_write(priv, priv->mpa_tx.buf,
+						 priv->mpa_tx.buf_len,
+						 (priv->ioport | 0x1000 |
+						 (priv->mpa_tx.ports << 4)) +
+						  priv->mpa_tx.start_port);
+
+		MP_TX_AGGR_BUF_RESET(priv);
+	}
+
+tx_curr_single:
+	if (f_send_cur_buf) {
+		dev_dbg(priv->dev, "data: %s: send current buffer %d\n",
+			__func__, port);
+		ret = mwl8787_write(priv, payload, pkt_len, priv->ioport + port);
+	}
+
+	if (f_postcopy_cur_buf) {
+		dev_dbg(priv->dev, "data: %s: postcopy current buffer\n",
+			__func__);
+		MP_TX_AGGR_BUF_PUT(priv, payload, pkt_len, port);
+	}
+
+	return ret;
+}
+
 static int mwl8787_sdio_send_tx(struct mwl8787_priv *priv,
-				struct sk_buff *skb)
+				struct sk_buff *skb, bool more_frames)
 {
 	struct mwl8787_sdio_header *hdr;
 	size_t buf_block_len;
@@ -470,8 +585,21 @@ static int mwl8787_sdio_send_tx(struct mwl8787_priv *priv,
 		return ret;
 	}
 
-	ret = mwl8787_write(priv, skb->data, buf_block_len, port);
+#if 0
+	ret = mwl8787_write(priv, skb->data, buf_block_len, priv->ioport + port);
 	return ret;
+#else
+	/* passing 1 as next packet len is a hack to make aggr sort of work
+	 * without having to pass the next packet length in and make tx() loop
+	 * ugly.  all this really needs is some rework to know whether more
+	 * data is queued, and to start a new buffer on the first packet that's
+	 * too large; next packet length isn't really necessary.
+	 */
+	ret = mwl8787_host_to_card_mp_aggr(priv, skb->data, buf_block_len,
+					   priv->ioport + port, more_frames);
+
+	return ret;
+#endif
 }
 
 static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
@@ -499,7 +627,7 @@ static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
 		return -ENOMEM;
 
 	memcpy(payload, hdr, len);
-	ret = mwl8787_write(priv, payload, buf_block_len, CTRL_PORT);
+	ret = mwl8787_write(priv, payload, buf_block_len, priv->ioport + CTRL_PORT);
 	kfree(payload);
 
 	return ret;
