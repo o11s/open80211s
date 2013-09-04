@@ -34,10 +34,10 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 
 
 static int mwl8787_tx_frame(struct mwl8787_priv *priv,
-			     struct sk_buff *skb)
+			    struct sk_buff *skb, bool more_frames)
 {
 	mwl8787_tx_setup(priv, skb);
-	return priv->bus_ops->send_tx(priv, skb);
+	return priv->bus_ops->send_tx(priv, skb, more_frames);
 }
 
 void mwl8787_tx_status(struct mwl8787_priv *priv,
@@ -102,7 +102,8 @@ void mwl8787_tx_work(struct work_struct *work)
 		hw_queue = info->hw_queue;
 
 		data_ptr = skb->data;
-		ret = mwl8787_tx_frame(priv, skb);
+		ret = mwl8787_tx_frame(priv, skb,
+				       !skb_queue_empty(&priv->tx_queue));
 
 		/* move skb->data back to 802.11 header */
 		skb_pull(skb, data_ptr - skb->data);

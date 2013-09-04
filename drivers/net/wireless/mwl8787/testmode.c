@@ -54,7 +54,7 @@ static int mwl8787_tm_cmd_tx(struct mwl8787_priv *priv,
 	skb_reserve(skb, priv->bus_headroom);
 	memcpy(skb_put(skb, buf_len), buf, buf_len);
 
-	ret = priv->bus_ops->send_tx(priv, skb);
+	ret = priv->bus_ops->send_tx(priv, skb, false);
 
 	dev_kfree_skb(skb);
 	return ret;
