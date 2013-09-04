@@ -540,3 +540,46 @@ int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
 
 	return ret;
 }
+
+int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+	u32 supp_rates;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SET_PEER,
+				sizeof(struct mwl8787_cmd_set_peer),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	memcpy(cmd->u.set_peer.addr, sta->addr, ETH_ALEN);
+
+	supp_rates = sta->supp_rates[priv->hw->conf.chandef.chan->band];
+	cmd->u.set_peer.supp_rate_map = le32_to_cpu(supp_rates);
+	memcpy(cmd->u.set_peer.mcs_rate_map, sta->ht_cap.mcs.rx_mask,
+	       sizeof(sta->ht_cap.mcs.rx_mask));
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
+
+int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_DEL_PEER,
+				sizeof(struct mwl8787_cmd_del_peer),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	memcpy(cmd->u.del_peer.addr, sta->addr, ETH_ALEN);
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}

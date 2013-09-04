@@ -446,17 +446,20 @@ static int mwl8787_set_frag_threshold(struct ieee80211_hw *hw, u32 value)
 	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_FRAG_THRESHOLD, value);
 }
 
-static void mwl8787_sta_rc_update(struct ieee80211_hw *hw,
-				  struct ieee80211_vif *vif,
-				  struct ieee80211_sta *sta,
-				  u32 changed)
+static int mwl8787_sta_add(struct ieee80211_hw *hw,
+			    struct ieee80211_vif *vif,
+			    struct ieee80211_sta *sta)
 {
-	/*
-	 * FIXME what to do here?
-	 *
-	 * we can maybe use cmd_tx_rate_cfg, and map stas to cfgindex, if
-	 * we can also tell fw which cfgindex to use for a frame.
-	 */
+	mwl8787_cmd_set_peer(hw->priv, sta);
+	return 0;
+}
+
+static int mwl8787_sta_remove(struct ieee80211_hw *hw,
+			       struct ieee80211_vif *vif,
+			       struct ieee80211_sta *sta)
+{
+	mwl8787_cmd_del_peer(hw->priv, sta);
+	return 0;
 }
 
 static u64 mwl8787_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
@@ -498,7 +501,8 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.get_tsf = mwl8787_get_tsf,
 	.set_tsf = mwl8787_set_tsf,
 	.get_stats = mwl8787_get_stats,
-	.sta_rc_update = mwl8787_sta_rc_update,
+	.sta_add = mwl8787_sta_add,
+	.sta_remove = mwl8787_sta_remove,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
