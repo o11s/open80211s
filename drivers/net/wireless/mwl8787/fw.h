@@ -144,6 +144,8 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 	MWL8787_CMD_SET_TSF		= 0x010f,
+	MWL8787_CMD_SET_PEER		= 0x0110,
+	MWL8787_CMD_DEL_PEER		= 0x0111,
 };
 
 enum mwl8787_event_id {
@@ -290,6 +292,16 @@ struct mwl8787_cmd_get_tsf {
 	__le64 tsf;
 } __packed;
 
+struct mwl8787_cmd_set_peer {
+	u8 addr[ETH_ALEN];
+	__le32 supp_rate_map;
+	u8 mcs_rate_map[16];
+} __packed;
+
+struct mwl8787_cmd_del_peer {
+	u8 addr[ETH_ALEN];
+} __packed;
+
 struct mwl8787_cmd_header {
 	__le16 id;
 	__le16 len;
@@ -405,6 +417,8 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_snmp_mib snmp_mib;
 		struct mwl8787_cmd_get_tsf get_tsf;
 		struct mwl8787_cmd_get_tsf set_tsf;
+		struct mwl8787_cmd_set_peer set_peer;
+		struct mwl8787_cmd_del_peer del_peer;
 		u8 data[0];
 	} u;
 } __packed;
