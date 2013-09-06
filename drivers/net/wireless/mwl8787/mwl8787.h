@@ -107,7 +107,6 @@ struct mwl8787_priv
 		u8 *buf;
 		u32 buf_len;
 		u32 pkt_cnt;
-		u16 ports;
 		u16 start_port;
 		u8 enabled;
 		u32 buf_size;
