@@ -94,10 +94,6 @@ static int mwl8787_get_write_port(struct mwl8787_priv *priv, u8 *port)
 
 	dev_dbg(priv->dev, "data: mp_wr_bitmap=0x%08x\n", wr_bitmap);
 
-	if (!(wr_bitmap & priv->mp_data_port_mask)) {
-		return -1;
-	}
-
 	if (priv->mp_wr_bitmap & BIT(priv->curr_wr_port)) {
 		priv->mp_wr_bitmap &= ~BIT(priv->curr_wr_port);
 		*port = priv->curr_wr_port;
