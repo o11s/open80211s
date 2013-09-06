@@ -486,6 +486,22 @@ static int mwl8787_get_stats(struct ieee80211_hw *hw,
 	return mwl8787_cmd_log(priv, stats);
 }
 
+static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				enum ieee80211_ampdu_mlme_action action,
+				struct ieee80211_sta *sta,
+				u16 tid, u16 *ssn, u8 buf_size)
+{
+	switch (action) {
+	case IEEE80211_AMPDU_RX_START:
+		return 0;
+	case IEEE80211_AMPDU_RX_STOP:
+		return 0;
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -503,6 +519,7 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.get_stats = mwl8787_get_stats,
 	.sta_add = mwl8787_sta_add,
 	.sta_remove = mwl8787_sta_remove,
+	.ampdu_action = mwl8787_ampdu_action,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
