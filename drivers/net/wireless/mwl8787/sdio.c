@@ -478,8 +478,6 @@ static int mwl8787_send_data_aggr(struct mwl8787_priv *priv)
 	port_desc = priv->ioport | 0x1000 | (port_mask << 4) |
 		priv->mpa_tx.start_port;
 
-	trace_printk("send_data_aggr: buf %p len %d mask %x ports %d start %d\n",
-			priv->mpa_tx.buf, priv->mpa_tx.buf_len, port_desc, priv->mpa_tx.pkt_cnt, priv->mpa_tx.start_port);
 	ret = mwl8787_write(priv, priv->mpa_tx.buf, priv->mpa_tx.buf_len,
 			    port_desc);
 
