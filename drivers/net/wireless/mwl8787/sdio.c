@@ -724,149 +724,108 @@ static int mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 	return 0;
 }
 
+static int mwl8787_rx_data_aggr(struct mwl8787_priv *priv)
+{
+	int ret;
+	int port_mask;
+	u32 port_desc;
+	u8 *ptr;
+	int i;
+	struct mwl8787_sdio_header *hdr;
+	struct sk_buff *skb;
+	u16 pkt_len, pkt_type;
+
+	if (!priv->mpa_rx.pkt_cnt)
+		return 0;
+
+	port_mask = mwl8787_mp_bitmask(priv, priv->mpa_rx.start_port,
+				       priv->mpa_rx.pkt_cnt);
+
+	port_desc = priv->ioport | 0x1000 | (port_mask << 4) |
+		priv->mpa_rx.start_port;
+
+	ret = mwl8787_read_data_sync(priv, priv->mpa_rx.buf,
+				     priv->mpa_rx.buf_len, port_desc, 1);
+
+	if (ret) {
+		/* free skb array on error */
+		for (i = 0; i < priv->mpa_rx.pkt_cnt; i++) {
+			skb = priv->mpa_rx.skb_arr[i];
+			dev_kfree_skb_any(skb);
+		}
+		goto out;
+	}
+
+	/* split out buffer into individual skbs */
+	ptr = priv->mpa_rx.buf;
+	for (i = 0; i < priv->mpa_rx.pkt_cnt; i++) {
+		hdr = (struct mwl8787_sdio_header *) ptr;
+		skb = priv->mpa_rx.skb_arr[i];
+
+		pkt_len = le16_to_cpu(hdr->len);
+		pkt_type = le16_to_cpu(hdr->type);
+
+		if (pkt_type == cpu_to_le16(MWL8787_TYPE_DATA) &&
+		    pkt_len <= priv->mpa_rx.len_arr[i]) {
+			memcpy(skb->data, ptr, pkt_len);
+			skb_trim(skb, pkt_len);
+			mwl8787_decode_rx_packet(priv, skb, pkt_type);
+		} else {
+			dev_err(priv->dev, "invalid frame: type=%d "
+				"len=%d max_len=%d\n",
+				pkt_type, pkt_len,
+				priv->mpa_rx.len_arr[i]);
+			dev_kfree_skb_any(skb);
+		}
+		ptr += priv->mpa_rx.len_arr[i];
+	}
+out:
+	priv->mpa_rx.pkt_cnt = 0;
+	priv->mpa_rx.buf_len = 0;
+	priv->mpa_rx.start_port = 0;
+	return ret;
+}
+
 static int mwl8787_sdio_card_to_host_aggr(struct mwl8787_priv *priv,
 					  struct sk_buff *skb, u8 port)
 {
-	s32 f_do_rx_aggr = 0;
-	s32 f_do_rx_cur = 0;
-	s32 f_aggr_cur = 0;
-	struct sk_buff *skb_deaggr;
-	u32 pind;
-	u32 pkt_len, pkt_type = 0;
-	u8 *curr_ptr;
-	u32 rx_len = skb->len;
 	int ret;
+	bool more_pending;
 
-	if (port == CTRL_PORT) {
-		/* Read the command Resp without aggr */
-		dev_dbg(priv->dev, "info: %s: no aggregation for cmd "
-			"response\n", __func__);
+	/* if control port, rx just the one cmd response */
+	if (port == CTRL_PORT || !priv->mpa_rx.enabled)
+		return mwl8787_sdio_card_to_host(priv, skb, port);
 
-		f_do_rx_cur = 1;
-		goto rx_curr_single;
-	}
+	more_pending = priv->mp_rd_bitmap & MWL8787_DATA_PORT_MASK;
 
-	if (!priv->mpa_rx.enabled) {
-		dev_dbg(priv->dev, "info: %s: rx aggregation disabled\n",
-			__func__);
-
-		f_do_rx_cur = 1;
-		goto rx_curr_single;
-	}
-
-	if (priv->mp_rd_bitmap & (~((u16) CTRL_PORT_MASK))) {
-		/* Some more data RX pending */
-		dev_dbg(priv->dev, "info: %s: not last packet\n", __func__);
-
-		if (priv->mpa_rx.pkt_cnt) {
-			if ((priv->mpa_rx.buf_len + rx_len) <= priv->mpa_rx.buf_size) {
-				f_aggr_cur = 1;
-			} else {
-				/* No room in Aggr buf, do rx aggr now */
-				f_do_rx_aggr = 1;
-				f_do_rx_cur = 1;
-			}
-		} else {
-			/* Rx aggr not in progress */
-			f_aggr_cur = 1;
-		}
-
-	} else {
-		/* No more data RX pending */
-		dev_dbg(priv->dev, "info: %s: last packet\n", __func__);
-
-		if (priv->mpa_rx.pkt_cnt) {
-			f_do_rx_aggr = 1;
-			if ((priv->mpa_rx.buf_len + skb->len) <= priv->mpa_rx.buf_size) {
-				f_aggr_cur = 1;
-			}
-			else
-				/* No room in Aggr buf, do rx aggr now */
-				f_do_rx_cur = 1;
-		} else {
-			f_do_rx_cur = 1;
-		}
-	}
-
-	if (f_aggr_cur) {
-		dev_dbg(priv->dev, "info: current packet aggregation\n");
-		/* Curr pkt can be aggregated */
-		MP_RX_AGGR_SETUP(priv, skb, port);
-
-		if (MP_RX_AGGR_PKT_LIMIT_REACHED(priv) ||
-		    MP_RX_AGGR_PORT_LIMIT_REACHED(priv)) {
-			dev_dbg(priv->dev, "info: %s: aggregated packet "
-				"limit reached\n", __func__);
-			/* No more pkts allowed in Aggr buf, rx it */
-			f_do_rx_aggr = 1;
-		}
-	}
-
-	if (f_do_rx_aggr) {
-		/* do aggr RX now */
-		dev_dbg(priv->dev, "info: do_rx_aggr: num of packets: %d\n",
-			priv->mpa_rx.pkt_cnt);
-
-		if (mwl8787_read_data_sync(priv, priv->mpa_rx.buf,
-					   priv->mpa_rx.buf_len,
-					   (priv->ioport | 0x1000 |
-					    (priv->mpa_rx.ports << 4)) +
-					   priv->mpa_rx.start_port, 1))
-			goto error;
-
-		curr_ptr = priv->mpa_rx.buf;
-
-		for (pind = 0; pind < priv->mpa_rx.pkt_cnt; pind++) {
-
-			/* get curr PKT len & type */
-			pkt_len = *(u16 *) &curr_ptr[0];
-			pkt_type = *(u16 *) &curr_ptr[2];
-
-			/* copy pkt to deaggr buf */
-			skb_deaggr = priv->mpa_rx.skb_arr[pind];
-
-			if ((pkt_type == MWL8787_TYPE_DATA) && (pkt_len <=
-					 priv->mpa_rx.len_arr[pind])) {
-
-				memcpy(skb_deaggr->data, curr_ptr, pkt_len);
-
-				skb_trim(skb_deaggr, pkt_len);
-
-				/* Process de-aggr packet */
-				mwl8787_decode_rx_packet(priv, skb_deaggr,
-							 pkt_type);
-			} else {
-				dev_err(priv->dev, "wrong aggr pkt:"
-					" type=%d len=%d max_len=%d\n",
-					pkt_type, pkt_len,
-					priv->mpa_rx.len_arr[pind]);
-				dev_kfree_skb_any(skb_deaggr);
-			}
-			curr_ptr += priv->mpa_rx.len_arr[pind];
-		}
-		MP_RX_AGGR_BUF_RESET(priv);
-	}
-
-rx_curr_single:
-	if (f_do_rx_cur) {
-		ret = mwl8787_sdio_card_to_host(priv, skb, port);
+	/* if this frame won't fit, go ahead and rx the frames. */
+	if (((priv->mpa_rx.buf_len + skb->len) > priv->mpa_rx.buf_size)) {
+		ret = mwl8787_rx_data_aggr(priv);
 		if (ret)
-			goto error;
+			return ret;
 	}
 
-	return 0;
+	/* current frame will go to aggr buf */
+	if (!priv->mpa_rx.pkt_cnt) {
+		/* skip copy if this is the first and only one... */
+		if (!more_pending)
+			return mwl8787_sdio_card_to_host(priv, skb, port);
 
-error:
-	if (priv->mpa_rx.pkt_cnt) {
-		/* Multiport-aggregation transfer failed - cleanup */
-		for (pind = 0; pind < priv->mpa_rx.pkt_cnt; pind++) {
-			/* copy pkt to deaggr buf */
-			skb_deaggr = priv->mpa_rx.skb_arr[pind];
-			dev_kfree_skb_any(skb_deaggr);
-		}
-		MP_RX_AGGR_BUF_RESET(priv);
+		priv->mpa_rx.start_port = port;
 	}
-	return -1;
+
+	priv->mpa_rx.buf_len += skb->len;
+	priv->mpa_rx.skb_arr[priv->mpa_rx.pkt_cnt] = skb;
+	priv->mpa_rx.len_arr[priv->mpa_rx.pkt_cnt] = skb->len;
+	priv->mpa_rx.pkt_cnt++;
+
+	ret = 0;
+	/* if now full, or nothing else pending, go ahead and rx */
+	if (priv->mpa_rx.pkt_cnt == MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT ||
+	    !more_pending) {
+		ret = mwl8787_rx_data_aggr(priv);
+	}
+	return ret;
 }
 
 /*
