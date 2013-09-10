@@ -109,7 +109,7 @@ static void mwl8787_setup_ht_cap(struct mwl8787_priv *priv,
 	ht_cap->ampdu_density = IEEE80211_HT_MPDU_DENSITY_NONE;
 
 	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SUP_WIDTH_20_40)
-		ht_cap->cap |= IEEE80211_HT_CAP_GRN_FLD;
+		ht_cap->cap |= IEEE80211_HT_CAP_SUP_WIDTH_20_40;
 	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SGI_20)
 		ht_cap->cap |= IEEE80211_HT_CAP_SGI_20;
 	if (priv->dot_11n_dev_cap & MWL8787_DEV_HT_CAP_SGI_40)
