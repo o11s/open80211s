@@ -556,7 +556,7 @@ int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 	memcpy(cmd->u.set_peer.addr, sta->addr, ETH_ALEN);
 
 	supp_rates = sta->supp_rates[priv->hw->conf.chandef.chan->band];
-	cmd->u.set_peer.supp_rate_map = le32_to_cpu(supp_rates);
+	cmd->u.set_peer.supp_rate_map = cpu_to_le32(supp_rates);
 	memcpy(cmd->u.set_peer.mcs_rate_map, sta->ht_cap.mcs.rx_mask,
 	       sizeof(sta->ht_cap.mcs.rx_mask));
 
