@@ -68,7 +68,7 @@ struct mwl8787_priv
 	u16 num_ant;			/* number of antennas */
 	u32 fw_cap_info;		/* firmware capability flags */
 	u32 dot_11n_dev_cap;		/* 802.11n capabilities */
-	u8 dev_mcs_support;		/* highest supported mcs rate / 8 */
+	u8 num_streams;			/* # of spatial streams */
 
 	/* information about pending command */
 	struct mutex cmd_mutex;

@@ -126,7 +126,7 @@ static void mwl8787_setup_ht_cap(struct mwl8787_priv *priv,
 		ht_cap->cap |= IEEE80211_HT_CAP_40MHZ_INTOLERANT;
 
 	memset(ht_cap->mcs.rx_mask, 0xff,
-	       min_t(u8, priv->dev_mcs_support, IEEE80211_HT_MCS_MASK_LEN));
+	       min_t(u8, priv->num_streams, IEEE80211_HT_MCS_MASK_LEN));
 	/* enable MCS 32 */
 	ht_cap->mcs.rx_mask[4] |= 1;
 

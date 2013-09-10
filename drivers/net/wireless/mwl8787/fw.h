@@ -180,7 +180,7 @@ struct mwl8787_cmd_hw_spec {
 	__le32 reserved_2[3];
 	__le32 fw_cap_info;
 	__le32 dot_11n_dev_cap;
-	u8 dev_mcs_support;
+	u8 tx_rx_chains;
 	__le16 mp_end_port;
 	__le16 mgmt_buf_count;
 	__le32 reserved_3[2];
