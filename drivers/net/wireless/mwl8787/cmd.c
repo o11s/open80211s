@@ -541,6 +541,25 @@ int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
 	return ret;
 }
 
+static u32 mwl8787_rates_to_hw_values(struct mwl8787_priv *priv,
+				      unsigned long supp_rates, u8 *mcs_mask)
+{
+	enum ieee80211_band band = priv->hw->conf.chandef.chan->band;
+	struct ieee80211_supported_band *sband = priv->hw->wiphy->bands[band];
+	int i, j;
+	u32 hw_values = 0;
+
+	/* XXX: luckily 8787 (1x1!) rates all fit in a u32... */
+	for_each_set_bit(i, &supp_rates, MRVL_MCS_SHIFT)
+		hw_values |= BIT(sband->bitrates[i].hw_value);
+
+	/* ...with this hack! */
+	for (i = 0; i < 2; i++)
+		hw_values |= mcs_mask[i] << (MRVL_MCS_SHIFT + (i * 8));
+
+	return hw_values;
+}
+
 int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 {
 	struct mwl8787_cmd *cmd;
@@ -556,9 +575,10 @@ int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 	memcpy(cmd->u.set_peer.addr, sta->addr, ETH_ALEN);
 
 	supp_rates = sta->supp_rates[priv->hw->conf.chandef.chan->band];
+	supp_rates = mwl8787_rates_to_hw_values(priv, supp_rates,
+						sta->ht_cap.mcs.rx_mask);
+
 	cmd->u.set_peer.supp_rate_map = cpu_to_le32(supp_rates);
-	memcpy(cmd->u.set_peer.mcs_rate_map, sta->ht_cap.mcs.rx_mask,
-	       sizeof(sta->ht_cap.mcs.rx_mask));
 
 	ret = mwl8787_send_cmd(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);
