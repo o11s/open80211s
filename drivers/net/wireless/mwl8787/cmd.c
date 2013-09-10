@@ -121,6 +121,11 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 	priv->num_streams = hw_spec->tx_rx_chains & 0x0f;
 	priv->mp_end_port = le16_to_cpu(hw_spec->mp_end_port);
 
+	dev_info(priv->dev, "caps reported: addr=%pM, region=%X, ant=%X, "
+			    "fw_cap=%X, 11n=%X, mcs=%X, mp_end=%X\n",
+			    priv->addr, priv->region_code, priv->num_ant,
+			    priv->fw_cap_info, priv->dot_11n_dev_cap,
+			    priv->dev_mcs_support, priv->mp_end_port);
 	return 0;
 }
 
