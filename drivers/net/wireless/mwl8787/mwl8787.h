@@ -114,20 +114,17 @@ struct mwl8787_priv
 		u16 start_port;
 		u8 enabled;
 		u32 buf_size;
-		u32 pkt_aggr_limit;
 	} mpa_tx;
 
 	struct {
 		u8 *buf;
 		u32 buf_len;
 		u32 pkt_cnt;
-		u16 ports;
 		u16 start_port;
 		struct sk_buff *skb_arr[MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT];
 		u32 len_arr[MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT];
 		u8 enabled;
 		u32 buf_size;
-		u32 pkt_aggr_limit;
 	} mpa_rx;
 };
 
