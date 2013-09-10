@@ -118,7 +118,7 @@ int mwl8787_cmd_hw_spec_resp(struct mwl8787_priv *priv,
 	priv->num_ant = le16_to_cpu(hw_spec->num_ant);
 	priv->fw_cap_info = le32_to_cpu(hw_spec->fw_cap_info);
 	priv->dot_11n_dev_cap = le32_to_cpu(hw_spec->dot_11n_dev_cap);
-	priv->dev_mcs_support = hw_spec->dev_mcs_support & 0x0f;
+	priv->num_streams = hw_spec->tx_rx_chains & 0x0f;
 	priv->mp_end_port = le16_to_cpu(hw_spec->mp_end_port);
 
 	return 0;
