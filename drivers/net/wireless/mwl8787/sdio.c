@@ -1119,14 +1119,12 @@ static int mwl8787_init_sdio(struct mwl8787_priv *priv)
 	priv->mpa_tx.start_port = 0;
 
 	priv->mpa_tx.enabled = 1;
-	priv->mpa_tx.pkt_aggr_limit = MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
 	priv->mpa_rx.buf_len = 0;
 	priv->mpa_rx.pkt_cnt = 0;
 	priv->mpa_rx.start_port = 0;
 
 	priv->mpa_rx.enabled = 1;
-	priv->mpa_rx.pkt_aggr_limit = MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT;
 
 	/* Allocate buffers for SDIO MP-A */
 	priv->mp_regs = kzalloc(MWL8787_MAX_MP_REGS, GFP_KERNEL);
