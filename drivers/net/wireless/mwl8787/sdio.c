@@ -920,8 +920,6 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 	priv->mp_wr_bitmap |=
 		(u32) priv->mp_regs[MWL8787_WR_BITMAP_L] & CTRL_PORT_MASK;
 
-	dev_dbg(priv->dev, "info: cmd_sent=%d data_sent=%d\n",
-		priv->cmd_sent, priv->data_sent);
 	if (sdio_ireg & UP_LD_HOST_INT_STATUS) {
 		bitmap = (u32) priv->mp_regs[MWL8787_RD_BITMAP_L];
 		bitmap |= ((u32) priv->mp_regs[MWL8787_RD_BITMAP_U]) << 8;

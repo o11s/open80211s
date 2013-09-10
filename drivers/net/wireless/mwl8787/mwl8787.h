@@ -86,9 +86,6 @@ struct mwl8787_priv
 	struct completion cmd_wait;	/* completed on command response */
 	int cmd_seq;			/* next cmd sequence number */
 
-	u8 cmd_sent;
-	u8 data_sent;
-
 	u32 mac_ctrl;			/* cache of filter flags & cts prot */
 
 	struct work_struct tx_work;
