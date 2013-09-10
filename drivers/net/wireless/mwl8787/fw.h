@@ -53,6 +53,42 @@
 	 (((num) & 0x000f) << 8)) |                     \
 	(((type) & 0x000f) << 12);                  }
 
+#define MRVL_RATEID_DBPSK1Mbps		0
+#define MRVL_RATEID_DQPSK2Mbps		1
+#define MRVL_RATEID_CCK5_5Mbps		2
+#define MRVL_RATEID_CCK11Mbps		3
+#define MRVL_RATEID_CCK22Mbps		4
+#define MRVL_RATEID_OFDM6Mbps		5
+#define MRVL_RATEID_OFDM9Mbps		6
+#define MRVL_RATEID_OFDM12Mbps		7
+#define MRVL_RATEID_OFDM18Mbps		8
+#define MRVL_RATEID_OFDM24Mbps		9
+#define MRVL_RATEID_OFDM36Mbps		10
+#define MRVL_RATEID_OFDM48Mbps		11
+#define MRVL_RATEID_OFDM54Mbps		12
+#define MRVL_RATEID_OFDM72Mbps		13
+
+#define MRVL_RATEID_MCS0_6d5Mbps	14
+#define MRVL_RATEID_MCS1_13Mbps		15
+#define MRVL_RATEID_MCS2_19d5Mbps	16
+#define MRVL_RATEID_MCS3_26Mbps		17
+#define MRVL_RATEID_MCS4_39Mbps		18
+#define MRVL_RATEID_MCS5_52Mbps		19
+#define MRVL_RATEID_MCS6_58d5Mbps	20
+#define MRVL_RATEID_MCS7_65Mbps		21
+
+#define MRVL_RATEID_MCS32BW40_6Mbps	22
+#define MRVL_RATEID_MCS0BW40_13d5Mbps	23
+#define MRVL_RATEID_MCS1BW40_27Mbps	24
+#define MRVL_RATEID_MCS2BW40_40d5Mbps	25
+#define MRVL_RATEID_MCS3BW40_54Mbps	26
+#define MRVL_RATEID_MCS4BW40_81Mbps	27
+#define MRVL_RATEID_MCS5BW40_108Mbps	28
+#define MRVL_RATEID_MCS6BW40_121d5Mbps	29
+#define MRVL_RATEID_MCS7BW40_135Mbps	30
+
+#define MRVL_MCS_SHIFT			14
+
 enum mwl8787_bss_type {
 	MWL8787_BSS_TYPE_CLIENT		= 0x00,
 	MWL8787_BSS_TYPE_AP		= 0x01,
@@ -294,8 +330,7 @@ struct mwl8787_cmd_get_tsf {
 
 struct mwl8787_cmd_set_peer {
 	u8 addr[ETH_ALEN];
-	__le32 supp_rate_map;
-	u8 mcs_rate_map[16];
+	__le32 supp_rate_map; /* MRVL_RATEIDs */
 } __packed;
 
 struct mwl8787_cmd_del_peer {
