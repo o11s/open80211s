@@ -47,6 +47,7 @@ struct mwl8787_bus_ops
 		       bool more_frames);
 	int (*process_int_status) (struct mwl8787_priv *);
 	void (*card_reset) (struct mwl8787_priv *);
+	bool (*is_tx_busy) (struct mwl8787_priv *);
 };
 
 struct mwl8787_priv

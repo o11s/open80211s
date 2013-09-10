@@ -96,7 +96,8 @@ void mwl8787_tx_work(struct work_struct *work)
 
 	priv = container_of(work, struct mwl8787_priv, tx_work);
 
-	while ((skb = skb_dequeue(&priv->tx_queue))) {
+	while (!priv->bus_ops->is_tx_busy(priv) &&
+	       (skb = skb_dequeue(&priv->tx_queue))) {
 
 		info = IEEE80211_SKB_CB(skb);
 		hw_queue = info->hw_queue;

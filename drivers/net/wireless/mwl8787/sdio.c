@@ -88,6 +88,11 @@ mwl8787_write_data_sync(struct mwl8787_priv *priv,
 	return ret;
 }
 
+static bool mwl8787_is_tx_busy(struct mwl8787_priv *priv)
+{
+	return !(priv->mp_wr_bitmap & BIT(priv->curr_wr_port));
+}
+
 static int mwl8787_get_write_port(struct mwl8787_priv *priv, u8 *port)
 {
 	u32 wr_bitmap = priv->mp_wr_bitmap;
@@ -1079,8 +1084,8 @@ static struct mwl8787_bus_ops sdio_ops = {
 	.send_tx = mwl8787_sdio_send_tx,
 	.process_int_status = mwl8787_process_int_status,
 	.enable_int = mwl8787_enable_int,
-
 	.card_reset = mwl8787_sdio_card_reset,
+	.is_tx_busy = mwl8787_is_tx_busy,
 };
 
 static int mwl8787_init_sdio(struct mwl8787_priv *priv)
