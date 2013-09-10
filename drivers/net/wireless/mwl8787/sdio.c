@@ -765,7 +765,7 @@ static int mwl8787_rx_data_aggr(struct mwl8787_priv *priv)
 		pkt_len = le16_to_cpu(hdr->len);
 		pkt_type = le16_to_cpu(hdr->type);
 
-		if (pkt_type == cpu_to_le16(MWL8787_TYPE_DATA) &&
+		if (pkt_type == MWL8787_TYPE_DATA &&
 		    pkt_len <= priv->mpa_rx.len_arr[i]) {
 			memcpy(skb->data, ptr, pkt_len);
 			skb_trim(skb, pkt_len);
