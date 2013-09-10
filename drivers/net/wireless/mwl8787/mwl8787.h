@@ -17,7 +17,13 @@
 #define MWL8787_TX_CT_HI		100
 #define MWL8787_TX_CT_LO		80
 
-#define MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT 8
+/*
+ * We can only track 7 frames in the sdio aggregation buffer: because
+ * the bitmap to represent pending frames has 8 bits, 8 neighboring ports
+ * can be occupied.  However, one of these may be the control port, in
+ * which case 8 data frames would overflow the bitmap.
+ */
+#define MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT 7
 
 enum mwl8787_hw_status {
 	MWL8787_HW_STATUS_READY,
