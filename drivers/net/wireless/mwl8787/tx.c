@@ -32,7 +32,6 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	desc->tx_control = cpu_to_le32(tx_ctl);
 }
 
-
 static int mwl8787_tx_frame(struct mwl8787_priv *priv,
 			    struct sk_buff *skb, bool more_frames)
 {
@@ -144,6 +143,8 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 
 	if (atomic_inc_return(&priv->tx_pending[hw_queue]) >= MWL8787_TX_CT_HI)
 		ieee80211_stop_queue(hw, hw_queue);
+
+	mwl8787_ampdu_check(priv, control->sta, skb);
 
 	skb_queue_tail(&priv->tx_queue, skb);
 	ieee80211_queue_work(priv->hw, &priv->tx_work);

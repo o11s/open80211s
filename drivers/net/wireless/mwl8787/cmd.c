@@ -608,3 +608,51 @@ int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 
 	return ret;
 }
+
+int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
+			  struct ieee80211_sta *sta, u16 tid)
+{
+	struct mwl8787_cmd *cmd, *resp;
+	struct sk_buff *reply_skb;
+	int ret;
+	u16 block_params;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_ADDBA_REQ,
+				sizeof(struct mwl8787_cmd_addba_req),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	block_params = 16 << 6 |	/* tx window size */
+		       tid << 2 |
+		       1 << 1 |		/* immediate block ack */
+		       1;		/* no amsdu */
+
+	if (!++priv->addba_dialog_token)
+		priv->addba_dialog_token = 1;
+
+	memcpy(cmd->u.addba_req.addr, sta->addr, ETH_ALEN);
+	cmd->u.addba_req.token = priv->addba_dialog_token;
+	cmd->u.addba_req.ba_param_set = cpu_to_le16(block_params);
+	cmd->u.addba_req.ba_timeout = cpu_to_le16(5000);
+
+	ret = mwl8787_send_cmd_reply(priv, cmd, &reply_skb);
+	mwl8787_cmd_free(priv, cmd);
+	if (ret)
+		return ret;
+
+	resp = (struct mwl8787_cmd *) reply_skb->data;
+	switch (resp->u.addba_req.add_req_result) {
+		case MWL8787_BA_SUCCESS:
+			break;
+		case MWL8787_BA_TIMEOUT:
+			return -ETIMEDOUT;
+		case MWL8787_BA_DATA_INVALID:
+			return -EINVAL;
+		case MWL8787_BA_EXEC_FAILURE:
+		default:
+			return -ECANCELED;
+	}
+	/* successful addba, record ssn and all that */
+	return 0;
+}
