@@ -13,6 +13,7 @@ void mwl8787_event_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 		mwl8787_tx_status(priv, event);
 		break;
 	default:
+		dev_err(priv->dev, "Unknown event: %d\n", le16_to_cpu(event->hdr.id));
 		break;
 	}
 

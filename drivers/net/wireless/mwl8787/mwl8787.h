@@ -24,6 +24,7 @@
  * which case 8 data frames would overflow the bitmap.
  */
 #define MWL8787_SDIO_MP_AGGR_DEF_PKT_LIMIT 7
+#define MWL8787_MAX_AMPDU_SESSIONS 2
 
 enum mwl8787_hw_status {
 	MWL8787_HW_STATUS_READY,
@@ -33,6 +34,20 @@ enum mwl8787_hw_status {
 	MWL8787_HW_STATUS_RESET,
 	MWL8787_HW_STATUS_CLOSING,
 	MWL8787_HW_STATUS_NOT_READY
+};
+
+enum mwl8787_ampdu_state {
+	MWL8787_AMPDU_NONE,
+	MWL8787_AMPDU_INIT,
+	MWL8787_AMPDU_START,
+	MWL8787_AMPDU_OPERATIONAL,
+};
+
+struct mwl8787_sta
+{
+	struct mwl8787_priv *priv;
+	struct work_struct ampdu_work;
+	enum mwl8787_ampdu_state ampdu_state[IEEE80211_NUM_TIDS];
 };
 
 struct mwl8787_priv;
@@ -87,6 +102,9 @@ struct mwl8787_priv
 	int cmd_seq;			/* next cmd sequence number */
 
 	u32 mac_ctrl;			/* cache of filter flags & cts prot */
+
+	int num_ampdu_sessions;		/* how many ampdu sessions active */
+	u8 addba_dialog_token;		/* cookie for ampdu requests */
 
 	struct work_struct tx_work;
 	struct work_struct card_reset_work;
@@ -168,7 +186,8 @@ int mwl8787_cmd_log(struct mwl8787_priv *priv,
 int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr);
 int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
 int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
-
+int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
+			  struct ieee80211_sta *sta, u16 tid);
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
@@ -178,6 +197,11 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 		       struct mwl8787_event *tx_status_event);
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv);
 
+/* ampdu.c */
+void mwl8787_ampdu_work(struct work_struct *work);
+void mwl8787_ampdu_check(struct mwl8787_priv *priv,
+			 struct ieee80211_sta *sta,
+			 struct sk_buff *skb);
 /* rx.c */
 void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
 

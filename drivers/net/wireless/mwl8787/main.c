@@ -458,6 +458,10 @@ static int mwl8787_sta_add(struct ieee80211_hw *hw,
 			    struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta)
 {
+	struct mwl8787_sta *mwl8787_sta = (struct mwl8787_sta *) sta->drv_priv;
+
+	mwl8787_sta->priv = hw->priv;
+	INIT_WORK(&mwl8787_sta->ampdu_work, mwl8787_ampdu_work);
 	mwl8787_cmd_set_peer(hw->priv, sta);
 	return 0;
 }
@@ -466,6 +470,8 @@ static int mwl8787_sta_remove(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif,
 			       struct ieee80211_sta *sta)
 {
+	struct mwl8787_sta *mwl8787_sta = (struct mwl8787_sta *) sta->drv_priv;
+	cancel_work_sync(&mwl8787_sta->ampdu_work);
 	mwl8787_cmd_del_peer(hw->priv, sta);
 	return 0;
 }
@@ -506,8 +512,10 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_RX_STOP:
 		return 0;
 	default:
+		/* TX ampdu handled by firmware */
 		return -EOPNOTSUPP;
 	}
+	return 0;
 }
 
 static const struct ieee80211_ops mwl8787_ops = {
@@ -566,12 +574,16 @@ struct mwl8787_priv *mwl8787_init(void)
 		IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING |
 		IEEE80211_HW_REPORTS_TX_ACK_STATUS |
 		IEEE80211_HW_CONNECTION_MONITOR |
+		IEEE80211_HW_AMPDU_AGGREGATION |
+		IEEE80211_HW_TX_AMPDU_SETUP_IN_HW |
 		IEEE80211_HW_SIGNAL_DBM;
 
 	hw->queues = IEEE80211_NUM_ACS;
 	hw->max_rates = 4;
 	hw->max_rate_tries = 11;
+	hw->max_tx_aggregation_subframes = 16;
 	hw->channel_change_time = 100;
+	hw->sta_data_size = sizeof(struct mwl8787_sta);
 	hw->wiphy->bands[IEEE80211_BAND_2GHZ] = &mwl8787_2ghz_band;
 	hw->wiphy->bands[IEEE80211_BAND_5GHZ] = &mwl8787_5ghz_band;
 
