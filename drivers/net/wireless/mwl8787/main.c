@@ -15,6 +15,9 @@
 	.max_power = 20, \
 }
 
+static char *mwl8787_modparam_mac_addr;
+module_param_named(mac_addr, mwl8787_modparam_mac_addr, charp, S_IRUGO);
+
 static struct ieee80211_channel mwl8787_2ghz_chantable[] = {
 	CHAN(2412, 1),
 	CHAN(2417, 2),
@@ -162,6 +165,10 @@ static int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 	ret = mwl8787_cmd_hw_spec(priv);
 	if (ret)
 		return ret;
+
+	/* override mac addr if requested */
+	if (mwl8787_modparam_mac_addr)
+		mac_pton(mwl8787_modparam_mac_addr, priv->addr);
 
 	/* setup caps for each band */
 	mwl8787_setup_ht_cap(priv,
