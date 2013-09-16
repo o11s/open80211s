@@ -279,7 +279,9 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	struct mwl8787_priv *priv = hw->priv;
 
 	/* register for tx feedback events */
-	mwl8787_cmd_subscribe_events(priv, MWL8787_EVT_SUB_TX_STATUS);
+	mwl8787_cmd_subscribe_events(priv,
+				     MWL8787_EVT_SUB_TX_STATUS |
+				     MWL8787_EVT_SUB_TX_FAIL);
 
 	return 0;
 }

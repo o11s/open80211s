@@ -71,6 +71,25 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 		ieee80211_wake_queue(priv->hw, hw_queue);
 }
 
+void mwl8787_tx_fail(struct mwl8787_priv *priv,
+		     struct mwl8787_event *tx_fail_event)
+{
+#if 1
+	dev_dbg(priv->dev, "max tx failures reported\n");
+#else
+	struct mwl8787_event_tx_fail *tx_fail = &tx_fail_event->u.tx_fail;
+	struct ieee80211_sta *sta;
+
+	/* firmware needs to track & tell us the sta addr... */
+	rcu_read_lock();
+	sta = ieee80211_find_sta_by_ifaddr(priv->hw, tx_fail->addr,
+					   priv->addr);
+	if (sta)
+		ieee80211_report_low_ack(sta, MWL8787_TX_FAIL_THRESHOLD);
+	rcu_read_unlock();
+#endif
+}
+
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv)
 {
 	struct sk_buff *skb;

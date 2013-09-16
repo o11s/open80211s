@@ -16,6 +16,7 @@
 
 #define MWL8787_TX_CT_HI		100
 #define MWL8787_TX_CT_LO		80
+#define MWL8787_TX_FAIL_THRESHOLD	50
 
 /*
  * We can only track 7 frames in the sdio aggregation buffer: because
@@ -195,6 +196,8 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 void mwl8787_tx_work(struct work_struct *work);
 void mwl8787_tx_status(struct mwl8787_priv *priv,
 		       struct mwl8787_event *tx_status_event);
+void mwl8787_tx_fail(struct mwl8787_priv *priv,
+		     struct mwl8787_event *tx_fail_event);
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv);
 
 /* ampdu.c */

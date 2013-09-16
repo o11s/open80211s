@@ -196,13 +196,14 @@ enum mwl8787_ba_status {
 
 enum mwl8787_event_id {
 	MWL8787_EVT_WAKEUP		= 0x0001,
+	MWL8787_EVT_TX_FAIL		= 0x001b,
 	MWL8787_EVT_TX_STATUS		= 0x0067,
 };
 
 enum mwl8787_event_sub_flags {
 	MWL8787_EVT_SUB_BCN_RSSI_LO	= BIT(0),
 	MWL8787_EVT_SUB_BCN_SNR_LO	= BIT(1),
-	MWL8787_EVT_SUB_MAX_FAIL	= BIT(2),
+	MWL8787_EVT_SUB_TX_FAIL		= BIT(2),
 	MWL8787_EVT_SUB_BCN_LOSS	= BIT(3),
 	MWL8787_EVT_SUB_TX_STATUS	= BIT(12),
 };
@@ -210,6 +211,7 @@ enum mwl8787_event_sub_flags {
 enum mwl8787_tlv_type {
 	MWL8787_TYPE_CHANLIST		= 0x0101,
 	MWL8787_TYPE_NUM_PROBES		= 0x0102,
+	MWL8787_TYPE_TX_FAIL		= 0x0106,
 	MWL8787_TYPE_WILDCARD_SSID	= 0x0112,
 	MWL8787_TYPE_BAND_CHAN		= 0x012A,
 };
@@ -305,6 +307,7 @@ struct mwl8787_cmd_mac_addr {
 struct mwl8787_cmd_subscribe_events {
 	__le16 action;
 	__le16 events;
+	u8 tlvs[0];
 } __packed;
 
 struct mwl8787_cmd_beacon_ctrl {
@@ -395,6 +398,11 @@ struct mwl8787_tlv_ht_cap {
 	struct ieee80211_ht_cap ht_cap;
 } __packed;
 
+struct mwl8787_tlv_tx_fail {
+	u8 fail_threshold;
+	u8 reporting_freq;
+} __packed;
+
 struct mwl8787_channel_param {
 	u8 radio_type;
 	u8 channel;
@@ -478,6 +486,14 @@ struct mwl8787_cmd {
 	} u;
 } __packed;
 
+struct mwl8787_tlv {
+	struct mwl8787_tlv_header hdr;
+	union {
+		struct mwl8787_tlv_tx_fail tx_fail;
+		u8 data[0];
+	} u;
+} __packed;
+
 struct mwl8787_sdio_header {
 	__le16 len;
 	__le16 type;
@@ -491,6 +507,10 @@ struct mwl8787_event_tx_status {
 	u8 hw_queue;
 } __packed;
 
+struct mwl8787_event_tx_fail {
+	u8 addr[ETH_ALEN];
+} __packed;
+
 struct mwl8787_event_header {
 	__le16 id;
 	u8 bss_num;
@@ -501,6 +521,7 @@ struct mwl8787_event {
 	struct mwl8787_event_header hdr;
 	union {
 		struct mwl8787_event_tx_status tx_status;
+		struct mwl8787_event_tx_fail tx_fail;
 		u8 data[0];
 	} u;
 } __packed;
