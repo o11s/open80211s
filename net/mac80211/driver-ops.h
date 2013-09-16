@@ -713,6 +713,26 @@ static inline int drv_get_survey(struct ieee80211_local *local, int idx,
 	return ret;
 }
 
+static inline int drv_get_link_stats(struct ieee80211_local *local,
+				     struct ieee80211_sub_if_data *sdata,
+				     u8 *peer_addr,
+				     struct ieee80211_link_stats *stats)
+{
+	int ret = -EOPNOTSUPP;
+
+	might_sleep();
+
+	trace_drv_get_link_stats(local, sdata, peer_addr, stats);
+	if (local->ops->get_link_stats) {
+		ret = local->ops->get_link_stats(&local->hw, &sdata->vif,
+						 peer_addr, stats);
+	}
+
+	trace_drv_return_int(local, ret);
+
+	return ret;
+}
+
 static inline void drv_rfkill_poll(struct ieee80211_local *local)
 {
 	might_sleep();

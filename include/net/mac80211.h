@@ -933,6 +933,17 @@ struct ieee80211_rx_status {
 };
 
 /**
+ * struct ieee80211_link_stats - information about link adaptation
+ *
+ * @fail_avg: estimated frame error rate
+ * @last_tx_rate: rate used in last successful transmission
+ */
+struct ieee80211_link_stats {
+	unsigned int fail_avg;
+	struct ieee80211_tx_rate last_tx_rate;
+};
+
+/**
  * enum ieee80211_conf_flags - configuration flags
  *
  * Flags to define PHY configuration options
@@ -2528,6 +2539,10 @@ enum ieee80211_roc_type {
  *
  * @get_survey: Return per-channel survey information
  *
+ * @get_link_stats: If your hardware implements rate control in firmware,
+ *	implement this function to provide some link metric information
+ *	useful for mesh.
+ *
  * @rfkill_poll: Poll rfkill hardware state. If you need this, you also
  *	need to set wiphy->rfkill_poll to %true before registration,
  *	and need to call wiphy_rfkill_set_hw_state() in the callback.
@@ -2800,6 +2815,10 @@ struct ieee80211_ops {
 			    u8 buf_size);
 	int (*get_survey)(struct ieee80211_hw *hw, int idx,
 		struct survey_info *survey);
+	int (*get_link_stats)(struct ieee80211_hw *hw,
+			      struct ieee80211_vif *vif,
+			      u8 *peer_addr,
+			      struct ieee80211_link_stats *link_stats);
 	void (*rfkill_poll)(struct ieee80211_hw *hw);
 	void (*set_coverage_class)(struct ieee80211_hw *hw, u8 coverage_class);
 #ifdef CONFIG_NL80211_TESTMODE
