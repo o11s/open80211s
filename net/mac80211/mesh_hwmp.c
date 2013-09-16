@@ -12,6 +12,7 @@
 #include <asm/unaligned.h>
 #include "wme.h"
 #include "mesh.h"
+#include "driver-ops.h"
 
 #define TEST_FRAME_LEN	8192
 #define MAX_METRIC	0xffffffff
@@ -340,6 +341,8 @@ static u32 airtime_link_metric_get(struct ieee80211_local *local,
 	int rate, err;
 	u32 tx_time, estimated_retx;
 	u64 result;
+
+	drv_update_link_stats(local, sta->sdata, sta);
 
 	if (sta->fail_avg >= 100)
 		return MAX_METRIC;

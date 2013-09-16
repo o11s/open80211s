@@ -958,6 +958,31 @@ TRACE_EVENT(drv_get_survey,
 	)
 );
 
+TRACE_EVENT(drv_update_link_stats,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_sta *sta),
+
+	TP_ARGS(local, sdata, sta),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_ASSIGN;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT STA_PR_FMT,
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG
+	)
+);
+
 TRACE_EVENT(drv_flush,
 	TP_PROTO(struct ieee80211_local *local,
 		 u32 queues, bool drop),
