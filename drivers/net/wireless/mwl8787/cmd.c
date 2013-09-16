@@ -403,16 +403,31 @@ int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
 {
 	struct mwl8787_cmd *cmd;
+	struct mwl8787_tlv *tx_fail_params;
 	int ret;
+	size_t cmd_len;
+
+	cmd_len = sizeof(struct mwl8787_cmd_subscribe_events);
+	if (events & MWL8787_EVT_SUB_TX_FAIL)
+		cmd_len += sizeof(struct mwl8787_tlv_tx_fail);
 
 	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SUBSCRIBE_EVENTS,
-				sizeof(struct mwl8787_cmd_subscribe_events),
-				GFP_KERNEL);
+				cmd_len, GFP_KERNEL);
 	if (!cmd)
 		return -ENOMEM;
 
 	cmd->u.subscribe_events.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.subscribe_events.events = cpu_to_le16(events);
+
+	if (events & MWL8787_EVT_SUB_TX_FAIL) {
+		tx_fail_params = (struct mwl8787_tlv *)
+			cmd->u.subscribe_events.tlvs;
+		tx_fail_params->hdr.type = cpu_to_le16(MWL8787_TYPE_TX_FAIL);
+		tx_fail_params->hdr.len = cpu_to_le16(2);
+		tx_fail_params->u.tx_fail.fail_threshold =
+			MWL8787_TX_FAIL_THRESHOLD;
+		tx_fail_params->u.tx_fail.reporting_freq = 1;
+	}
 
 	ret = mwl8787_send_cmd(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);
