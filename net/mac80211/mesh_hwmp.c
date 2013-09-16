@@ -306,13 +306,6 @@ int mesh_path_error_tx(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
-#define MESH_LOST_PKT_THRESHOLD 50
-void mesh_plink_check_broken(struct sta_info *sta)
-{
-	if (sta->fail_avg > 95 || sta->lost_packets > MESH_LOST_PKT_THRESHOLD)
-		mesh_plink_broken(sta);
-}
-
 void ieee80211s_update_metric(struct ieee80211_local *local,
 		struct sta_info *sta, struct sk_buff *skb)
 {
@@ -327,7 +320,8 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 
 	/* moving average, scaled to 100 */
 	sta->fail_avg = ((80 * sta->fail_avg + 5) / 100 + 20 * failed);
-	mesh_plink_check_broken(sta);
+	if (sta->fail_avg > 95)
+		mesh_plink_broken(sta);
 }
 
 static u32 airtime_link_metric_get(struct ieee80211_local *local,

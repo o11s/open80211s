@@ -736,10 +736,8 @@ void ieee80211_report_low_ack(struct ieee80211_sta *pubsta, u32 num_packets)
 {
 	struct sta_info *sta = container_of(pubsta, struct sta_info, sta);
 
-	sta->lost_packets += num_packets;
-
 	if (ieee80211_vif_is_mesh(&sta->sdata->vif))
-		mesh_plink_check_broken(sta);
+		mesh_plink_broken(sta);
 
 	cfg80211_cqm_pktloss_notify(sta->sdata->dev, sta->sta.addr,
 				    num_packets, GFP_ATOMIC);
