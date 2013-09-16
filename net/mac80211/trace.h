@@ -958,6 +958,32 @@ TRACE_EVENT(drv_get_survey,
 	)
 );
 
+TRACE_EVENT(drv_get_link_stats,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 u8 *peer_addr,
+		 struct ieee80211_link_stats *stats),
+
+	TP_ARGS(local, sdata, peer_addr, stats),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__array(char, peer_addr, 6)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		memcpy(__entry->peer_addr, peer_addr, ETH_ALEN);
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT " peer %pM",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->peer_addr
+	)
+);
+
 TRACE_EVENT(drv_flush,
 	TP_PROTO(struct ieee80211_local *local,
 		 u32 queues, bool drop),
