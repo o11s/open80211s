@@ -262,8 +262,6 @@ int mwl8787_main_process(struct mwl8787_priv *priv)
 {
 	int ret = 0;
 
-	dev_dbg(priv->dev, "got IRQs: %4X!\n", priv->int_status);
-
 	if (priv->int_status)
 		priv->bus_ops->process_int_status(priv);
 

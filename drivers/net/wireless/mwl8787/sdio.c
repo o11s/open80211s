@@ -95,10 +95,6 @@ static bool mwl8787_is_tx_busy(struct mwl8787_priv *priv)
 
 static int mwl8787_get_write_port(struct mwl8787_priv *priv, u8 *port)
 {
-	u32 wr_bitmap = priv->mp_wr_bitmap;
-
-	dev_dbg(priv->dev, "data: mp_wr_bitmap=0x%08x\n", wr_bitmap);
-
 	if (priv->mp_wr_bitmap & BIT(priv->curr_wr_port)) {
 		priv->mp_wr_bitmap &= ~BIT(priv->curr_wr_port);
 		*port = priv->curr_wr_port;
@@ -109,9 +105,6 @@ static int mwl8787_get_write_port(struct mwl8787_priv *priv, u8 *port)
 	} else {
 		return -EBUSY;
 	}
-
-	dev_dbg(priv->dev, "data: port=%d mp_wr_bitmap=0x%08x -> 0x%08x\n",
-		*port, wr_bitmap, priv->mp_wr_bitmap);
 
 	return 0;
 }
@@ -371,7 +364,6 @@ static int mwl8787_sdio_prog_fw(struct mwl8787_priv *priv,
 
 			/* Copy payload to buffer */
 			memcpy(fwbuf, &fw->data[offset], txlen);
-			dev_dbg(priv->dev, "txlen: %d\n", txlen);
 		}
 
 		ret = mwl8787_write_data_sync(priv, fwbuf, tx_blocks *
@@ -611,17 +603,14 @@ int mwl8787_decode_rx_packet(struct mwl8787_priv *priv,
 
 	switch (upld_typ) {
 	case MWL8787_TYPE_DATA:
-		dev_dbg(priv->dev, "info: --- Rx: Data packet ---\n");
 		mwl8787_rx(priv, skb);
 		break;
 
 	case MWL8787_TYPE_CMD:
-		dev_dbg(priv->dev, "info: --- Rx: Cmd Response ---\n");
 		mwl8787_cmd_rx(priv, skb);
 		break;
 
 	case MWL8787_TYPE_EVENT:
-		dev_dbg(priv->dev, "info: --- Rx: Event ---\n");
 		mwl8787_event_rx(priv, skb);
 		break;
 
@@ -679,16 +668,12 @@ static int mwl8787_get_rd_port(struct mwl8787_priv *priv, u8 *port)
 {
 	u32 rd_bitmap = priv->mp_rd_bitmap;
 
-	dev_dbg(priv->dev, "data: mp_rd_bitmap=0x%08x\n", rd_bitmap);
-
 	if (!(rd_bitmap & (CTRL_PORT_MASK | MWL8787_DATA_PORT_MASK)))
 		return -1;
 
 	if ((rd_bitmap & CTRL_PORT_MASK)) {
 		priv->mp_rd_bitmap &= (u32) (~CTRL_PORT_MASK);
 		*port = CTRL_PORT;
-		dev_dbg(priv->dev, "data: port=%d mp_rd_bitmap=0x%08x\n",
-			*port, priv->mp_rd_bitmap);
 		return 0;
 	}
 
@@ -702,21 +687,13 @@ static int mwl8787_get_rd_port(struct mwl8787_priv *priv, u8 *port)
 	if (++priv->curr_rd_port == MWL8787_MAX_PORTS)
 		priv->curr_rd_port = MWL8787_REG_START_RD_PORT;
 
-	dev_dbg(priv->dev,
-		"data: port=%d mp_rd_bitmap=0x%08x -> 0x%08x\n",
-		*port, rd_bitmap, priv->mp_rd_bitmap);
-
 	return 0;
 }
 
 static int mwl8787_sdio_card_to_host(struct mwl8787_priv *priv,
 				     struct sk_buff *skb, u8 port)
 {
-	u32 rx_len = skb->len;
 	u32 pkt_type;
-
-	dev_dbg(priv->dev, "info: RX: port: %d, rx_len: %d\n",
-		port, rx_len);
 
 	if (__mwl8787_sdio_card_to_host(priv, &pkt_type,
 				      skb->data, skb->len,
@@ -907,13 +884,6 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 
 		/* card bitmap holds writes which have completed? */
 		priv->mp_wr_bitmap |= bitmap;
-
-		dev_dbg(priv->dev, "int: DNLD: wr_bitmap=0x%x\n",
-			priv->mp_wr_bitmap);
-		if (bitmap & priv->mp_data_port_mask) {
-			dev_dbg(priv->dev,
-				"info:  <--- Tx DONE Interrupt --->\n");
-		}
 	}
 
 	/* set mp_wr_bitmap for cmd responses */
@@ -924,22 +894,16 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 		bitmap = (u32) priv->mp_regs[MWL8787_RD_BITMAP_L];
 		bitmap |= ((u32) priv->mp_regs[MWL8787_RD_BITMAP_U]) << 8;
 		priv->mp_rd_bitmap = bitmap;
-		dev_dbg(priv->dev, "int: UPLD: rd_bitmap=0x%x\n",
-			priv->mp_rd_bitmap);
 
 		while (true) {
 			ret = mwl8787_get_rd_port(priv, &port);
 			if (ret) {
-				dev_dbg(priv->dev,
-					"info: no more rd_port available\n");
 				break;
 			}
 			len_reg_l = MWL8787_RD_LEN_P0_L + (port << 1);
 			len_reg_u = MWL8787_RD_LEN_P0_U + (port << 1);
 			rx_len = ((u16) priv->mp_regs[len_reg_u]) << 8;
 			rx_len |= (u16) priv->mp_regs[len_reg_l];
-			dev_dbg(priv->dev, "info: RX: port=%d rx_len=%u\n",
-				port, rx_len);
 			rx_blocks = DIV_ROUND_UP(rx_len,
 						 MWL8787_SDIO_BLOCK_SIZE);
 			if (rx_len <= sizeof(struct mwl8787_sdio_header) ||
@@ -961,9 +925,6 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 
 			skb_put(skb, rx_len);
 
-			dev_dbg(priv->dev, "info: rx_len = %d skb->len = %d\n",
-				rx_len, skb->len);
-
 			if (mwl8787_sdio_card_to_host_aggr(priv, skb, port)) {
 				dev_err(priv->dev, "card_to_host failed:"
 					" int status=%#x\n", sdio_ireg);
@@ -978,18 +939,12 @@ term_cmd:
 	/* terminate cmd */
 	if (mwl8787_read_reg(priv, CONFIGURATION_REG, &cr))
 		dev_err(priv->dev, "read CFG reg failed\n");
-	else
-		dev_dbg(priv->dev, "info: CFG reg val = %d\n", cr);
 
 	if (mwl8787_write_reg(priv, CONFIGURATION_REG, (cr | 0x04)))
 		dev_err(priv->dev, "write CFG reg failed\n");
-	else
-		dev_dbg(priv->dev, "info: write success\n");
 
 	if (mwl8787_read_reg(priv, CONFIGURATION_REG, &cr))
 		dev_err(priv->dev, "read CFG reg failed\n");
-	else
-		dev_dbg(priv->dev, "info: CFG reg val =%x\n", cr);
 
 	return -1;
 }
@@ -1165,7 +1120,6 @@ static void mwl8787_interrupt_status(struct mwl8787_priv *priv)
 		 *	UP_LD_CMD_PORT_HOST_INT_STATUS
 		 * Clear the interrupt status register
 		 */
-		dev_dbg(priv->dev, "int: sdio_ireg = %#x\n", sdio_ireg);
 		spin_lock_irqsave(&priv->int_lock, flags);
 		priv->int_status |= sdio_ireg;
 		spin_unlock_irqrestore(&priv->int_lock, flags);
