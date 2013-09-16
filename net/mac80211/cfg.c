@@ -489,6 +489,8 @@ static void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo)
 		sinfo->signal_avg = (s8) -ewma_read(&sta->avg_signal);
 	}
 
+	drv_update_link_stats(local, sdata, sta);
+
 	sta_set_rate_info_tx(sta, &sta->last_tx_rate, &sinfo->txrate);
 	sta_set_rate_info_rx(sta, &sinfo->rxrate);
 
