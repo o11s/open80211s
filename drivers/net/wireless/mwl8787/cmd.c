@@ -424,8 +424,7 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
 			cmd->u.subscribe_events.tlvs;
 		tx_fail_params->hdr.type = cpu_to_le16(MWL8787_TYPE_TX_FAIL);
 		tx_fail_params->hdr.len = cpu_to_le16(2);
-		tx_fail_params->u.tx_fail.fail_threshold =
-			MWL8787_TX_FAIL_THRESHOLD;
+		tx_fail_params->u.tx_fail.fail_threshold = priv->tx_fail;
 		tx_fail_params->u.tx_fail.reporting_freq = 1;
 	}
 

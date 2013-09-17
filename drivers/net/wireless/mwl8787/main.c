@@ -277,9 +277,7 @@ static int mwl8787_start(struct ieee80211_hw *hw)
 	struct mwl8787_priv *priv = hw->priv;
 
 	/* register for tx feedback events */
-	mwl8787_cmd_subscribe_events(priv,
-				     MWL8787_EVT_SUB_TX_STATUS |
-				     MWL8787_EVT_SUB_TX_FAIL);
+	mwl8787_cmd_subscribe_events(priv, MWL8787_EVT_SUB_TX_STATUS);
 
 	return 0;
 }
@@ -439,6 +437,11 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		if (info->use_cts_prot)
 			priv->mac_ctrl |= MWL8787_MAC_ENABLE_CTS;
 		mwl8787_cmd_mac_ctrl(priv, priv->mac_ctrl);
+	}
+
+	if (changed & BSS_CHANGED_LOW_ACK_COUNT) {
+		priv->tx_fail = info->low_ack_count;
+		mwl8787_cmd_subscribe_events(priv, MWL8787_EVT_SUB_TX_FAIL);
 	}
 }
 

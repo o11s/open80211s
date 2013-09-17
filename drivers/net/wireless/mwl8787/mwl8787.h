@@ -16,7 +16,6 @@
 
 #define MWL8787_TX_CT_HI		100
 #define MWL8787_TX_CT_LO		80
-#define MWL8787_TX_FAIL_THRESHOLD	50
 
 /*
  * We can only track 7 frames in the sdio aggregation buffer: because
@@ -125,6 +124,9 @@ struct mwl8787_priv
 	u8 curr_rd_port;
 	u8 curr_wr_port;
 	u8 mp_end_port;
+
+	/* tx failure event threshold */
+	int tx_fail;
 
 	struct {
 		u8 *buf;
