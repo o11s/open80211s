@@ -542,6 +542,60 @@ int mwl8787_cmd_log(struct mwl8787_priv *priv,
 	return 0;
 }
 
+int mwl8787_cmd_link_stats(struct mwl8787_priv *priv, u8 *addr,
+			   struct ieee80211_link_stats *stats)
+{
+	struct mwl8787_cmd *cmd, *resp;
+	struct sk_buff *reply_skb;
+	enum ieee80211_band band = priv->hw->conf.chandef.chan->band;
+	struct ieee80211_supported_band *sband = priv->hw->wiphy->bands[band];
+	int idx, ret, fwrate;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_TX_RATE_QUERY,
+				sizeof(struct mwl8787_cmd_rate_query),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	memcpy(&cmd->u.rate_query.addr, addr, ETH_ALEN);
+	ret = mwl8787_send_cmd_reply(priv, cmd, &reply_skb);
+	mwl8787_cmd_free(priv, cmd);
+	if (ret)
+		return ret;
+
+	resp = (struct mwl8787_cmd *) reply_skb->data;
+
+	fwrate = resp->u.rate_query.tx_rate;
+
+	stats->last_tx_rate.count = 1;
+	if (resp->u.rate_query.ht_info & BIT(0)) {
+		stats->last_tx_rate.idx = fwrate;
+		stats->last_tx_rate.flags |= IEEE80211_TX_RC_MCS;
+		if (resp->u.rate_query.ht_info & BIT(1))
+			stats->last_tx_rate.flags |=
+						  IEEE80211_TX_RC_40_MHZ_WIDTH;
+		if (resp->u.rate_query.ht_info & BIT(2))
+			stats->last_tx_rate.flags |= IEEE80211_TX_RC_SHORT_GI;
+	} else {
+		for (idx = 0; idx < sband->n_bitrates; idx++) {
+			/* fw rate is in 500kb/s */
+			if (fwrate * 5 == sband->bitrates[idx].bitrate)
+				break;
+		}
+
+		if (idx == sband->n_bitrates) {
+			dev_err(priv->dev, "got bogus tx rate?\n");
+			ret = -ENOENT;
+			goto out;
+		}
+		stats->last_tx_rate.idx = idx;
+	}
+
+out:
+	dev_kfree_skb_any(reply_skb);
+	return ret;
+}
+
 int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
 {
 	struct mwl8787_cmd *cmd;
