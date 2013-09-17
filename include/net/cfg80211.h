@@ -1108,6 +1108,7 @@ struct bss_parameters {
  *	setting for new peer links.
  * @dot11MeshAwakeWindowDuration: The duration in TUs the STA will remain awake
  *	after transmitting its beacon.
+ * @low_ack: low ACK threshold.
  */
 struct mesh_config {
 	u16 dot11MeshRetryTimeout;
@@ -1137,6 +1138,7 @@ struct mesh_config {
 	u16 dot11MeshHWMPconfirmationInterval;
 	enum nl80211_mesh_power_mode power_mode;
 	u16 dot11MeshAwakeWindowDuration;
+	u32 low_ack;
 };
 
 /**
