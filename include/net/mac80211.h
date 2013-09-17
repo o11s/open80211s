@@ -940,7 +940,7 @@ struct ieee80211_rx_status {
 /**
  * struct ieee80211_link_stats - information about link adaptation
  *
- * @fail_avg: estimated frame error rate
+ * @fail_avg: estimated frame error rate for @last_tx_rate
  * @last_tx_rate: rate used in last successful transmission
  */
 struct ieee80211_link_stats {
