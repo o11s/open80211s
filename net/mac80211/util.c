@@ -1618,7 +1618,8 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 			changed |= BSS_CHANGED_IBSS;
 			/* fall through */
 		case NL80211_IFTYPE_AP:
-			changed |= BSS_CHANGED_SSID | BSS_CHANGED_P2P_PS;
+			changed |= BSS_CHANGED_SSID | BSS_CHANGED_P2P_PS |
+				   BSS_CHANGED_LOW_ACK_COUNT;
 
 			if (sdata->vif.type == NL80211_IFTYPE_AP) {
 				changed |= BSS_CHANGED_AP_PROBE_RESP;
@@ -1631,7 +1632,8 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		case NL80211_IFTYPE_MESH_POINT:
 			if (sdata->vif.bss_conf.enable_beacon) {
 				changed |= BSS_CHANGED_BEACON |
-					   BSS_CHANGED_BEACON_ENABLED;
+					   BSS_CHANGED_BEACON_ENABLED |
+					   BSS_CHANGED_LOW_ACK_COUNT;
 				ieee80211_bss_info_change_notify(sdata, changed);
 			}
 			break;

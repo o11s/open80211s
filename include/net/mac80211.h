@@ -225,6 +225,8 @@ struct ieee80211_chanctx_conf {
  * @BSS_CHANGED_BANDWIDTH: The bandwidth used by this interface changed,
  *	note that this is only called when it changes after the channel
  *	context had been assigned.
+ *@BSS_CHANGED_LOW_ACK_COUNT: The low ack count notification threshold for this
+ *	interface changed.
  */
 enum ieee80211_bss_change {
 	BSS_CHANGED_ASSOC		= 1<<0,
@@ -249,6 +251,7 @@ enum ieee80211_bss_change {
 	BSS_CHANGED_P2P_PS		= 1<<19,
 	BSS_CHANGED_BEACON_INFO		= 1<<20,
 	BSS_CHANGED_BANDWIDTH		= 1<<21,
+	BSS_CHANGED_LOW_ACK_COUNT	= 1<<22,
 
 	/* when adding here, make sure to change ieee80211_reconfig */
 };
@@ -337,6 +340,7 @@ enum ieee80211_rssi_event {
  * @hidden_ssid: The SSID of the current vif is hidden. Only valid in AP-mode.
  * @txpower: TX power in dBm
  * @p2p_noa_attr: P2P NoA attribute for P2P powersave
+ * @low_ack_count: Current low ACK count notification threshold.
  */
 struct ieee80211_bss_conf {
 	const u8 *bssid;
@@ -371,6 +375,7 @@ struct ieee80211_bss_conf {
 	size_t ssid_len;
 	bool hidden_ssid;
 	int txpower;
+	int low_ack_count;
 	struct ieee80211_p2p_noa_attr p2p_noa_attr;
 };
 
