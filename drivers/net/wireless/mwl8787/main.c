@@ -518,6 +518,15 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	return 0;
 }
 
+static int mwl8787_link_stats(struct ieee80211_hw *hw,
+			      struct ieee80211_vif *vif,
+			      u8 *peer,
+			      struct ieee80211_link_stats *stats)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	return mwl8787_cmd_link_stats(priv, peer, stats);
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -536,6 +545,7 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.sta_add = mwl8787_sta_add,
 	.sta_remove = mwl8787_sta_remove,
 	.ampdu_action = mwl8787_ampdu_action,
+	.get_link_stats = mwl8787_link_stats,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };

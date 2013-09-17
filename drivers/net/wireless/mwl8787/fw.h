@@ -175,6 +175,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
 	MWL8787_CMD_SUBSCRIBE_EVENTS	= 0x0075,
+	MWL8787_CMD_TX_RATE_QUERY	= 0x007f,
 	MWL8787_CMD_GET_TSF		= 0x0080,
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
@@ -366,6 +367,12 @@ struct mwl8787_cmd_header {
 	__le16 result;
 } __packed;
 
+struct mwl8787_cmd_rate_query {
+	u8 tx_rate;
+	u8 ht_info;
+	u8 addr[ETH_ALEN];
+};
+
 struct mwl8787_tlv_header {
 	__le16 type;
 	__le16 len;
@@ -482,6 +489,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_set_peer set_peer;
 		struct mwl8787_cmd_del_peer del_peer;
 		struct mwl8787_cmd_addba_req addba_req;
+		struct mwl8787_cmd_rate_query rate_query;
 		u8 data[0];
 	} u;
 } __packed;
