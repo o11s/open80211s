@@ -1223,6 +1223,7 @@ struct bss_parameters {
  * @plink_timeout: If no tx activity is seen from a STA we've established
  *	peering with for longer than this time (in seconds), then remove it
  *	from the STA's list of peers.  Default is 30 minutes.
+ * @low_ack: low ACK threshold.
  */
 struct mesh_config {
 	u16 dot11MeshRetryTimeout;
@@ -1253,6 +1254,7 @@ struct mesh_config {
 	enum nl80211_mesh_power_mode power_mode;
 	u16 dot11MeshAwakeWindowDuration;
 	u32 plink_timeout;
+	u32 low_ack;
 };
 
 /**
