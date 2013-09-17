@@ -566,6 +566,7 @@ int mwl8787_cmd_link_stats(struct mwl8787_priv *priv, u8 *addr,
 	resp = (struct mwl8787_cmd *) reply_skb->data;
 
 	fwrate = resp->u.rate_query.tx_rate;
+	stats->fail_avg = le32_to_cpu(resp->u.rate_query.tx_err);
 
 	stats->last_tx_rate.count = 1;
 	if (resp->u.rate_query.ht_info & BIT(0)) {
