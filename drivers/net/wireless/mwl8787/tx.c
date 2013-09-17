@@ -84,7 +84,7 @@ void mwl8787_tx_fail(struct mwl8787_priv *priv,
 	sta = ieee80211_find_sta_by_ifaddr(priv->hw, tx_fail->addr,
 					   priv->addr);
 	if (sta)
-		ieee80211_report_low_ack(sta, MWL8787_TX_FAIL_THRESHOLD);
+		ieee80211_report_low_ack(sta, priv->tx_fail);
 	rcu_read_unlock();
 }
 
