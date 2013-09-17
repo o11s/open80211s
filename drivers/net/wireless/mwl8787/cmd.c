@@ -723,5 +723,6 @@ int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
 			return -ECANCELED;
 	}
 	/* successful addba, record ssn and all that */
+	dev_kfree_skb_any(reply_skb);
 	return 0;
 }
