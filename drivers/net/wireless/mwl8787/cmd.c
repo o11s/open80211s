@@ -699,7 +699,7 @@ int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
 
 	memcpy(cmd->u.addba_req.addr, sta->addr, ETH_ALEN);
 	cmd->u.addba_req.ba_param_set = cpu_to_le16(block_params);
-	cmd->u.addba_req.ssn = ssn;
+	cmd->u.addba_req.ssn = cpu_to_le16(ssn);
 
 	ret = mwl8787_send_cmd(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);
