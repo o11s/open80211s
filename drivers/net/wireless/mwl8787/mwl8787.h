@@ -46,6 +46,7 @@ enum mwl8787_ampdu_state {
 struct mwl8787_sta
 {
 	struct mwl8787_priv *priv;
+	struct ieee80211_sta *sta;
 	struct work_struct ampdu_work;
 	enum mwl8787_ampdu_state ampdu_state[IEEE80211_NUM_TIDS];
 };
