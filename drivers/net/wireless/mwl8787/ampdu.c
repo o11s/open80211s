@@ -6,31 +6,17 @@ void mwl8787_ampdu_work(struct work_struct *work)
 	struct mwl8787_sta *mwl8787_sta;
 	struct ieee80211_sta *sta;
 	int tid;
-	int ret;
 
 	mwl8787_sta = container_of(work, struct mwl8787_sta, ampdu_work);
-	/* warns because drv_priv is (u8 *) */
-	sta = container_of(mwl8787_sta, struct ieee80211_sta, drv_priv);
+	sta = mwl8787_sta->sta;
 	priv = mwl8787_sta->priv;
 
-	for (tid=0; tid < IEEE80211_NUM_TIDS; tid++)
-	{
+	for (tid=0; tid < IEEE80211_NUM_TIDS; tid++) {
 		if (mwl8787_sta->ampdu_state[tid] != MWL8787_AMPDU_INIT)
 			continue;
 
 		/* start a new ba session */
-		mwl8787_sta->ampdu_state[tid] = MWL8787_AMPDU_START;
-		dev_dbg(priv->dev, "starting addba with sta %pM tid %d\n",
-			sta->addr, tid);
-		ret = mwl8787_cmd_addba_req(priv, sta, tid);
-		if (ret) {
-			dev_dbg(priv->dev,
-				"addba with sta %pM tid %d failed: %d\n",
-				sta->addr, tid, ret);
-			mwl8787_sta->ampdu_state[tid] = MWL8787_AMPDU_NONE;
-			priv->num_ampdu_sessions--;
-		}
-		/* TODO listen for DELBA event and clear state etc. */
+		ieee80211_start_tx_ba_session(sta, tid, 5000);
 	}
 }
 

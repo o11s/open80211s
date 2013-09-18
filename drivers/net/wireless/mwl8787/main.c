@@ -464,6 +464,8 @@ static int mwl8787_sta_add(struct ieee80211_hw *hw,
 	struct mwl8787_sta *mwl8787_sta = (struct mwl8787_sta *) sta->drv_priv;
 
 	mwl8787_sta->priv = hw->priv;
+	mwl8787_sta->sta = sta;
+
 	INIT_WORK(&mwl8787_sta->ampdu_work, mwl8787_ampdu_work);
 	mwl8787_cmd_set_peer(hw->priv, sta);
 	return 0;
@@ -509,13 +511,35 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 				struct ieee80211_sta *sta,
 				u16 tid, u16 *ssn, u8 buf_size)
 {
+	struct mwl8787_priv *priv = hw->priv;
+	struct mwl8787_sta *priv_sta;
+	int ret;
+
 	switch (action) {
 	case IEEE80211_AMPDU_RX_START:
 		return 0;
 	case IEEE80211_AMPDU_RX_STOP:
 		return 0;
-	default:
-		/* TX ampdu handled by firmware */
+	case IEEE80211_AMPDU_TX_START:
+		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
+		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_START;
+
+		ret = mwl8787_cmd_addba_req(priv, sta, tid);
+		if (ret)
+			return ret;
+
+		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
+		break;
+	case IEEE80211_AMPDU_TX_OPERATIONAL:
+		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
+		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_OPERATIONAL;
+		break;
+	case IEEE80211_AMPDU_TX_STOP_CONT:
+	case IEEE80211_AMPDU_TX_STOP_FLUSH:
+	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
+		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
+		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_NONE;
+		break;
 		return -EOPNOTSUPP;
 	}
 	return 0;
@@ -588,7 +612,6 @@ struct mwl8787_priv *mwl8787_init(void)
 		IEEE80211_HW_REPORTS_TX_ACK_STATUS |
 		IEEE80211_HW_CONNECTION_MONITOR |
 		IEEE80211_HW_AMPDU_AGGREGATION |
-		IEEE80211_HW_TX_AMPDU_SETUP_IN_HW |
 		IEEE80211_HW_SIGNAL_DBM;
 
 	hw->queues = IEEE80211_NUM_ACS;
