@@ -540,7 +540,6 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_NONE;
 		break;
-		return -EOPNOTSUPP;
 	}
 	return 0;
 }
