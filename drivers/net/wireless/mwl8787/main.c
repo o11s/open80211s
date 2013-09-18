@@ -523,15 +523,18 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_TX_START:
 		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
 		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_START;
-
-		ret = mwl8787_cmd_addba_req(priv, sta, tid);
-		if (ret)
-			return ret;
+		priv_sta->ssn[tid] = *ssn;
 
 		ieee80211_start_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		break;
 	case IEEE80211_AMPDU_TX_OPERATIONAL:
 		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
+
+		ret = mwl8787_cmd_addba_req(priv, sta, tid,
+					    priv_sta->ssn[tid], buf_size);
+		if (ret)
+			return ret;
+
 		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_OPERATIONAL;
 		break;
 	case IEEE80211_AMPDU_TX_STOP_CONT:
