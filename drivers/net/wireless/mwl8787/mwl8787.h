@@ -49,6 +49,7 @@ struct mwl8787_sta
 	struct ieee80211_sta *sta;
 	struct work_struct ampdu_work;
 	enum mwl8787_ampdu_state ampdu_state[IEEE80211_NUM_TIDS];
+	int ssn[IEEE80211_NUM_TIDS];
 };
 
 struct mwl8787_priv;
@@ -193,7 +194,8 @@ int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr);
 int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
 int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
 int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
-			  struct ieee80211_sta *sta, u16 tid);
+			  struct ieee80211_sta *sta,
+			  u16 tid, u16 ssn, u8 buf_size);
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
