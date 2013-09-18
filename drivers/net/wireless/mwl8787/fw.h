@@ -111,6 +111,7 @@ enum mwl8787_tx_flags {
 enum mwl8787_tx_ctl {
 	MWL8787_ASSIGN_SEQ		= BIT(16),
 	MWL8787_REQ_TX_STATUS		= BIT(17),
+	MWL8787_AMPDU			= BIT(18),
 };
 
 enum mwl8787_rx_ht_info {
