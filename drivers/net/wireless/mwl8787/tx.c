@@ -29,6 +29,9 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
 		tx_ctl |= MWL8787_REQ_TX_STATUS;
 
+	if (info->flags & IEEE80211_TX_CTL_AMPDU)
+		tx_ctl |= MWL8787_AMPDU;
+
 	desc->tx_control = cpu_to_le32(tx_ctl);
 }
 
