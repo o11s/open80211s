@@ -373,7 +373,7 @@ struct mwl8787_cmd_rate_query {
 	u8 ht_info;
 	u8 addr[ETH_ALEN];
 	__le32 tx_err;
-};
+} __packed;
 
 struct mwl8787_tlv_header {
 	__le16 type;
