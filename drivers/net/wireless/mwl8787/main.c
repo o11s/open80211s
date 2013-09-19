@@ -12,7 +12,7 @@
 #define CHAN(_freq, _idx) { \
 	.center_freq = (_freq), \
 	.hw_value = (_idx), \
-	.max_power = 20, \
+	.max_power = MWL8787_DEFAULT_TX_POWER, \
 }
 
 static char *mwl8787_modparam_mac_addr;
@@ -175,6 +175,9 @@ static int mwl8787_fw_init_cmd(struct mwl8787_priv *priv)
 		&priv->hw->wiphy->bands[IEEE80211_BAND_2GHZ]->ht_cap);
 	mwl8787_setup_ht_cap(priv,
 		&priv->hw->wiphy->bands[IEEE80211_BAND_5GHZ]->ht_cap);
+
+	/* set default txpower */
+	mwl8787_cmd_tx_power(priv, MWL8787_DEFAULT_TX_POWER);
 
 	/* turn on the radio */
 	ret = mwl8787_cmd_radio_ctrl(priv, true);
@@ -443,6 +446,9 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		priv->tx_fail = info->low_ack_count;
 		mwl8787_cmd_subscribe_events(priv, MWL8787_EVT_SUB_TX_FAIL);
 	}
+
+	if (changed & BSS_CHANGED_TXPOWER)
+		mwl8787_cmd_tx_power(priv, info->txpower);
 }
 
 static int mwl8787_set_rts_threshold(struct ieee80211_hw *hw, u32 value)

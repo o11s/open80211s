@@ -89,6 +89,8 @@
 
 #define MRVL_MCS_SHIFT			14
 
+#define MWL8787_DEFAULT_TX_POWER	30	/* dBm */
+
 enum mwl8787_bss_type {
 	MWL8787_BSS_TYPE_CLIENT		= 0x00,
 	MWL8787_BSS_TYPE_AP		= 0x01,
@@ -183,6 +185,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_ADDBA_REQ		= 0x00ce,
 	MWL8787_CMD_ADDBA_RSP		= 0x00cf,
 	MWL8787_CMD_DELBA		= 0x00d0,
+	MWL8787_CMD_TX_POWER		= 0x00d1,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 	MWL8787_CMD_SET_TSF		= 0x010f,
 	MWL8787_CMD_SET_PEER		= 0x0110,
@@ -210,12 +213,25 @@ enum mwl8787_event_sub_flags {
 	MWL8787_EVT_SUB_TX_STATUS	= BIT(12),
 };
 
+enum mwl8787_modulation_class {
+	MWL8787_MOD_DSSS		= 0x03,
+	MWL8787_MOD_OFDM		= 0x07,
+	MWL8787_MOD_HT			= 0x08,
+};
+
+enum mwl8787_modulation_max_rate {
+	MWL8787_MAX_RATE_DSSS		= 0x03,
+	MWL8787_MAX_RATE_OFDM		= 0x07,
+	MWL8787_MAX_RATE_HT		= 0x20,
+};
+
 enum mwl8787_tlv_type {
 	MWL8787_TYPE_CHANLIST		= 0x0101,
 	MWL8787_TYPE_NUM_PROBES		= 0x0102,
 	MWL8787_TYPE_TX_FAIL		= 0x0106,
 	MWL8787_TYPE_WILDCARD_SSID	= 0x0112,
 	MWL8787_TYPE_BAND_CHAN		= 0x012A,
+	MWL8787_TLV_POWER_GROUP		= 0x0154,
 };
 
 struct mwl8787_cmd_hw_spec {
@@ -361,6 +377,13 @@ struct mwl8787_cmd_addba_req {
 	__le16 ssn;
 } __packed;
 
+struct mwl8787_cmd_tx_power {
+	__le16 action;
+	__le16 cfg_index;
+	__le32 user_defined;
+	u8 power_group_tlv[0];
+} __packed;
+
 struct mwl8787_cmd_header {
 	__le16 id;
 	__le16 len;
@@ -410,6 +433,21 @@ struct mwl8787_tlv_ht_cap {
 struct mwl8787_tlv_tx_fail {
 	u8 fail_threshold;
 	u8 reporting_freq;
+} __packed;
+
+struct mwl8787_power_group {
+	u8 mod_class;
+	u8 start_rate;
+	u8 end_rate;
+	u8 power_step;
+	u8 power_min;
+	u8 power_max;
+	u8 ht40;
+	u8 reserved;
+} __packed;
+
+struct mwl8787_tlv_power_group {
+	struct mwl8787_power_group groups[4];
 } __packed;
 
 struct mwl8787_channel_param {
@@ -492,6 +530,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_del_peer del_peer;
 		struct mwl8787_cmd_addba_req addba_req;
 		struct mwl8787_cmd_rate_query rate_query;
+		struct mwl8787_cmd_tx_power tx_power;
 		u8 data[0];
 	} u;
 } __packed;
@@ -500,6 +539,7 @@ struct mwl8787_tlv {
 	struct mwl8787_tlv_header hdr;
 	union {
 		struct mwl8787_tlv_tx_fail tx_fail;
+		struct mwl8787_tlv_power_group power_group;
 		u8 data[0];
 	} u;
 } __packed;
