@@ -196,6 +196,8 @@ int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
 int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
 			  struct ieee80211_sta *sta,
 			  u16 tid, u16 ssn, u8 buf_size);
+int mwl8787_cmd_tx_power(struct mwl8787_priv *priv, int max_tx_power);
+
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,

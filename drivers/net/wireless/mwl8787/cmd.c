@@ -706,3 +706,48 @@ int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
 
 	return ret;
 }
+
+int mwl8787_cmd_tx_power(struct mwl8787_priv *priv, int max_tx_power)
+{
+	struct mwl8787_cmd *cmd;
+	struct mwl8787_tlv *power_tlv;
+	struct mwl8787_power_group *groups;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_TX_POWER,
+				sizeof(struct mwl8787_cmd_tx_power) +
+				sizeof(struct mwl8787_tlv_header) +
+				sizeof(struct mwl8787_tlv_power_group),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.tx_power.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.tx_power.user_defined = cpu_to_le32(1);
+
+	power_tlv = (void *) &cmd->u.tx_power.power_group_tlv[0];
+	power_tlv->hdr.type = cpu_to_le16(MWL8787_TLV_POWER_GROUP);
+	power_tlv->hdr.len =
+		cpu_to_le16(sizeof(struct mwl8787_tlv_power_group));
+
+#define POWER_GROUP(_class, _tx_power, _ht40) (struct mwl8787_power_group) { \
+	.mod_class = MWL8787_MOD_ ## _class, \
+	.end_rate = MWL8787_MAX_RATE_ ## _class, \
+	.power_min = _tx_power, \
+	.power_max = _tx_power, \
+	.ht40 = _ht40, \
+}
+	groups = power_tlv->u.power_group.groups;
+	*groups++ = POWER_GROUP(DSSS, max_tx_power, 0);
+	*groups++ = POWER_GROUP(OFDM, max_tx_power, 0);
+	*groups++ = POWER_GROUP(HT, max_tx_power, 0);
+	*groups++ = POWER_GROUP(HT, max_tx_power, 1);
+
+#undef POWER_GROUP
+
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
