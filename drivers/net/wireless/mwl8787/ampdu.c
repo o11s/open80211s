@@ -38,6 +38,9 @@ void mwl8787_ampdu_check(struct mwl8787_priv *priv,
 	if (!ieee80211_is_data_qos(hdr->frame_control))
 		return;
 
+	if (skb_get_queue_mapping(skb) == IEEE80211_AC_VO)
+		return;
+
 	qc = ieee80211_get_qos_ctl(hdr);
 	tid = qc[0] & IEEE80211_QOS_CTL_TID_MASK;
 
