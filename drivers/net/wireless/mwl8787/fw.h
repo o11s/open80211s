@@ -379,6 +379,13 @@ struct mwl8787_cmd_addba_req {
 	__le16 ssn;
 } __packed;
 
+struct mwl8787_cmd_delba {
+	u8 del_result;
+	u8 addr[ETH_ALEN];
+	__le16 ba_param_set;
+	u16 reason_code;
+} __packed;
+
 struct mwl8787_cmd_tx_power {
 	__le16 action;
 	__le16 cfg_index;
@@ -531,6 +538,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_set_peer set_peer;
 		struct mwl8787_cmd_del_peer del_peer;
 		struct mwl8787_cmd_addba_req addba_req;
+		struct mwl8787_cmd_delba delba;
 		struct mwl8787_cmd_rate_query rate_query;
 		struct mwl8787_cmd_tx_power tx_power;
 		u8 data[0];

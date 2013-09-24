@@ -700,6 +700,32 @@ int mwl8787_cmd_addba_req(struct mwl8787_priv *priv,
 	return ret;
 }
 
+int mwl8787_cmd_delba(struct mwl8787_priv *priv,
+		      struct ieee80211_sta *sta,
+		      u16 tid)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+	u16 block_params;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_DELBA,
+				sizeof(struct mwl8787_cmd_delba),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	block_params = tid << 12 |
+		       1 << 11;		/* originator */
+
+	memcpy(cmd->u.delba.addr, sta->addr, ETH_ALEN);
+	cmd->u.delba.ba_param_set = cpu_to_le16(block_params);
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
+
 int mwl8787_cmd_tx_power(struct mwl8787_priv *priv, int max_tx_power)
 {
 	struct mwl8787_cmd *cmd;

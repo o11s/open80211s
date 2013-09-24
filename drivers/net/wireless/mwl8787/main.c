@@ -529,8 +529,6 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_RX_STOP:
 		return 0;
 	case IEEE80211_AMPDU_TX_START:
-		return -EOPNOTSUPP;
-
 		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
 		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_START;
 		priv_sta->ssn[tid] = *ssn;
@@ -550,6 +548,7 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
+		mwl8787_cmd_delba(priv, sta, tid);
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		priv_sta->ampdu_state[tid] = MWL8787_AMPDU_NONE;
 		break;
