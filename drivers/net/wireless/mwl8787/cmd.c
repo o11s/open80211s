@@ -400,7 +400,8 @@ int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
 }
 
 
-int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
+int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 action,
+				 u16 events)
 {
 	struct mwl8787_cmd *cmd;
 	struct mwl8787_tlv *tx_fail_params;
@@ -416,7 +417,7 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 events)
 	if (!cmd)
 		return -ENOMEM;
 
-	cmd->u.subscribe_events.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.subscribe_events.action = cpu_to_le16(action);
 	cmd->u.subscribe_events.events = cpu_to_le16(events);
 
 	if (events & MWL8787_EVT_SUB_TX_FAIL) {

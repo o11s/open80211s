@@ -37,6 +37,8 @@
 
 #define MWL8787_ACT_GET				0
 #define MWL8787_ACT_SET				1
+#define MWL8787_ACT_BITWISE_SET			2
+#define MWL8787_ACT_BITWISE_CLR			3
 
 #define MWL8787_CMD_RET_BIT			0x8000
 
