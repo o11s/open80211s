@@ -322,7 +322,7 @@ config HID_LCPOWER
 
 config HID_LENOVO_TPKBD
 	tristate "Lenovo ThinkPad USB Keyboard with TrackPoint"
-	depends on USB_HID
+	depends on HID
 	select NEW_LEDS
 	select LEDS_CLASS
 	---help---
@@ -773,7 +773,7 @@ config HID_ZYDACRON
 
 config HID_SENSOR_HUB
 	tristate "HID Sensors framework support"
-	depends on HID && GENERIC_HARDIRQS
+	depends on HID
 	select MFD_CORE
 	default n
 	---help---
