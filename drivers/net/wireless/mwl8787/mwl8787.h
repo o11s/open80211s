@@ -117,6 +117,8 @@ struct mwl8787_priv
 
 	struct dentry *dfs_dev_dir;
 
+	bool stopped[IEEE80211_NUM_ACS];
+
 	/* sdio */
 	u32 ioport;
 	u8 *mp_regs;

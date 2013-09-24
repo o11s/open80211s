@@ -1,5 +1,23 @@
 #include "mwl8787.h"
 
+static inline void mwl8787_stop_queue(struct mwl8787_priv *priv, u8 q)
+{
+	if (priv->stopped[q])
+		return;
+
+	priv->stopped[q] = true;
+	ieee80211_stop_queue(priv->hw, q);
+}
+
+static inline void mwl8787_start_queue(struct mwl8787_priv *priv, u8 q)
+{
+	if (!priv->stopped[q])
+		return;
+
+	priv->stopped[q] = false;
+	ieee80211_wake_queue(priv->hw, q);
+}
+
 static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 			     struct sk_buff *skb)
 {
@@ -71,7 +89,7 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 	ieee80211_tx_status_irqsafe(priv->hw, skb);
 
 	if (atomic_dec_return(&priv->tx_pending[hw_queue]) <= MWL8787_TX_CT_LO)
-		ieee80211_wake_queue(priv->hw, hw_queue);
+		mwl8787_start_queue(priv, hw_queue);
 }
 
 void mwl8787_tx_fail(struct mwl8787_priv *priv,
@@ -147,7 +165,9 @@ void mwl8787_tx_work(struct work_struct *work)
 		if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
 			skb_queue_tail(&priv->tx_status_queue[hw_queue], skb);
 		else {
-			atomic_dec_return(&priv->tx_pending[hw_queue]);
+			if (atomic_dec_return(&priv->tx_pending[hw_queue]) <=
+			    MWL8787_TX_CT_LO)
+				mwl8787_start_queue(priv, hw_queue);
 			ieee80211_free_txskb(priv->hw, skb);
 		}
 	}
@@ -162,7 +182,7 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 	u8 hw_queue = info->hw_queue;
 
 	if (atomic_inc_return(&priv->tx_pending[hw_queue]) >= MWL8787_TX_CT_HI)
-		ieee80211_stop_queue(hw, hw_queue);
+		mwl8787_stop_queue(priv, hw_queue);
 
 	mwl8787_ampdu_check(priv, control->sta, skb);
 
