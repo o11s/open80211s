@@ -398,7 +398,8 @@ void
 nouveau_fbcon_output_poll_changed(struct drm_device *dev)
 {
 	struct nouveau_drm *drm = nouveau_drm(dev);
-	drm_fb_helper_hotplug_event(&drm->fbcon->helper);
+	if (drm->fbcon)
+		drm_fb_helper_hotplug_event(&drm->fbcon->helper);
 }
 
 static int
@@ -453,7 +454,8 @@ nouveau_fbcon_init(struct drm_device *dev)
 	int preferred_bpp;
 	int ret;
 
-	if (!dev->mode_config.num_crtc)
+	if (!dev->mode_config.num_crtc ||
+	    (dev->pdev->class >> 8) != PCI_CLASS_DISPLAY_VGA)
 		return 0;
 
 	fbcon = kzalloc(sizeof(struct nouveau_fbdev), GFP_KERNEL);

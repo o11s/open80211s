@@ -24,7 +24,7 @@
 #define BHRB_MAX_ENTRIES	32
 #define BHRB_TARGET		0x0000000000000002
 #define BHRB_PREDICTION		0x0000000000000001
-#define BHRB_EA			0xFFFFFFFFFFFFFFFC
+#define BHRB_EA			0xFFFFFFFFFFFFFFFCUL
 
 struct cpu_hw_events {
 	int n_events;
@@ -484,7 +484,7 @@ static bool is_ebb_event(struct perf_event *event)
 	 * use bit 63 of the event code for something else if they wish.
 	 */
 	return (ppmu->flags & PPMU_EBB) &&
-	       ((event->attr.config >> EVENT_CONFIG_EBB_SHIFT) & 1);
+	       ((event->attr.config >> PERF_EVENT_CONFIG_EBB_SHIFT) & 1);
 }
 
 static int ebb_event_check(struct perf_event *event)
