@@ -143,7 +143,6 @@ int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 	int ret;
 	u16 cmdid;
 	u16 result;
-	struct timeval tstamp;
 	bool free_skb = true;
 
 	if (!skb) {
@@ -158,14 +157,7 @@ int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 	cmdid = le16_to_cpu(resp->hdr.id);
 	result = le16_to_cpu(resp->hdr.result);
 
-	do_gettimeofday(&tstamp);
-	dev_dbg(priv->dev, "cmd: CMD_RESP: (%lu.%lu): 0x%x, result %d,"
-		" len %d, seqno 0x%x\n",
-	       tstamp.tv_sec, tstamp.tv_usec, cmdid, result,
-	       le16_to_cpu(resp->hdr.len), le16_to_cpu(resp->hdr.seq));
-
 	if (!(cmdid & MWL8787_CMD_RET_BIT)) {
-		dev_err(priv->dev, "CMD_RESP: invalid cmd resp\n");
 		ret = -EIO;
 		goto out;
 	}
