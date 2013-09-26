@@ -3315,28 +3315,36 @@ static void rt2800_config_channel(struct rt2x00_dev *rt2x00dev,
 		rt2800_rfcsr_write(rt2x00dev, 8, 0x80);
 
 	if (rt2x00_rt(rt2x00dev, RT3593)) {
-		if (rt2x00_is_usb(rt2x00dev)) {
-			rt2800_register_read(rt2x00dev, GPIO_CTRL, &reg);
+		rt2800_register_read(rt2x00dev, GPIO_CTRL, &reg);
 
-			/* Band selection. GPIO #8 controls all paths */
+		/* Band selection */
+		if (rt2x00_is_usb(rt2x00dev) ||
+		    rt2x00_is_pcie(rt2x00dev)) {
+			/* GPIO #8 controls all paths */
 			rt2x00_set_field32(&reg, GPIO_CTRL_DIR8, 0);
 			if (rf->channel <= 14)
 				rt2x00_set_field32(&reg, GPIO_CTRL_VAL8, 1);
 			else
 				rt2x00_set_field32(&reg, GPIO_CTRL_VAL8, 0);
+		}
 
+		/* LNA PE control. */
+		if (rt2x00_is_usb(rt2x00dev)) {
+			/* GPIO #4 controls PE0 and PE1,
+			 * GPIO #7 controls PE2
+			 */
 			rt2x00_set_field32(&reg, GPIO_CTRL_DIR4, 0);
 			rt2x00_set_field32(&reg, GPIO_CTRL_DIR7, 0);
 
-			/* LNA PE control.
-			* GPIO #4 controls PE0 and PE1,
-			* GPIO #7 controls PE2
-			*/
 			rt2x00_set_field32(&reg, GPIO_CTRL_VAL4, 1);
 			rt2x00_set_field32(&reg, GPIO_CTRL_VAL7, 1);
-
-			rt2800_register_write(rt2x00dev, GPIO_CTRL, reg);
+		} else if (rt2x00_is_pcie(rt2x00dev)) {
+			/* GPIO #4 controls PE0, PE1 and PE2 */
+			rt2x00_set_field32(&reg, GPIO_CTRL_DIR4, 0);
+			rt2x00_set_field32(&reg, GPIO_CTRL_VAL4, 1);
 		}
+
+		rt2800_register_write(rt2x00dev, GPIO_CTRL, reg);
 
 		/* AGC init */
 		if (rf->channel <= 14)
@@ -5985,7 +5993,7 @@ static void rt2800_init_rfcsr_30xx(struct rt2x00_dev *rt2x00dev)
 	rt2800_rfcsr_write(rt2x00dev, 20, 0xba);
 	rt2800_rfcsr_write(rt2x00dev, 21, 0xdb);
 	rt2800_rfcsr_write(rt2x00dev, 24, 0x16);
-	rt2800_rfcsr_write(rt2x00dev, 25, 0x01);
+	rt2800_rfcsr_write(rt2x00dev, 25, 0x03);
 	rt2800_rfcsr_write(rt2x00dev, 29, 0x1f);
 
 	if (rt2x00_rt_rev_lt(rt2x00dev, RT3070, REV_RT3070F)) {
@@ -6653,17 +6661,20 @@ int rt2800_enable_radio(struct rt2x00_dev *rt2x00dev)
 	u16 word;
 
 	/*
-	 * Initialize all registers.
+	 * Initialize MAC registers.
 	 */
 	if (unlikely(rt2800_wait_wpdma_ready(rt2x00dev) ||
 		     rt2800_init_registers(rt2x00dev)))
 		return -EIO;
 
+	/*
+	 * Wait BBP/RF to wake up.
+	 */
 	if (unlikely(rt2800_wait_bbp_rf_ready(rt2x00dev)))
 		return -EIO;
 
 	/*
-	 * Send signal to firmware during boot time.
+	 * Send signal during boot time to initialize firmware.
 	 */
 	rt2800_register_write(rt2x00dev, H2M_BBP_AGENT, 0);
 	rt2800_register_write(rt2x00dev, H2M_MAILBOX_CSR, 0);
@@ -6672,9 +6683,15 @@ int rt2800_enable_radio(struct rt2x00_dev *rt2x00dev)
 	rt2800_mcu_request(rt2x00dev, MCU_BOOT_SIGNAL, 0, 0, 0);
 	msleep(1);
 
+	/*
+	 * Make sure BBP is up and running.
+	 */
 	if (unlikely(rt2800_wait_bbp_ready(rt2x00dev)))
 		return -EIO;
 
+	/*
+	 * Initialize BBP/RF registers.
+	 */
 	rt2800_init_bbp(rt2x00dev);
 	rt2800_init_rfcsr(rt2x00dev);
 
