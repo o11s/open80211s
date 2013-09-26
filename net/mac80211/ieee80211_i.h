@@ -606,6 +606,7 @@ struct ieee80211_if_mesh {
 	s64 sync_offset_clockdrift_max;
 	spinlock_t sync_offset_lock;
 	bool adjusting_tbtt;
+	bool preq_best_metric;
 };
 
 #ifdef CONFIG_MAC80211_MESH

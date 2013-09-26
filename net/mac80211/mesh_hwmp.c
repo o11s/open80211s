@@ -367,6 +367,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			    u8 *hwmp_ie, enum mpath_frame_type action)
 {
 	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct mesh_path *mpath;
 	struct sta_info *sta;
 	bool fresh_info;
@@ -386,6 +387,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	last_hop_metric = airtime_link_metric_get(local, sta);
 	/* Update and check originator routing info */
 	fresh_info = true;
+	ifmsh->preq_best_metric = false;
 
 	switch (action) {
 	case MPATH_PREQ:
@@ -435,6 +437,15 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 					fresh_info = false;
 				}
 			}
+
+			/* Indicate that the received PREQ has a better metric
+			 * compared to the previous PREQ from the same
+			 * originator mesh STA
+			 */
+			if (action == MPATH_PREQ &&
+			    mpath->sn == orig_sn &&
+			    mpath->metric > new_metric)
+				ifmsh->preq_best_metric = true;
 		} else {
 			mesh_path_add(orig_addr, sdata);
 			mpath = mesh_path_lookup(orig_addr, sdata);
@@ -535,12 +546,15 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 		forward = false;
 		reply = true;
 		metric = 0;
-		if (time_after(jiffies, ifmsh->last_sn_update +
-					net_traversal_jiffies(sdata)) ||
-		    time_before(jiffies, ifmsh->last_sn_update)) {
+		/* If this is the first PREQ received from the originator
+		 * mesh STA, we increment the target seq_num by 1, otherwise
+		 * we just assign the same target seq_num.
+		 */
+		if (!ifmsh->preq_best_metric) {
 			target_sn = ++ifmsh->sn;
 			ifmsh->last_sn_update = jiffies;
-		}
+		} else
+			target_sn = ifmsh->sn;
 	} else if (is_broadcast_ether_addr(target_addr) &&
 		   (target_flags & IEEE80211_PREQ_TO_FLAG)) {
 		rcu_read_lock();
