@@ -172,6 +172,8 @@ int mwl8787_cmd_hw_spec(struct mwl8787_priv *priv);
 int mwl8787_cmd_init(struct mwl8787_priv *priv);
 int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
 			   struct cfg80211_chan_def *chandef);
+int mwl8787_cmd_11n_cfg(struct mwl8787_priv *priv,
+			struct cfg80211_chan_def *chandef);
 int mwl8787_cmd_scan(struct mwl8787_priv *priv,
 		     struct cfg80211_scan_request *request);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,

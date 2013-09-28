@@ -326,6 +326,41 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
 	return ret;
 }
 
+int mwl8787_cmd_11n_cfg(struct mwl8787_priv *priv,
+			struct cfg80211_chan_def *chandef)
+{
+	struct mwl8787_cmd *cmd;
+	struct ieee80211_supported_band *sband;
+	struct ieee80211_hw *hw = priv->hw;
+	int ret;
+	int fwband;
+
+	cmd = mwl8787_cmd_alloc(priv,
+				MWL8787_CMD_11N_CFG,
+				sizeof(struct mwl8787_cmd_11n_cfg),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	sband = hw->wiphy->bands[chandef->chan->band];
+	if (!sband->ht_cap.ht_supported)
+		return 0;
+
+	fwband = chandef->chan->band == IEEE80211_BAND_5GHZ ?
+					MWL8787_BAND_5GHZ :
+					MWL8787_BAND_2GHZ;
+	cmd->u.dot11n.action = cpu_to_le16(MWL8787_ACT_SET);
+	cmd->u.dot11n.ht_cap = cpu_to_le16(sband->ht_cap.cap);
+	/* TODO: ht_info is all reserved except for the RIFS field */
+	cmd->u.dot11n.ht_info = 0;
+	cmd->u.dot11n.misc = cpu_to_le16(fwband << 1);
+
+	ret = mwl8787_send_cmd(priv, cmd);
+
+	mwl8787_cmd_free(priv, cmd);
+	return ret;
+}
+
 int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on)
 {
 	int ret;

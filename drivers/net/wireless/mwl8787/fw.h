@@ -183,6 +183,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_TX_RATE_QUERY	= 0x007f,
 	MWL8787_CMD_GET_TSF		= 0x0080,
 	MWL8787_CMD_BEACON_SET		= 0x00cb,
+	MWL8787_CMD_11N_CFG		= 0x00cd,
 	MWL8787_CMD_FUNC_INIT		= 0x00a9,
 	MWL8787_CMD_ADDBA_REQ		= 0x00ce,
 	MWL8787_CMD_ADDBA_RSP		= 0x00cf,
@@ -284,6 +285,13 @@ struct mwl8787_cmd_radio_ctrl {
 	__le16 control;
 } __packed;
 
+
+struct mwl8787_cmd_11n_cfg {
+	__le16 action;
+	__le16 ht_cap;
+	__le16 ht_info;
+	__le16 misc;
+} __packed;
 
 /*
  * band, channel, and secondary offset are all combined into rftype field.
@@ -541,6 +549,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_delba delba;
 		struct mwl8787_cmd_rate_query rate_query;
 		struct mwl8787_cmd_tx_power tx_power;
+		struct mwl8787_cmd_11n_cfg dot11n;
 		u8 data[0];
 	} u;
 } __packed;
