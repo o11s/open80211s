@@ -317,8 +317,10 @@ static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 {
 	struct mwl8787_priv *priv = hw->priv;
 
-	if (changed & IEEE80211_CONF_CHANGE_CHANNEL)
+	if (changed & IEEE80211_CONF_CHANGE_CHANNEL) {
 		mwl8787_cmd_rf_channel(priv, &hw->conf.chandef);
+		mwl8787_cmd_11n_cfg(priv, &hw->conf.chandef);
+	}
 
 	return 0;
 }
