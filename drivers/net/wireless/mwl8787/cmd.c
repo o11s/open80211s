@@ -609,20 +609,25 @@ int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
 }
 
 static u32 mwl8787_rates_to_hw_values(struct mwl8787_priv *priv,
-				      unsigned long supp_rates, u8 *mcs_mask)
+				      unsigned long supp_rates, u8 *mcs_mask,
+				      bool ht40)
 {
 	enum ieee80211_band band = priv->hw->conf.chandef.chan->band;
 	struct ieee80211_supported_band *sband = priv->hw->wiphy->bands[band];
 	int i;
 	u32 hw_values = 0;
 
-	/* XXX: luckily 8787 (1x1!) rates all fit in a u32... */
+	/* XXX: 8787 1x1 rates all fit in a u32, but update this if we support
+	 * other cards or 2x2 streams! */
 	for_each_set_bit(i, &supp_rates, MRVL_MCS_SHIFT)
 		hw_values |= BIT(sband->bitrates[i].hw_value);
 
-	/* ...with this hack! */
-	for (i = 0; i < 2; i++)
-		hw_values |= mcs_mask[i] << (MRVL_MCS_SHIFT + (i * 8));
+	/* b(14:21) MCS 0-7 */
+	hw_values |= mcs_mask[0] << MRVL_MCS_SHIFT;
+
+	if (ht40)
+		/* b(23:30) MCS 0-7 @ 40MHz (b(22) is MCS32, but we don't care */
+		hw_values |= mcs_mask[0] << (MRVL_MCS_SHIFT + 8 + 1);
 
 	return hw_values;
 }
@@ -643,7 +648,8 @@ int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 
 	supp_rates = sta->supp_rates[priv->hw->conf.chandef.chan->band];
 	supp_rates = mwl8787_rates_to_hw_values(priv, supp_rates,
-						sta->ht_cap.mcs.rx_mask);
+			sta->ht_cap.mcs.rx_mask,
+			sta->ht_cap.cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40);
 
 	cmd->u.set_peer.supp_rate_map = cpu_to_le32(supp_rates);
 
