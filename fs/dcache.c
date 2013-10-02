@@ -1373,7 +1373,7 @@ int d_set_mounted(struct dentry *dentry)
 	int ret = -ENOENT;
 	write_seqlock(&rename_lock);
 	for (p = dentry->d_parent; !IS_ROOT(p); p = p->d_parent) {
-		/* Need exclusion wrt. check_submounts_and_drop() */
+		/* Need exclusion wrt. shrink_submounts_and_drop() */
 		spin_lock(&p->d_lock);
 		if (unlikely(d_unhashed(p))) {
 			spin_unlock(&p->d_lock);
@@ -1478,70 +1478,56 @@ void shrink_dcache_parent(struct dentry *parent)
 }
 EXPORT_SYMBOL(shrink_dcache_parent);
 
-static enum d_walk_ret check_and_collect(void *_data, struct dentry *dentry)
+struct detach_data {
+	struct dentry *found;
+};
+static enum d_walk_ret do_detach_submounts(void *ptr, struct dentry *dentry)
 {
-	struct select_data *data = _data;
+	struct detach_data *data = ptr;
 
-	if (d_mountpoint(dentry)) {
-		data->found = -EBUSY;
-		return D_WALK_QUIT;
-	}
+	if (d_mountpoint(dentry))
+		data->found = dentry;
 
-	return select_collect(_data, dentry);
-}
-
-static void check_and_drop(void *_data)
-{
-	struct select_data *data = _data;
-
-	if (d_mountpoint(data->start))
-		data->found = -EBUSY;
-	if (!data->found)
-		__d_drop(data->start);
+	return data->found ? D_WALK_QUIT : D_WALK_CONTINUE;
 }
 
 /**
- * check_submounts_and_drop - prune dcache, check for submounts and drop
+ * detach_submounts - check for submounts and detach them.
  *
- * All done as a single atomic operation relative to has_unlinked_ancestor().
- * Returns 0 if successfully unhashed @parent.  If there were submounts then
- * return -EBUSY.
+ * @dentry: dentry to find mount points under.
  *
- * @dentry: dentry to prune and drop
+ * If dentry or any of it's children is a mount point detach those mounts.
  */
-int check_submounts_and_drop(struct dentry *dentry)
+void detach_submounts(struct dentry *dentry)
 {
-	int ret = 0;
-
-	/* Negative dentries can be dropped without further checks */
-	if (!dentry->d_inode) {
-		d_drop(dentry);
-		goto out;
-	}
-
+	struct detach_data data;
 	for (;;) {
-		struct select_data data;
+		data.found = NULL;
+		d_walk(dentry, &data, do_detach_submounts, NULL);
 
-		INIT_LIST_HEAD(&data.dispose);
-		data.start = dentry;
-		data.found = 0;
-
-		d_walk(dentry, &data, check_and_collect, check_and_drop);
-		ret = data.found;
-
-		if (!list_empty(&data.dispose))
-			shrink_dentry_list(&data.dispose);
-
-		if (ret <= 0)
+		if (!data.found)
 			break;
 
+		detach_mounts(data.found);
 		cond_resched();
 	}
-
-out:
-	return ret;
+	detach_mounts(dentry);
 }
-EXPORT_SYMBOL(check_submounts_and_drop);
+
+/**
+ * shrink_submounts_and_drop - detach submounts, prune dcache, and drop
+ *
+ * All done as a single atomic operation reletaive to d_set_mounted().
+ *
+ * @dentry: dentry to detach, prune and drop
+ */
+void shrink_submounts_and_drop(struct dentry *dentry)
+{
+	d_drop(dentry);
+	detach_submounts(dentry);
+	shrink_dcache_parent(dentry);
+}
+EXPORT_SYMBOL(shrink_submounts_and_drop);
 
 /**
  * __d_alloc	-	allocate a dcache entry

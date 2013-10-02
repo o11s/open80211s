@@ -259,8 +259,7 @@ out:
 
 invalid:
 	ret = 0;
-	if (check_submounts_and_drop(entry) != 0)
-		ret = 1;
+	shrink_submounts_and_drop(entry);
 	goto out;
 }
 

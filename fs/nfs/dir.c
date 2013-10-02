@@ -1142,10 +1142,7 @@ out_zap_parent:
 		if (dentry->d_flags & DCACHE_DISCONNECTED)
 			goto out_valid;
 	}
-	/* If we have submounts, don't unhash ! */
-	if (check_submounts_and_drop(dentry) != 0)
-		goto out_valid;
-
+	shrink_submounts_and_drop(dentry);
 	dput(parent);
 	dfprintk(LOOKUPCACHE, "NFS: %s(%s/%s) is invalid\n",
 			__func__, dentry->d_parent->d_name.name,
