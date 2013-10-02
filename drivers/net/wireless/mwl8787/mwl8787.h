@@ -79,6 +79,7 @@ struct mwl8787_priv
 	void *bus_priv;
 	int bus_headroom;
 
+	struct completion fw_done;	/* completed when firmware loaded */
 	struct completion init_wait;
 
 	enum mwl8787_hw_status hw_status;
