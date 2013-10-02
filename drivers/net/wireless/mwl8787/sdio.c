@@ -1178,7 +1178,8 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 disable:
 	/* FIXME unbind device */
 	release_firmware(fw);
-	return;
+
+	complete(&priv->fw_done);
 }
 
 static int mwl8787_sdio_probe(struct sdio_func *func,
@@ -1224,6 +1225,7 @@ static int mwl8787_sdio_probe(struct sdio_func *func,
 	if (ret)
 		goto disable;
 
+	init_completion(&priv->fw_done);
 	ret = request_firmware_nowait(THIS_MODULE, 1, MWL8787_FW_NAME,
 				      priv->dev, GFP_KERNEL, priv,
 				      mwl8787_fw_cb);
@@ -1245,6 +1247,13 @@ release:
 static void mwl8787_sdio_remove(struct sdio_func *func)
 {
 	struct mwl8787_priv *priv = sdio_get_drvdata(func);
+
+	/*
+	 * must wait for firmware to be done to avoid mwl8787_fw_cb()
+	 * getting called after remove(), which will crash when sdio
+	 * bus is accessed.
+	 */
+	wait_for_completion(&priv->fw_done);
 
 	if (priv->registered)
 		mwl8787_unregister(priv);
