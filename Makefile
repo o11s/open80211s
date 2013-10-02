@@ -1,8 +1,8 @@
 VERSION = 3
-PATCHLEVEL = 11
+PATCHLEVEL = 12
 SUBLEVEL = 0
 EXTRAVERSION = -rc1
-NAME = Linux for Workgroups
+NAME = One Giant Leap for Frogkind
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
