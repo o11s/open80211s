@@ -175,8 +175,6 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
 			   struct cfg80211_chan_def *chandef);
 int mwl8787_cmd_11n_cfg(struct mwl8787_priv *priv,
 			struct cfg80211_chan_def *chandef);
-int mwl8787_cmd_scan(struct mwl8787_priv *priv,
-		     struct cfg80211_scan_request *request);
 struct mwl8787_cmd *mwl8787_cmd_alloc(struct mwl8787_priv *priv,
 				      int id, size_t len, gfp_t gfp_flags);
 void mwl8787_cmd_free(struct mwl8787_priv *priv, void *ptr);
