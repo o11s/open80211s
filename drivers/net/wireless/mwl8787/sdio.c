@@ -119,7 +119,7 @@ mwl8787_sdio_poll_card_status(struct mwl8787_priv *priv, u8 bits)
 	u8 cs;
 
 	for (tries = 0; tries < MAX_POLL_TRIES; tries++) {
-		if (mwl8787_read_reg(priv, MWL8787_REG_POLL, &cs))
+		if (mwl8787_read_reg(priv, MWL8787_REG_CARD_STATUS, &cs))
 			break;
 		else if ((cs & bits) == bits)
 			return 0;
