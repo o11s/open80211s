@@ -550,6 +550,7 @@ static int mwl8787_ampdu_action(struct ieee80211_hw *hw,
 	case IEEE80211_AMPDU_TX_STOP_CONT:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH:
 	case IEEE80211_AMPDU_TX_STOP_FLUSH_CONT:
+		priv_sta = (struct mwl8787_sta *) sta->drv_priv;
 		mwl8787_cmd_delba(priv, sta, tid);
 		ieee80211_stop_tx_ba_cb_irqsafe(vif, sta->addr, tid);
 		priv->num_ampdu_sessions--;
