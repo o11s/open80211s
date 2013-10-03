@@ -970,37 +970,6 @@ static int mwl8787_sdio_disable_int(struct mwl8787_priv *priv)
 	return ret;
 }
 
-static int mwl8787_sdio_reset(void)
-{
-	int ret;
-        struct regulator *wifi_en, *wifi_rst;
-
-        wifi_en = regulator_get(NULL, "wifi-en");
-	if (IS_ERR(wifi_en))
-		return PTR_ERR(wifi_en);
-
-        wifi_rst = regulator_get(NULL, "wifi-rst-l");
-	if (IS_ERR(wifi_rst)) {
-		regulator_put(wifi_en);
-		return PTR_ERR(wifi_rst);
-	}
-
-	regulator_disable(wifi_rst);
-	regulator_disable(wifi_en);
-
-	ret = regulator_enable(wifi_rst);
-	if (ret)
-		goto out;
-
-	/* as per 8797 datasheet section 1.5.2 */
-	mdelay(1);
-	ret = regulator_enable(wifi_en);
-out:
-	regulator_put(wifi_rst);
-	regulator_put(wifi_en);
-	return ret;
-}
-
 static void sdio_card_reset_worker(struct work_struct *work)
 {
 	struct mwl8787_priv *priv = container_of(work, struct mwl8787_priv, card_reset_work);
@@ -1017,9 +986,6 @@ static void sdio_card_reset_worker(struct work_struct *work)
 
 	pr_err("Resetting card...\n");
 	mmc_remove_host(target);
-        device_del(priv->dev);
-	if (mwl8787_sdio_reset())
-		pr_err("External card reset failed! Trying to reattach...\n");
 	/* 20ms delay is based on experiment with sdhci controller */
 	mdelay(20);
 	mmc_add_host(target);
