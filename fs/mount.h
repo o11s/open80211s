@@ -79,6 +79,7 @@ static inline int is_mounted(struct vfsmount *mnt)
 }
 
 extern struct mount *__lookup_mnt(struct vfsmount *, struct dentry *, int);
+extern void detach_mounts(struct dentry *dentry);
 
 static inline void get_mnt_ns(struct mnt_namespace *ns)
 {

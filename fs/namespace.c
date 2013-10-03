@@ -1295,6 +1295,30 @@ static int do_umount(struct mount *mnt, int flags)
 	return retval;
 }
 
+void detach_mounts(struct dentry *dentry)
+{
+	struct mountpoint *mp;
+	struct mount *mnt;
+
+	namespace_lock();
+	if (!d_mountpoint(dentry))
+		goto out_unlock;
+
+	mp = new_mountpoint(dentry);
+	if (IS_ERR(mp))
+		goto out_unlock;
+
+	br_write_lock(&vfsmount_lock);
+	while (!list_empty(&mp->m_list)) {
+		mnt = list_first_entry(&mp->m_list, struct mount, mnt_mp_list);
+		umount_tree(mnt, 1);
+	}
+	br_write_unlock(&vfsmount_lock);
+	put_mountpoint(mp);
+out_unlock:
+	namespace_unlock();
+}
+
 /* 
  * Is the caller allowed to modify his namespace?
  */
