@@ -16,7 +16,7 @@ void mwl8787_ampdu_work(struct work_struct *work)
 			continue;
 
 		/* start a new ba session */
-		ieee80211_start_tx_ba_session(sta, tid, 5000);
+		ieee80211_start_tx_ba_session(sta, tid, 0);
 	}
 }
 
