@@ -277,7 +277,7 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
 	int ret;
 	struct mwl8787_cmd *cmd;
 	u16 channel;
-	u16 rftype = 0;
+	u8 rftype = 0;
 
 	/* set up band/channel flags in rftype field based on chandef */
 	channel = chandef->chan->hw_value;
@@ -318,7 +318,7 @@ int mwl8787_cmd_rf_channel(struct mwl8787_priv *priv,
 
 	cmd->u.rf_channel.action = cpu_to_le16(MWL8787_ACT_SET);
 	cmd->u.rf_channel.current_channel = cpu_to_le16(channel);
-	cmd->u.rf_channel.rftype = cpu_to_le16(rftype);
+	cmd->u.rf_channel.rftype = rftype;
 
 	ret = mwl8787_send_cmd(priv, cmd);
 

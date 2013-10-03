@@ -318,8 +318,9 @@ enum mwl8787_secondary_offset {
 struct mwl8787_cmd_rf_channel {
 	__le16 action;
 	__le16 current_channel;
-	__le16 rftype;
-	u8 reserved[34];
+	u8 reserved0;
+	u8 rftype;
+	u8 reserved1[34];
 } __packed;
 
 struct mwl8787_cmd_mac_ctrl {
