@@ -67,11 +67,12 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 	struct ieee80211_tx_info *info;
 	struct mwl8787_event_tx_status *tx_status =
 		&tx_status_event->u.tx_status;
-	u8 hw_queue = tx_status->hw_queue;
+	u8 hw_queue;
 
-	if (WARN_ON(hw_queue >= IEEE80211_NUM_ACS))
+	if (WARN_ON(tx_status->hw_queue >= IEEE80211_NUM_ACS))
 		return;
 
+	hw_queue = mwl8787_hwq_to_ac[tx_status->hw_queue];
 	skb = skb_dequeue(&priv->tx_status_queue[hw_queue]);
 	if (!skb)
 		return;
