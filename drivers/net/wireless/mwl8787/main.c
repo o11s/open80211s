@@ -457,7 +457,11 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 
 	if (changed & BSS_CHANGED_LOW_ACK_COUNT) {
 		priv->tx_fail = info->low_ack_count;
-		mwl8787_cmd_subscribe_events(priv, MWL8787_ACT_BITWISE_SET,
+
+		mwl8787_cmd_subscribe_events(priv,
+					     priv->tx_fail ?
+					     MWL8787_ACT_BITWISE_SET :
+					     MWL8787_ACT_BITWISE_CLR,
 					     MWL8787_EVT_SUB_TX_FAIL);
 	}
 
