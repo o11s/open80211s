@@ -780,7 +780,8 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 		      BSS_CHANGED_HT |
 		      BSS_CHANGED_BASIC_RATES |
 		      BSS_CHANGED_BEACON_INT |
-		      BSS_CHANGED_LOW_ACK_COUNT;
+		      BSS_CHANGED_LOW_ACK_COUNT |
+		      BSS_CHANGED_MCAST_RATE;
 	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
 
 	local->fif_other_bss++;
