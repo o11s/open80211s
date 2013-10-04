@@ -93,6 +93,36 @@
 
 #define MWL8787_DEFAULT_TX_POWER	30	/* dBm */
 
+#define QUEUE_DATA_0    0 /* BK */
+#define QUEUE_DATA_1    1 /* BE */
+#define QUEUE_DATA_2    2 /* VI */
+#define QUEUE_DATA_3    3 /* VO */
+#define QUEUE_DATA_4    4 /* mgmt (CWMin, CWMax, AifsN, TXop) == (0, 0, 0, 0) */
+#define QUEUE_DATA_5    5 /* ampdu */
+#define QUEUE_DATA_6    6 /* ampdu */
+#define QUEUE_DATA_7    7 /* extra (off-channel) */
+#define MWL8787_QUEUE_MAX QUEUE_DATA_7
+/* misc. / unused? */
+#define QUEUE_DATA_BIG  8
+#define QUEUE_BCN       9
+#define QUEUE_MLME      10
+#define QUEUE_CMD       11 /* Cmd queue */
+#define QUEUE_MCBC	12 /* Multicast/Broadcast PS buffer queue (?) */
+
+static const int mwl8787_hwq_to_ac[IEEE80211_NUM_ACS] = {
+	[QUEUE_DATA_0] = IEEE80211_AC_BK,
+	[QUEUE_DATA_1] = IEEE80211_AC_BE,
+	[QUEUE_DATA_2] = IEEE80211_AC_VI,
+	[QUEUE_DATA_3] = IEEE80211_AC_VO,
+};
+
+static const int mwl8787_ac_to_hwq[IEEE80211_NUM_ACS] = {
+	[IEEE80211_AC_BK] = QUEUE_DATA_0,
+	[IEEE80211_AC_BE] = QUEUE_DATA_1,
+	[IEEE80211_AC_VI] = QUEUE_DATA_2,
+	[IEEE80211_AC_VO] = QUEUE_DATA_3,
+};
+
 enum mwl8787_bss_type {
 	MWL8787_BSS_TYPE_CLIENT		= 0x00,
 	MWL8787_BSS_TYPE_AP		= 0x01,
