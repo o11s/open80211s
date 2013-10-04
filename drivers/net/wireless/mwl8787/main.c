@@ -416,6 +416,16 @@ static void mwl8787_configure_filter(struct ieee80211_hw *hw,
 	mwl8787_cmd_mac_ctrl(priv, priv->mac_ctrl);
 }
 
+static int mwl8787_set_mcast_rate(struct mwl8787_priv *priv,
+				  struct ieee80211_bss_conf *info)
+{
+	enum ieee80211_band band = priv->hw->conf.chandef.chan->band;
+	struct ieee80211_supported_band *sband = priv->hw->wiphy->bands[band];
+	int rateidx = sband->bitrates[info->mcast_rate[band] - 1].hw_value;
+
+	return mwl8787_cmd_snmp_mib(priv, MWL8787_OID_MCAST_RATE, rateidx);
+}
+
 static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif,
 				     struct ieee80211_bss_conf *info,
@@ -453,6 +463,9 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 
 	if (changed & BSS_CHANGED_TXPOWER)
 		mwl8787_cmd_tx_power(priv, info->txpower);
+
+	if (changed & BSS_CHANGED_MCAST_RATE)
+		mwl8787_set_mcast_rate(priv, info);
 }
 
 static int mwl8787_set_rts_threshold(struct ieee80211_hw *hw, u32 value)
