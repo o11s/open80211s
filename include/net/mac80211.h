@@ -224,6 +224,7 @@ struct ieee80211_chanctx_conf {
  *	context had been assigned.
  *@BSS_CHANGED_LOW_ACK_COUNT: The low ack count notification threshold for this
  *	interface changed.
+ *@BSS_CHANGED_MCAST_RATE: The multicast data frame rate for this BSS changed.
  */
 enum ieee80211_bss_change {
 	BSS_CHANGED_ASSOC		= 1<<0,
@@ -249,6 +250,7 @@ enum ieee80211_bss_change {
 	BSS_CHANGED_DTIM_PERIOD		= 1<<20,
 	BSS_CHANGED_BANDWIDTH		= 1<<21,
 	BSS_CHANGED_LOW_ACK_COUNT	= 1<<22,
+	BSS_CHANGED_MCAST_RATE		= 1<<23,
 
 	/* when adding here, make sure to change ieee80211_reconfig */
 };
