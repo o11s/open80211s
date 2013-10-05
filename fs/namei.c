@@ -3547,6 +3547,20 @@ void dentry_unhash(struct dentry *dentry)
 	spin_unlock(&dentry->d_lock);
 }
 
+static bool covered(struct vfsmount *mnt, struct dentry *dentry)
+{
+	/* test to see if a dentry is covered with a mount in
+	 * the current mount namespace.
+	 */
+	bool is_covered;
+
+	rcu_read_lock();
+	is_covered = d_mountpoint(dentry) && __lookup_mnt(mnt, dentry, 1);
+	rcu_read_unlock();
+
+	return is_covered;
+}
+
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	int error = may_delete(dir, dentry, 1);
@@ -3622,6 +3636,9 @@ retry:
 		error = -ENOENT;
 		goto exit3;
 	}
+	error = -EBUSY;
+	if (covered(nd.path.mnt, dentry))
+		goto exit3;
 	error = security_path_rmdir(&nd.path, dentry);
 	if (error)
 		goto exit3;
@@ -3716,6 +3733,9 @@ retry:
 		inode = dentry->d_inode;
 		if (!inode)
 			goto slashes;
+		error = -EBUSY;
+		if (covered(nd.path.mnt, dentry))
+			goto exit2;
 		ihold(inode);
 		error = security_path_unlink(&nd.path, dentry);
 		if (error)
@@ -4163,6 +4183,11 @@ retry:
 	/* target should not be an ancestor of source */
 	error = -ENOTEMPTY;
 	if (new_dentry == trap)
+		goto exit5;
+	error = -EBUSY;
+	if (covered(oldnd.path.mnt, old_dentry))
+		goto exit5;
+	if (covered(newnd.path.mnt, new_dentry))
 		goto exit5;
 
 	error = security_path_rename(&oldnd.path, old_dentry,
