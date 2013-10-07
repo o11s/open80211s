@@ -1472,6 +1472,24 @@ static int ieee80211_skb_resize(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
+/* Send an extra copy of the given (multicast) frame. */
+void ieee80211_tx_duplicate(struct ieee80211_sub_if_data *sdata,
+			    struct sk_buff *skb)
+{
+	struct sk_buff *copied_skb;
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+
+	copied_skb = skb_copy(skb, GFP_ATOMIC);
+	if (!copied_skb)
+		return;
+
+	info = IEEE80211_SKB_CB(copied_skb);
+	memset(info, 0, sizeof(*info));
+	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
+	info->control.vif = &sdata->vif;
+	ieee80211_add_pending_skb(sdata->local, copied_skb);
+}
+
 void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 		    enum ieee80211_band band)
 {
@@ -1480,6 +1498,7 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	int headroom;
 	bool may_encrypt;
+	int i;
 
 	may_encrypt = !(info->flags & IEEE80211_TX_INTFL_DONT_ENCRYPT);
 
@@ -1504,6 +1523,15 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 				return; /* skb queued: don't free */
 		} else {
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
+		}
+		if (is_multicast_ether_addr(hdr->addr1)) {
+			struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+			/*
+			 * enqueue additional copies of this frame according
+			 * to mcast_retries
+			 */
+			for (i=1; i < ifmsh->mshcfg.mcast_retries; i++)
+				ieee80211_tx_duplicate(sdata, skb);
 		}
 	}
 

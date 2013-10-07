@@ -1255,6 +1255,7 @@ struct mesh_config {
 	u16 dot11MeshAwakeWindowDuration;
 	u32 plink_timeout;
 	u32 low_ack;
+	u8 mcast_retries;
 };
 
 /**

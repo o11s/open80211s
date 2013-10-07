@@ -537,6 +537,8 @@ IEEE80211_IF_FILE(dot11MeshAwakeWindowDuration,
 		  u.mesh.mshcfg.dot11MeshAwakeWindowDuration, DEC);
 IEEE80211_IF_FILE(low_ack,
 		  u.mesh.mshcfg.low_ack, DEC);
+IEEE80211_IF_FILE(mcast_retries,
+		  u.mesh.mshcfg.mcast_retries, DEC);
 #endif
 
 #define DEBUGFS_ADD_MODE(name, mode) \
@@ -647,6 +649,7 @@ static void add_mesh_config(struct ieee80211_sub_if_data *sdata)
 	MESHPARAMS_ADD(power_mode);
 	MESHPARAMS_ADD(dot11MeshAwakeWindowDuration);
 	MESHPARAMS_ADD(low_ack);
+	MESHPARAMS_ADD(mcast_retries);
 #undef MESHPARAMS_ADD
 }
 #endif
