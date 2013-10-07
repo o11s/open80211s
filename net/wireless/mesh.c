@@ -48,6 +48,7 @@
 #define MESH_DEFAULT_DTIM_PERIOD	2
 #define MESH_DEFAULT_AWAKE_WINDOW	10	/* in 1024 us units (=TUs) */
 #define MESH_DEFAULT_LOW_ACK_COUNT	17
+#define MESH_DEFAULT_MCAST_RETRIES	1	/* one tx attempt */
 
 const struct mesh_config default_mesh_config = {
 	.dot11MeshRetryTimeout = MESH_RET_T,
@@ -77,6 +78,7 @@ const struct mesh_config default_mesh_config = {
 	.power_mode = NL80211_MESH_POWER_ACTIVE,
 	.dot11MeshAwakeWindowDuration = MESH_DEFAULT_AWAKE_WINDOW,
 	.low_ack = MESH_DEFAULT_LOW_ACK_COUNT,
+	.mcast_retries = MESH_DEFAULT_MCAST_RETRIES,
 };
 
 const struct mesh_setup default_mesh_setup = {

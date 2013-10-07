@@ -1139,6 +1139,7 @@ struct mesh_config {
 	enum nl80211_mesh_power_mode power_mode;
 	u16 dot11MeshAwakeWindowDuration;
 	u32 low_ack;
+	u8 mcast_retries;
 };
 
 /**
