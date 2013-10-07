@@ -79,6 +79,7 @@ const struct mesh_config default_mesh_config = {
 	.dot11MeshAwakeWindowDuration = MESH_DEFAULT_AWAKE_WINDOW,
 	.low_ack = MESH_DEFAULT_LOW_ACK_COUNT,
 	.mcast_retries = MESH_DEFAULT_MCAST_RETRIES,
+	.mcast_ttl = MESH_TTL,
 };
 
 const struct mesh_setup default_mesh_setup = {

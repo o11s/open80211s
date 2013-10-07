@@ -1140,6 +1140,7 @@ struct mesh_config {
 	u16 dot11MeshAwakeWindowDuration;
 	u32 low_ack;
 	u8 mcast_retries;
+	u8 mcast_ttl;
 };
 
 /**
