@@ -36,4 +36,11 @@
 		status = "disabled";
 	};
 
+	pcie@290000 {
+		status = "disabled";
+	};
+
+	pcie@2a0000 {
+		status = "disabled";
+	};
 };
