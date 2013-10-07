@@ -534,6 +534,7 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
  * ieee80211_new_mesh_header - create a new mesh header
  * @sdata:	mesh interface to be used
  * @meshhdr:    uninitialized mesh header
+ * @addr1:      DA/RA address in the frame
  * @addr4or5:   1st address in the ae header, which may correspond to address 4
  *              (if addr6 is NULL) or address 5 (if addr6 is present). It may
  *              be NULL.
@@ -544,6 +545,7 @@ int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,
  */
 int ieee80211_new_mesh_header(struct ieee80211_sub_if_data *sdata,
 			      struct ieee80211s_hdr *meshhdr,
+			      const char *addr1,
 			      const char *addr4or5, const char *addr6)
 {
 	if (WARN_ON(!addr4or5 && addr6))
@@ -551,7 +553,10 @@ int ieee80211_new_mesh_header(struct ieee80211_sub_if_data *sdata,
 
 	memset(meshhdr, 0, sizeof(*meshhdr));
 
-	meshhdr->ttl = sdata->u.mesh.mshcfg.dot11MeshTTL;
+	if (is_multicast_ether_addr(addr1))
+		meshhdr->ttl = sdata->u.mesh.mshcfg.mcast_ttl;
+	else
+		meshhdr->ttl = sdata->u.mesh.mshcfg.dot11MeshTTL;
 
 	/* FIXME: racy -- TX on multiple queues can be concurrent */
 	put_unaligned(cpu_to_le32(sdata->u.mesh.mesh_seqnum), &meshhdr->seqnum);

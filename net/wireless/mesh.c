@@ -81,6 +81,7 @@ const struct mesh_config default_mesh_config = {
 	.plink_timeout = MESH_DEFAULT_PLINK_TIMEOUT,
 	.low_ack = MESH_DEFAULT_LOW_ACK_COUNT,
 	.mcast_retries = MESH_DEFAULT_MCAST_RETRIES,
+	.mcast_ttl = MESH_TTL,
 };
 
 const struct mesh_setup default_mesh_setup = {

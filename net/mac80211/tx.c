@@ -1902,6 +1902,7 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			hdrlen = ieee80211_fill_mesh_addresses(&hdr, &fc,
 					skb->data, skb->data + ETH_ALEN);
 			meshhdrlen = ieee80211_new_mesh_header(sdata, &mesh_hdr,
+							       skb->data,
 							       NULL, NULL);
 		} else {
 			/* DS -> MBSS (802.11-2012 13.11.3.3).
@@ -1922,12 +1923,13 @@ netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 			if (is_multicast_ether_addr(mesh_da))
 				/* DA TA mSA AE:SA */
 				meshhdrlen = ieee80211_new_mesh_header(
-						sdata, &mesh_hdr,
+						sdata, &mesh_hdr, skb->data,
 						skb->data + ETH_ALEN, NULL);
 			else
 				/* RA TA mDA mSA AE:DA SA */
 				meshhdrlen = ieee80211_new_mesh_header(
 						sdata, &mesh_hdr, skb->data,
+						skb->data,
 						skb->data + ETH_ALEN);
 
 		}
