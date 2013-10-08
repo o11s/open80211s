@@ -206,6 +206,12 @@ static struct resource sdhi0_resources[] __initdata = {
 	DEFINE_RES_IRQ(gic_iid(0x77)),
 };
 
+/* Ether */
+static struct resource ether_resources[] __initdata = {
+	DEFINE_RES_MEM(0xfde00000, 0x400),
+	DEFINE_RES_IRQ(gic_iid(0x89)),
+};
+
 static struct sh_eth_plat_data ether_platform_data __initdata = {
 	.phy		= 0x01,
 	.edmac_endian	= EDMAC_LITTLE_ENDIAN,
@@ -267,10 +273,6 @@ static struct sh_mmcif_plat_data sh_mmcif_plat __initdata = {
 	.caps		= MMC_CAP_4_BIT_DATA |
 			  MMC_CAP_8_BIT_DATA |
 			  MMC_CAP_NEEDS_POLL,
-};
-
-static struct rcar_vin_platform_data vin_platform_data __initdata = {
-	.flags	= RCAR_VIN_BT656,
 };
 
 /* In the default configuration both decoders reside on I2C bus 0 */
@@ -469,6 +471,30 @@ static struct asoc_simple_card_info rsnd_card_info[] = {
 	}
 };
 
+/* VIN */
+static struct rcar_vin_platform_data vin_platform_data __initdata = {
+	.flags	= RCAR_VIN_BT656,
+};
+
+#define R8A7778_VIN(idx)						\
+static struct resource vin##idx##_resources[] __initdata = {		\
+	DEFINE_RES_MEM(0xffc50000 + 0x1000 * (idx), 0x1000),		\
+	DEFINE_RES_IRQ(gic_iid(0x5a)),					\
+};									\
+									\
+static struct platform_device_info vin##idx##_info __initdata = {	\
+	.parent		= &platform_bus,				\
+	.name		= "r8a7778-vin",				\
+	.id		= idx,						\
+	.res		= vin##idx##_resources,				\
+	.num_res	= ARRAY_SIZE(vin##idx##_resources),		\
+	.dma_mask	= DMA_BIT_MASK(32),				\
+	.data		= &vin_platform_data,				\
+	.size_data	= sizeof(vin_platform_data),			\
+}
+R8A7778_VIN(0);
+R8A7778_VIN(1);
+
 static const struct pinctrl_map bockw_pinctrl_map[] = {
 	/* AUDIO */
 	PIN_MAP_MUX_GROUP_DEFAULT("rcar_sound", "pfc-r8a7778",
@@ -548,11 +574,17 @@ static void __init bockw_init(void)
 	r8a7778_clock_init();
 	r8a7778_init_irq_extpin(1);
 	r8a7778_add_standard_devices();
-	r8a7778_add_ether_device(&ether_platform_data);
-	r8a7778_add_vin_device(0, &vin_platform_data);
+
+	platform_device_register_resndata(&platform_bus, "r8a777x-ether", -1,
+					  ether_resources,
+					  ARRAY_SIZE(ether_resources),
+					  &ether_platform_data,
+					  sizeof(ether_platform_data));
+
+	platform_device_register_full(&vin0_info);
 	/* VIN1 has a pin conflict with Ether */
 	if (!IS_ENABLED(CONFIG_SH_ETH))
-		r8a7778_add_vin_device(1, &vin_platform_data);
+		platform_device_register_full(&vin1_info);
 	platform_device_register_data(&platform_bus, "soc-camera-pdrv", 0,
 				      &iclink0_ml86v7667,
 				      sizeof(iclink0_ml86v7667));
