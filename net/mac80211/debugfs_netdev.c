@@ -537,8 +537,30 @@ IEEE80211_IF_FILE(dot11MeshAwakeWindowDuration,
 		  u.mesh.mshcfg.dot11MeshAwakeWindowDuration, DEC);
 IEEE80211_IF_FILE(low_ack,
 		  u.mesh.mshcfg.low_ack, DEC);
-IEEE80211_IF_FILE(mcast_retries,
-		  u.mesh.mshcfg.mcast_retries, DEC);
+
+static ssize_t ieee80211_if_fmt_mcast_retries(
+	const struct ieee80211_sub_if_data *sdata, char *buf, int buflen)
+{
+	return snprintf(buf, buflen, "%d\n", sdata->u.mesh.mshcfg.mcast_retries);
+}
+
+static ssize_t ieee80211_if_parse_mcast_retries(
+	struct ieee80211_sub_if_data *sdata, const char *buf, int buflen)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return -EINVAL;
+
+	if (val < 1 || val > 255)
+		return -ERANGE;
+
+	sdata->u.mesh.mshcfg.mcast_retries = val;
+	return buflen;
+}
+__IEEE80211_IF_FILE_W(mcast_retries);
 #endif
 
 #define DEBUGFS_ADD_MODE(name, mode) \
