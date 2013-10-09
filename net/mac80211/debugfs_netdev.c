@@ -561,6 +561,30 @@ static ssize_t ieee80211_if_parse_mcast_retries(
 	return buflen;
 }
 __IEEE80211_IF_FILE_W(mcast_retries);
+
+static ssize_t ieee80211_if_fmt_mcast_ttl(
+	const struct ieee80211_sub_if_data *sdata, char *buf, int buflen)
+{
+	return snprintf(buf, buflen, "%d\n", sdata->u.mesh.mshcfg.mcast_ttl);
+}
+
+static ssize_t ieee80211_if_parse_mcast_ttl(
+	struct ieee80211_sub_if_data *sdata, const char *buf, int buflen)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret)
+		return -EINVAL;
+
+	if (val < 1 || val > 255)
+		return -ERANGE;
+
+	sdata->u.mesh.mshcfg.mcast_ttl = val;
+	return buflen;
+}
+__IEEE80211_IF_FILE_W(mcast_ttl);
 #endif
 
 #define DEBUGFS_ADD_MODE(name, mode) \
@@ -672,6 +696,7 @@ static void add_mesh_config(struct ieee80211_sub_if_data *sdata)
 	MESHPARAMS_ADD(dot11MeshAwakeWindowDuration);
 	MESHPARAMS_ADD(low_ack);
 	MESHPARAMS_ADD(mcast_retries);
+	MESHPARAMS_ADD(mcast_ttl);
 #undef MESHPARAMS_ADD
 }
 #endif
