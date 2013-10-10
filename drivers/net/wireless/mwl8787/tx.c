@@ -39,7 +39,8 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	desc->frame_len = cpu_to_le16(frame_len);
 	desc->frame_offset = cpu_to_le16(sizeof(*desc) + pad);
 	desc->frame_type = cpu_to_le16(MWL8787_TX_TYPE_802_11);
-	/* TODO: AMPDU (fw will override with ampdu queue anyway though) */
+	/* TODO: AMPDU (fw will override with ampdu queue based on QoS ctl
+	 * field TID) */
 	desc->priority = mwl8787_ac_to_hwq[skb_get_queue_mapping(skb)];
 
 	if (info->flags & IEEE80211_TX_CTL_ASSIGN_SEQ)
@@ -48,12 +49,8 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS)
 		tx_ctl |= MWL8787_REQ_TX_STATUS;
 
-	if (info->flags & IEEE80211_TX_CTL_AMPDU) {
-		/* FIXME: The firmware needs the TID to pick the right ampdu
-		 * queue, but we need a sane API for this */
-		desc->priority = (u8) skb->priority;
+	if (info->flags & IEEE80211_TX_CTL_AMPDU)
 		tx_ctl |= MWL8787_AMPDU;
-	}
 
 	desc->tx_control = cpu_to_le32(tx_ctl);
 }
