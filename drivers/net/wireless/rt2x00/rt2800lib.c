@@ -278,12 +278,9 @@ static const unsigned int rt2800_eeprom_map_ext[EEPROM_WORD_COUNT] = {
 	[EEPROM_LNA]			= 0x0026,
 	[EEPROM_EXT_LNA2]		= 0x0027,
 	[EEPROM_RSSI_BG]		= 0x0028,
-	[EEPROM_TXPOWER_DELTA]		= 0x0028, /* Overlaps with RSSI_BG */
 	[EEPROM_RSSI_BG2]		= 0x0029,
-	[EEPROM_TXMIXER_GAIN_BG]	= 0x0029, /* Overlaps with RSSI_BG2 */
 	[EEPROM_RSSI_A]			= 0x002a,
 	[EEPROM_RSSI_A2]		= 0x002b,
-	[EEPROM_TXMIXER_GAIN_A]		= 0x002b, /* Overlaps with RSSI_A2 */
 	[EEPROM_TXPOWER_BG1]		= 0x0030,
 	[EEPROM_TXPOWER_BG2]		= 0x0037,
 	[EEPROM_EXT_TXPOWER_BG3]	= 0x003e,
@@ -2029,13 +2026,6 @@ static void rt2800_config_channel_rf3xxx(struct rt2x00_dev *rt2x00dev,
 			  rt2x00dev->default_ant.tx_chain_num <= 2);
 	rt2800_rfcsr_write(rt2x00dev, 1, rfcsr);
 
-	rt2800_rfcsr_read(rt2x00dev, 30, &rfcsr);
-	rt2x00_set_field8(&rfcsr, RFCSR30_RF_CALIBRATION, 1);
-	rt2800_rfcsr_write(rt2x00dev, 30, rfcsr);
-	msleep(1);
-	rt2x00_set_field8(&rfcsr, RFCSR30_RF_CALIBRATION, 0);
-	rt2800_rfcsr_write(rt2x00dev, 30, rfcsr);
-
 	rt2800_rfcsr_read(rt2x00dev, 23, &rfcsr);
 	rt2x00_set_field8(&rfcsr, RFCSR23_FREQ_OFFSET, rt2x00dev->freq_offset);
 	rt2800_rfcsr_write(rt2x00dev, 23, rfcsr);
@@ -3313,8 +3303,17 @@ static void rt2800_config_channel(struct rt2x00_dev *rt2x00dev,
 
 	rt2800_register_write(rt2x00dev, TX_PIN_CFG, tx_pin);
 
-	if (rt2x00_rt(rt2x00dev, RT3572))
+	if (rt2x00_rt(rt2x00dev, RT3572)) {
 		rt2800_rfcsr_write(rt2x00dev, 8, 0x80);
+
+		/* AGC init */
+		if (rf->channel <= 14)
+			reg = 0x1c + (2 * rt2x00dev->lna_gain);
+		else
+			reg = 0x22 + ((rt2x00dev->lna_gain * 5) / 3);
+
+		rt2800_bbp_write_with_rx_chain(rt2x00dev, 66, reg);
+	}
 
 	if (rt2x00_rt(rt2x00dev, RT3593)) {
 		rt2800_register_read(rt2x00dev, GPIO_CTRL, &reg);
@@ -4416,6 +4415,7 @@ static u8 rt2800_get_default_vgc(struct rt2x00_dev *rt2x00dev)
 		    rt2x00_rt(rt2x00dev, RT3290) ||
 		    rt2x00_rt(rt2x00dev, RT3390) ||
 		    rt2x00_rt(rt2x00dev, RT3572) ||
+		    rt2x00_rt(rt2x00dev, RT3593) ||
 		    rt2x00_rt(rt2x00dev, RT5390) ||
 		    rt2x00_rt(rt2x00dev, RT5392) ||
 		    rt2x00_rt(rt2x00dev, RT5592))
@@ -4423,8 +4423,8 @@ static u8 rt2800_get_default_vgc(struct rt2x00_dev *rt2x00dev)
 		else
 			vgc = 0x2e + rt2x00dev->lna_gain;
 	} else { /* 5GHZ band */
-		if (rt2x00_rt(rt2x00dev, RT3572))
-			vgc = 0x22 + (rt2x00dev->lna_gain * 5) / 3;
+		if (rt2x00_rt(rt2x00dev, RT3593))
+			vgc = 0x20 + (rt2x00dev->lna_gain * 5) / 3;
 		else if (rt2x00_rt(rt2x00dev, RT5592))
 			vgc = 0x24 + (2 * rt2x00dev->lna_gain);
 		else {
@@ -4442,11 +4442,17 @@ static inline void rt2800_set_vgc(struct rt2x00_dev *rt2x00dev,
 				  struct link_qual *qual, u8 vgc_level)
 {
 	if (qual->vgc_level != vgc_level) {
-		if (rt2x00_rt(rt2x00dev, RT5592)) {
+		if (rt2x00_rt(rt2x00dev, RT3572) ||
+		    rt2x00_rt(rt2x00dev, RT3593)) {
+			rt2800_bbp_write_with_rx_chain(rt2x00dev, 66,
+						       vgc_level);
+		} else if (rt2x00_rt(rt2x00dev, RT5592)) {
 			rt2800_bbp_write(rt2x00dev, 83, qual->rssi > -65 ? 0x4a : 0x7a);
 			rt2800_bbp_write_with_rx_chain(rt2x00dev, 66, vgc_level);
-		} else
+		} else {
 			rt2800_bbp_write(rt2x00dev, 66, vgc_level);
+		}
+
 		qual->vgc_level = vgc_level;
 		qual->vgc_level_reg = vgc_level;
 	}
@@ -4465,17 +4471,35 @@ void rt2800_link_tuner(struct rt2x00_dev *rt2x00dev, struct link_qual *qual,
 
 	if (rt2x00_rt_rev(rt2x00dev, RT2860, REV_RT2860C))
 		return;
-	/*
-	 * When RSSI is better then -80 increase VGC level with 0x10, except
-	 * for rt5592 chip.
+
+	/* When RSSI is better than a certain threshold, increase VGC
+	 * with a chip specific value in order to improve the balance
+	 * between sensibility and noise isolation.
 	 */
 
 	vgc = rt2800_get_default_vgc(rt2x00dev);
 
-	if (rt2x00_rt(rt2x00dev, RT5592) && qual->rssi > -65)
-		vgc += 0x20;
-	else if (qual->rssi > -80)
-		vgc += 0x10;
+	switch (rt2x00dev->chip.rt) {
+	case RT3572:
+	case RT3593:
+		if (qual->rssi > -65) {
+			if (rt2x00dev->curr_band == IEEE80211_BAND_2GHZ)
+				vgc += 0x20;
+			else
+				vgc += 0x10;
+		}
+		break;
+
+	case RT5592:
+		if (qual->rssi > -65)
+			vgc += 0x20;
+		break;
+
+	default:
+		if (qual->rssi > -80)
+			vgc += 0x10;
+		break;
+	}
 
 	rt2800_set_vgc(rt2x00dev, qual, vgc);
 }
