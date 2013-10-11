@@ -1483,6 +1483,7 @@ void ieee80211_tx_duplicate(struct ieee80211_sub_if_data *sdata,
 	if (!copied_skb)
 		return;
 
+	ieee80211_set_qos_hdr(sdata, copied_skb);
 	info = IEEE80211_SKB_CB(copied_skb);
 	memset(info, 0, sizeof(*info));
 	info->flags |= IEEE80211_TX_INTFL_NEED_TXPROCESSING;
@@ -1524,7 +1525,8 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata, struct sk_buff *skb,
 		} else {
 			ieee80211_mps_set_frame_flags(sdata, NULL, hdr);
 		}
-		if (is_multicast_ether_addr(hdr->addr1)) {
+		if (is_multicast_ether_addr(hdr->addr1) &&
+		    ieee80211_is_data(hdr->frame_control)) {
 			struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 			/*
 			 * enqueue additional copies of this frame according
