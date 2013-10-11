@@ -2058,6 +2058,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	__le16 reason = cpu_to_le16(WLAN_REASON_MESH_PATH_NOFORWARD);
 	u16 q, hdrlen;
+	int i;
 
 	hdr = (struct ieee80211_hdr *) skb->data;
 	hdrlen = ieee80211_hdrlen(hdr->frame_control);
@@ -2172,6 +2173,12 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 
 	IEEE80211_IFSTA_MESH_CTR_INC(ifmsh, fwded_frames);
 	ieee80211_add_pending_skb(local, fwd_skb);
+
+	if (is_multicast_ether_addr(hdr->addr1)) {
+		for (i=1; i < ifmsh->mshcfg.mcast_retries; i++)
+			ieee80211_tx_duplicate(sdata, fwd_skb);
+	}
+
  out:
 	if (is_multicast_ether_addr(hdr->addr1) ||
 	    sdata->dev->flags & IFF_PROMISC)
