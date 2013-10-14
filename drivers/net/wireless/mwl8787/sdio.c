@@ -1131,6 +1131,8 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 	if (ret)
 		goto disable;
 
+	release_firmware(fw);
+
 	ret = mwl8787_init_fw(priv);
 	if (ret)
 		goto disable;
@@ -1141,11 +1143,16 @@ static void mwl8787_fw_cb(const struct firmware *fw, void *context)
 	/* FW loaded, so register with mac80211 */
 	ret = mwl8787_register(priv);
 
-disable:
-	/* FIXME unbind device */
-	release_firmware(fw);
-
+	/*
+	 * complete fw done as final step, allowing stop to proceed
+	 * now that fw callback cannot be called.
+	 */
 	complete(&priv->fw_done);
+	return;
+
+disable:
+	complete(&priv->fw_done);
+	device_release_driver(priv->dev);
 }
 
 static int mwl8787_sdio_probe(struct sdio_func *func,
