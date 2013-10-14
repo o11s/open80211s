@@ -85,8 +85,8 @@ static struct ieee80211_rate mwl8787_rates[] = {
 
 #define mwl8787_2ghz_rates mwl8787_rates
 #define mwl8787_2ghz_rates_len ARRAY_SIZE(mwl8787_rates)
-#define mwl8787_5ghz_rates (mwl8787_rates + 4)
-#define mwl8787_5ghz_rates_len ARRAY_SIZE(mwl8787_rates) - 4
+#define mwl8787_5ghz_rates (mwl8787_rates + 5)
+#define mwl8787_5ghz_rates_len ARRAY_SIZE(mwl8787_rates) - 5
 
 static struct ieee80211_supported_band mwl8787_2ghz_band = {
 	.channels = mwl8787_2ghz_chantable,
