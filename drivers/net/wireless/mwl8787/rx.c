@@ -29,15 +29,10 @@ void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 	if (desc->ht_info & MWL8787_RX_HT_RATE)
 		rx_status->flag |= RX_FLAG_HT;
-	else {
-		/*
-		 * rate_idx for OFDM rates starts at 5 (4 is skipped), but
-		 * otherwise follows rate table.  For HT rates, rate_idx
-		 * corresponds directly to MCS index.
-		 */
-		if (rx_status->rate_idx >= 5)
-			rx_status->rate_idx--;
-	}
+
+	/* skip CCK rates for 5 ghz */
+	if (priv->hw->conf.chandef.chan->band == IEEE80211_BAND_5GHZ)
+		rx_status->rate_idx -= 5;
 
 	if (desc->ht_info & MWL8787_RX_HT_40)
 		rx_status->flag |= RX_FLAG_40MHZ;
