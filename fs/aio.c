@@ -1262,14 +1262,14 @@ static ssize_t aio_run_iocb(struct kiocb *req, unsigned opcode,
 	case IOCB_CMD_PREADV:
 		mode	= FMODE_READ;
 		rw	= READ;
-		rw_op	= file->f_op->aio_read;
+		rw_op	= do_aio_read;
 		goto rw_common;
 
 	case IOCB_CMD_PWRITE:
 	case IOCB_CMD_PWRITEV:
 		mode	= FMODE_WRITE;
 		rw	= WRITE;
-		rw_op	= file->f_op->aio_write;
+		rw_op	= do_aio_write;
 		goto rw_common;
 rw_common:
 		if (unlikely(!(file->f_mode & mode)))
