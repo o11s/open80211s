@@ -625,7 +625,7 @@ out:
 }
 
 int mwl8787_cmd_set_wmm_conf(struct mwl8787_priv *priv, u16 ac,
-			     struct ieee80211_tx_queue_params *params)
+			     const struct ieee80211_tx_queue_params *params)
 {
 	struct mwl8787_cmd *cmd;
 	int ret;

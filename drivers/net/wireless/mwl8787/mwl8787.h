@@ -195,7 +195,7 @@ int mwl8787_cmd_log(struct mwl8787_priv *priv,
 int mwl8787_cmd_link_stats(struct mwl8787_priv *priv, u8 *addr,
 			   struct ieee80211_link_stats *stats);
 int mwl8787_cmd_set_wmm_conf(struct mwl8787_priv *priv, u16 ac,
-			     struct ieee80211_tx_queue_params *params);
+			     const struct ieee80211_tx_queue_params *params);
 int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr);
 int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
 int mwl8787_cmd_del_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta);
