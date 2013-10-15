@@ -13,6 +13,27 @@ static inline void trace_ ## name(proto) {}
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM mwl8787
 
+TRACE_EVENT(mwl8787_irq,
+	TP_PROTO(struct mwl8787_priv *priv, u8 status, u32 wr_map, u32 rd_map),
+	TP_ARGS(priv, status, wr_map, rd_map),
+	TP_STRUCT__entry(
+		__field(struct mwl8787_priv *, priv)
+		__field(u8, status)
+		__field(u32, wr_map)
+		__field(u32, rd_map)
+	),
+	TP_fast_assign(
+		__entry->priv = priv;
+		__entry->status = status;
+		__entry->wr_map = wr_map;
+		__entry->rd_map = rd_map;
+	),
+	TP_printk(
+		"status: 0x%x wr_map:0x%x rd_map:0x%x", __entry->status,
+		__entry->wr_map, __entry->rd_map
+	)
+);
+
 TRACE_EVENT(mwl8787_sdio_reg,
 	TP_PROTO(struct mwl8787_priv *priv, bool tx, u32 port, u8 val, int ret),
 	TP_ARGS(priv, tx, port, val, ret),
