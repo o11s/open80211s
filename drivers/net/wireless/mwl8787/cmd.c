@@ -624,6 +624,33 @@ out:
 	return ret;
 }
 
+int mwl8787_cmd_set_wmm_conf(struct mwl8787_priv *priv, u16 ac,
+			     struct ieee80211_tx_queue_params *params)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_WMM_QUEUE_CONFIG,
+				sizeof(struct mwl8787_cmd_wmm_queue_cfg),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.wmm.action = MWL8787_ACT_SET;
+	/* fw expects hwq */
+	cmd->u.wmm.ac = mwl8787_ac_to_hwq[ac];
+	cmd->u.wmm.cwMin = cpu_to_le16(params->cw_min);
+	cmd->u.wmm.cwMax = cpu_to_le16(params->cw_max);
+	/* fw expects TU */
+	cmd->u.wmm.txop = cpu_to_le16(params->txop / 32);
+	cmd->u.wmm.aifsn = cpu_to_le16(params->aifs);
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
+
 int mwl8787_cmd_set_mac_addr(struct mwl8787_priv *priv, u8 *addr)
 {
 	struct mwl8787_cmd *cmd;

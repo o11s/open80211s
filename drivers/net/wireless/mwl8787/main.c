@@ -586,6 +586,14 @@ static int mwl8787_link_stats(struct ieee80211_hw *hw,
 	return mwl8787_cmd_link_stats(priv, peer, stats);
 }
 
+static int mwl8787_conf_tx(struct ieee80211_hw *hw,
+			   struct ieee80211_vif *vif, u16 ac,
+			   const struct ieee80211_tx_queue_params *params)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	return mwl8787_cmd_set_wmm_conf(priv, ac, params);
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -593,6 +601,7 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.add_interface = mwl8787_add_interface,
 	.remove_interface = mwl8787_remove_interface,
 	.config = mwl8787_config,
+	.conf_tx = mwl8787_conf_tx,
 	.bss_info_changed = mwl8787_bss_info_changed,
 	.prepare_multicast = mwl8787_prepare_multicast,
 	.configure_filter = mwl8787_configure_filter,
