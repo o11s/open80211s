@@ -887,42 +887,42 @@ static int mwl8787_process_int_status(struct mwl8787_priv *priv)
 		bitmap = (u32) priv->mp_regs[MWL8787_RD_BITMAP_L];
 		bitmap |= ((u32) priv->mp_regs[MWL8787_RD_BITMAP_U]) << 8;
 		priv->mp_rd_bitmap = bitmap;
+	}
 
-		while (true) {
-			ret = mwl8787_get_rd_port(priv, &port);
-			if (ret) {
-				break;
-			}
-			len_reg_l = MWL8787_RD_LEN_P0_L + (port << 1);
-			len_reg_u = MWL8787_RD_LEN_P0_U + (port << 1);
-			rx_len = ((u16) priv->mp_regs[len_reg_u]) << 8;
-			rx_len |= (u16) priv->mp_regs[len_reg_l];
-			rx_blocks = DIV_ROUND_UP(rx_len,
-						 MWL8787_SDIO_BLOCK_SIZE);
-			if (rx_len <= sizeof(struct mwl8787_sdio_header) ||
-			    (rx_blocks * MWL8787_SDIO_BLOCK_SIZE) >
-			     MWL8787_RX_DATA_BUF_SIZE) {
-				dev_err(priv->dev, "invalid rx_len=%d\n",
-					rx_len);
-				return -1;
-			}
-			rx_len = (u16) (rx_blocks * MWL8787_SDIO_BLOCK_SIZE);
+	trace_mwl8787_irq(priv, sdio_ireg, priv->mp_wr_bitmap,
+			  priv->mp_rd_bitmap);
 
-			skb = dev_alloc_skb(rx_len);
+	/* process all available read ports, if any */
+	while (mwl8787_get_rd_port(priv, &port) == 0) {
+		len_reg_l = MWL8787_RD_LEN_P0_L + (port << 1);
+		len_reg_u = MWL8787_RD_LEN_P0_U + (port << 1);
+		rx_len = ((u16) priv->mp_regs[len_reg_u]) << 8;
+		rx_len |= (u16) priv->mp_regs[len_reg_l];
+		rx_blocks = DIV_ROUND_UP(rx_len,
+					 MWL8787_SDIO_BLOCK_SIZE);
+		if (rx_len <= sizeof(struct mwl8787_sdio_header) ||
+		    (rx_blocks * MWL8787_SDIO_BLOCK_SIZE) >
+		     MWL8787_RX_DATA_BUF_SIZE) {
+			dev_err(priv->dev, "invalid rx_len=%d\n",
+				rx_len);
+			return -1;
+		}
+		rx_len = (u16) (rx_blocks * MWL8787_SDIO_BLOCK_SIZE);
 
-			if (!skb) {
-				dev_err(priv->dev, "%s: failed to alloc skb",
-					__func__);
-				return -1;
-			}
+		skb = dev_alloc_skb(rx_len);
 
-			skb_put(skb, rx_len);
+		if (!skb) {
+			dev_err(priv->dev, "%s: failed to alloc skb",
+				__func__);
+			return -1;
+		}
 
-			if (mwl8787_sdio_card_to_host_aggr(priv, skb, port)) {
-				dev_err(priv->dev, "card_to_host failed:"
-					" int status=%#x\n", sdio_ireg);
-				goto term_cmd;
-			}
+		skb_put(skb, rx_len);
+
+		if (mwl8787_sdio_card_to_host_aggr(priv, skb, port)) {
+			dev_err(priv->dev, "card_to_host failed:"
+				" int status=%#x\n", sdio_ireg);
+			goto term_cmd;
 		}
 	}
 
