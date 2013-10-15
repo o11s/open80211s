@@ -29,9 +29,8 @@ void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 
 	if (desc->ht_info & MWL8787_RX_HT_RATE)
 		rx_status->flag |= RX_FLAG_HT;
-
-	/* skip CCK for 5 GHz legacy rates */
 	else if (priv->hw->conf.chandef.chan->band == IEEE80211_BAND_5GHZ)
+		/* skip CCK for 5 GHz legacy rates */
 		rx_status->rate_idx -= 5;
 
 	if (desc->ht_info & MWL8787_RX_HT_40)
