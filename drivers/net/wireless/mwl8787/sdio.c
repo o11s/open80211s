@@ -544,15 +544,8 @@ static int mwl8787_sdio_send_tx(struct mwl8787_priv *priv,
 		return ret;
 	}
 
-#if 0
-	ret = mwl8787_write(priv, skb->data, buf_block_len, priv->ioport + port);
-	return ret;
-#else
-	ret = mwl8787_host_to_card_mp_aggr(priv, skb->data, buf_block_len,
-					   priv->ioport + port, more_frames);
-
-	return ret;
-#endif
+	return mwl8787_host_to_card_mp_aggr(priv, skb->data, buf_block_len,
+					    priv->ioport + port, more_frames);
 }
 
 static int mwl8787_sdio_send_cmd(struct mwl8787_priv *priv,
