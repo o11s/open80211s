@@ -15,6 +15,14 @@ struct kiocb;
 #define KIOCB_KEY		0
 
 /*
+ * opcode values not exposed to user space
+ */
+enum {
+	IOCB_CMD_READ_ITER = 0x10000,
+	IOCB_CMD_WRITE_ITER = 0x10001,
+};
+
+/*
  * We use ki_cancel == KIOCB_CANCELLED to indicate that a kiocb has been either
  * cancelled or completed (this makes a certain amount of sense because
  * successful cancellation - io_cancel() - does deliver the completion to

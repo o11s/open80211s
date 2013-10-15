@@ -1199,13 +1199,55 @@ static ssize_t aio_setup_single_vector(struct kiocb *kiocb,
 	return 0;
 }
 
+static ssize_t aio_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	struct file *file = iocb->ki_filp;
+	ssize_t ret;
+
+	if (unlikely(!is_kernel_kiocb(iocb)))
+		return -EINVAL;
+
+	if (unlikely(!(file->f_mode & FMODE_READ)))
+		return -EBADF;
+
+	ret = security_file_permission(file, MAY_READ);
+	if (unlikely(ret))
+		return ret;
+
+	if (!file->f_op->read_iter)
+		return -EINVAL;
+
+	return file->f_op->read_iter(iocb, iter, iocb->ki_pos);
+}
+
+static ssize_t aio_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	struct file *file = iocb->ki_filp;
+	ssize_t ret;
+
+	if (unlikely(!is_kernel_kiocb(iocb)))
+		return -EINVAL;
+
+	if (unlikely(!(file->f_mode & FMODE_WRITE)))
+		return -EBADF;
+
+	ret = security_file_permission(file, MAY_WRITE);
+	if (unlikely(ret))
+		return ret;
+
+	if (!file->f_op->write_iter)
+		return -EINVAL;
+
+	return file->f_op->write_iter(iocb, iter, iocb->ki_pos);
+}
+
 /*
  * aio_setup_iocb:
  *	Performs the initial checks and aio retry method
  *	setup for the kiocb at the time of io submission.
  */
 static ssize_t aio_run_iocb(struct kiocb *req, unsigned opcode,
-			    char __user *buf, bool compat)
+			    void *buf, bool compat)
 {
 	struct file *file = req->ki_filp;
 	ssize_t ret;
@@ -1268,6 +1310,14 @@ rw_common:
 
 		if (rw == WRITE)
 			file_end_write(file);
+		break;
+
+	case IOCB_CMD_READ_ITER:
+		ret = aio_read_iter(req, buf);
+		break;
+
+	case IOCB_CMD_WRITE_ITER:
+		ret = aio_write_iter(req, buf);
 		break;
 
 	case IOCB_CMD_FDSYNC:
@@ -1440,7 +1490,7 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 	req->ki_nbytes = iocb->aio_nbytes;
 
 	ret = aio_run_iocb(req, iocb->aio_lio_opcode,
-			   (char __user *)(unsigned long)iocb->aio_buf,
+			   (void *)(unsigned long)iocb->aio_buf,
 			   compat);
 	if (ret)
 		goto out_put_req;
