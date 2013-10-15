@@ -1178,9 +1178,10 @@ static inline void fuse_page_descs_length_init(struct fuse_req *req,
 			req->page_descs[i].offset;
 }
 
-static inline unsigned long fuse_get_user_addr(const struct iov_iter *ii)
+static inline unsigned long fuse_get_user_addr(struct iov_iter *ii)
 {
-	return (unsigned long)ii->iov->iov_base + ii->iov_offset;
+	struct iovec *iov = iov_iter_iovec(ii);
+	return (unsigned long)iov->iov_base + ii->iov_offset;
 }
 
 static inline size_t fuse_get_frag_size(const struct iov_iter *ii,
