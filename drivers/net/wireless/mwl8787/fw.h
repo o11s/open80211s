@@ -210,6 +210,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_RADIO_CTRL		= 0x001c,
 	MWL8787_CMD_MAC_ADDR		= 0x004d,
 	MWL8787_CMD_MAC_CTRL		= 0x0028,
+	MWL8787_CMD_WMM_QUEUE_CONFIG	= 0x0070,
 	MWL8787_CMD_SUBSCRIBE_EVENTS	= 0x0075,
 	MWL8787_CMD_TX_RATE_QUERY	= 0x007f,
 	MWL8787_CMD_GET_TSF		= 0x0080,
@@ -526,6 +527,16 @@ struct mwl8787_cmd_scan_resp {
 	u8 data[0];
 } __packed;
 
+struct mwl8787_cmd_wmm_queue_cfg {
+	u8 action;
+	u8 ac;
+	__le16 msdu_lifetime;	/* TU */
+	__le16 cwMin;		/* slots */
+	__le16 cwMax;
+	__le16 txop;		/* TU */
+	__le16 aifsn;		/* slots */
+} __packed;
+
 struct mwl8787_tx_desc {
 	u8 bss_type;
 	u8 bss_num;
@@ -582,6 +593,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_rate_query rate_query;
 		struct mwl8787_cmd_tx_power tx_power;
 		struct mwl8787_cmd_11n_cfg dot11n;
+		struct mwl8787_cmd_wmm_queue_cfg wmm;
 		u8 data[0];
 	} u;
 } __packed;
