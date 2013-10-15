@@ -176,7 +176,6 @@ enum rq_flag_bits {
 	__REQ_FLUSH_SEQ,	/* request for flush sequence */
 	__REQ_IO_STAT,		/* account I/O stat */
 	__REQ_MIXED_MERGE,	/* merge of different types, fail separately */
-	__REQ_KERNEL, 		/* direct IO to kernel pages */
 	__REQ_PM,		/* runtime pm request */
 	__REQ_NR_BITS,		/* stops here */
 };
@@ -227,7 +226,6 @@ enum rq_flag_bits {
 #define REQ_IO_STAT		(1 << __REQ_IO_STAT)
 #define REQ_MIXED_MERGE		(1 << __REQ_MIXED_MERGE)
 #define REQ_SECURE		(1 << __REQ_SECURE)
-#define REQ_KERNEL		(1 << __REQ_KERNEL)
 #define REQ_PM			(1 << __REQ_PM)
 
 #endif /* __LINUX_BLK_TYPES_H */
