@@ -3270,6 +3270,18 @@ void ieee80211_tx_status_irqsafe(struct ieee80211_hw *hw,
 				 struct sk_buff *skb);
 
 /**
+ * ieee80211_monitor_tx_rx - IRQ-safe?
+ *
+ * description here
+ *
+ * @hw: the hardware the frame was transmitted by.
+ * @skb: the frame that was transmitted, freed by this function.
+ * @retry_count: number of attempts which were made.
+ */
+void ieee80211_monitor_tx_rx(struct ieee80211_hw *hw,
+			     struct sk_buff *skb, int retry_count);
+
+/**
  * ieee80211_report_low_ack - report non-responding station
  *
  * When operating in AP-mode, call this function to report a non-responding
