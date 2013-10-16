@@ -174,7 +174,8 @@ void mwl8787_tx_work(struct work_struct *work)
 			if (atomic_dec_return(&priv->tx_pending[hw_queue]) <=
 			    MWL8787_TX_CT_LO)
 				mwl8787_start_queue(priv, hw_queue);
-			ieee80211_free_txskb(priv->hw, skb);
+
+			ieee80211_monitor_tx_rx(priv->hw, skb, 0, 0);
 		}
 	}
 }
