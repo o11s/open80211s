@@ -3357,6 +3357,21 @@ void ieee80211_tx_status_irqsafe(struct ieee80211_hw *hw,
 				 struct sk_buff *skb);
 
 /**
+ * ieee80211_monitor_tx_rx - send frames to monitor interfaces
+ *
+ * A driver may use this function to supply transmitted frames
+ * that do not have an ack status to the monitor.
+ *
+ * @hw: the hardware the frame was transmitted by
+ * @skb: the frame that was transmitted, freed by this function
+ * @retry_count: number of transmit attempts that were made
+ * @shift: bitrate scale factor shift for 5/10 mhz channels
+ */
+void ieee80211_monitor_tx_rx(struct ieee80211_hw *hw,
+			     struct sk_buff *skb,
+			     int retry_count,
+			     int shift);
+/**
  * ieee80211_report_low_ack - report non-responding station
  *
  * When operating in AP-mode, call this function to report a non-responding

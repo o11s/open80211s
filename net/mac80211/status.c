@@ -462,6 +462,85 @@ static void ieee80211_report_used_skb(struct ieee80211_local *local,
 	}
 }
 
+void ieee80211_monitor_tx_rx(struct ieee80211_hw *hw,
+			     struct sk_buff *skb,
+			     int retry_count, int shift)
+{
+	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
+	struct ieee80211_local *local = hw_to_local(hw);
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct net_device *prev_dev = NULL;
+	struct ieee80211_supported_band *sband;
+	struct ieee80211_sub_if_data *sdata;
+	__le16 fc = hdr->frame_control;
+	struct sk_buff *skb2;
+	bool send_to_cooked;
+	int rtap_len;
+
+	/* this was a transmitted frame, but now we want to reuse it */
+	skb_orphan(skb);
+
+	/* Need to make a copy before skb->cb gets cleared */
+	send_to_cooked = !!(info->flags & IEEE80211_TX_CTL_INJECTED) ||
+			 !(ieee80211_is_data(fc));
+
+	/*
+	 * This is a bit racy but we can avoid a lot of work
+	 * with this test...
+	 */
+	if (!local->monitors && (!send_to_cooked || !local->cooked_mntrs)) {
+		dev_kfree_skb(skb);
+		return;
+	}
+
+	/* send frame to monitor interfaces now */
+	rtap_len = ieee80211_tx_radiotap_len(info);
+	if (WARN_ON_ONCE(skb_headroom(skb) < rtap_len)) {
+		pr_err("ieee80211_tx_status: headroom too small\n");
+		dev_kfree_skb(skb);
+		return;
+	}
+	ieee80211_add_tx_radiotap_header(local, sband, skb, retry_count,
+					 rtap_len, shift);
+
+	/* XXX: is this sufficient for BPF? */
+	skb_set_mac_header(skb, 0);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+	skb->pkt_type = PACKET_OTHERHOST;
+	skb->protocol = htons(ETH_P_802_2);
+	memset(skb->cb, 0, sizeof(skb->cb));
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
+		if (sdata->vif.type == NL80211_IFTYPE_MONITOR) {
+			if (!ieee80211_sdata_running(sdata))
+				continue;
+
+			if ((sdata->u.mntr_flags & MONITOR_FLAG_COOK_FRAMES) &&
+			    !send_to_cooked)
+				continue;
+
+			if (prev_dev) {
+				skb2 = skb_clone(skb, GFP_ATOMIC);
+				if (skb2) {
+					skb2->dev = prev_dev;
+					netif_rx(skb2);
+				}
+			}
+
+			prev_dev = sdata->dev;
+		}
+	}
+	if (prev_dev) {
+		skb->dev = prev_dev;
+		netif_rx(skb);
+		skb = NULL;
+	}
+	rcu_read_unlock();
+	dev_kfree_skb(skb);
+}
+EXPORT_SYMBOL(ieee80211_monitor_tx_rx);
+
 /*
  * Use a static threshold for now, best value to be determined
  * by testing ...
@@ -473,21 +552,16 @@ static void ieee80211_report_used_skb(struct ieee80211_local *local,
 
 void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 {
-	struct sk_buff *skb2;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	__le16 fc;
 	struct ieee80211_supported_band *sband;
-	struct ieee80211_sub_if_data *sdata;
-	struct net_device *prev_dev = NULL;
 	struct sta_info *sta, *tmp;
 	int retry_count = -1, i;
 	int rates_idx = -1;
-	bool send_to_cooked;
 	bool acked;
 	struct ieee80211_bar *bar;
-	int rtap_len;
 	int shift = 0;
 
 	for (i = 0; i < IEEE80211_TX_MAX_RATES; i++) {
@@ -668,67 +742,7 @@ void ieee80211_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb)
 
 	ieee80211_report_used_skb(local, skb, false);
 
-	/* this was a transmitted frame, but now we want to reuse it */
-	skb_orphan(skb);
-
-	/* Need to make a copy before skb->cb gets cleared */
-	send_to_cooked = !!(info->flags & IEEE80211_TX_CTL_INJECTED) ||
-			 !(ieee80211_is_data(fc));
-
-	/*
-	 * This is a bit racy but we can avoid a lot of work
-	 * with this test...
-	 */
-	if (!local->monitors && (!send_to_cooked || !local->cooked_mntrs)) {
-		dev_kfree_skb(skb);
-		return;
-	}
-
-	/* send frame to monitor interfaces now */
-	rtap_len = ieee80211_tx_radiotap_len(info);
-	if (WARN_ON_ONCE(skb_headroom(skb) < rtap_len)) {
-		pr_err("ieee80211_tx_status: headroom too small\n");
-		dev_kfree_skb(skb);
-		return;
-	}
-	ieee80211_add_tx_radiotap_header(local, sband, skb, retry_count,
-					 rtap_len, shift);
-
-	/* XXX: is this sufficient for BPF? */
-	skb_set_mac_header(skb, 0);
-	skb->ip_summed = CHECKSUM_UNNECESSARY;
-	skb->pkt_type = PACKET_OTHERHOST;
-	skb->protocol = htons(ETH_P_802_2);
-	memset(skb->cb, 0, sizeof(skb->cb));
-
-	rcu_read_lock();
-	list_for_each_entry_rcu(sdata, &local->interfaces, list) {
-		if (sdata->vif.type == NL80211_IFTYPE_MONITOR) {
-			if (!ieee80211_sdata_running(sdata))
-				continue;
-
-			if ((sdata->u.mntr_flags & MONITOR_FLAG_COOK_FRAMES) &&
-			    !send_to_cooked)
-				continue;
-
-			if (prev_dev) {
-				skb2 = skb_clone(skb, GFP_ATOMIC);
-				if (skb2) {
-					skb2->dev = prev_dev;
-					netif_rx(skb2);
-				}
-			}
-
-			prev_dev = sdata->dev;
-		}
-	}
-	if (prev_dev) {
-		skb->dev = prev_dev;
-		netif_rx(skb);
-		skb = NULL;
-	}
-	rcu_read_unlock();
-	dev_kfree_skb(skb);
+	ieee80211_monitor_tx_rx(hw, skb, retry_count, shift);
 }
 EXPORT_SYMBOL(ieee80211_tx_status);
 
