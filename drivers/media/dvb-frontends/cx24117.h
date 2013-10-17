@@ -1,8 +1,8 @@
 /*
-    Montage Technology TS2020 - Silicon Tuner driver
-    Copyright (C) 2009-2012 Konstantin Dimitrov <kosio.dimitrov@gmail.com>
+    Conexant cx24117/cx24132 - Dual DVBS/S2 Satellite demod/tuner driver
 
-    Copyright (C) 2009-2012 TurboSight.com
+    Copyright (C) 2013 Luis Alves <ljalvs@gmail.com>
+	(based on cx24116.h by Steven Toth)
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,35 +17,31 @@
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- */
+*/
 
-#ifndef TS2020_H
-#define TS2020_H
+#ifndef CX24117_H
+#define CX24117_H
 
 #include <linux/kconfig.h>
 #include <linux/dvb/frontend.h>
 
-struct ts2020_config {
-	u8 tuner_address;
-	u8 clk_out_div;
-	u32 frequency_div;
+struct cx24117_config {
+	/* the demodulator's i2c address */
+	u8 demod_address;
 };
 
-#if IS_ENABLED(CONFIG_DVB_TS2020)
-
-extern struct dvb_frontend *ts2020_attach(
-	struct dvb_frontend *fe,
-	const struct ts2020_config *config,
+#if IS_ENABLED(CONFIG_DVB_CX24117)
+extern struct dvb_frontend *cx24117_attach(
+	const struct cx24117_config *config,
 	struct i2c_adapter *i2c);
 #else
-static inline struct dvb_frontend *ts2020_attach(
-	struct dvb_frontend *fe,
-	const struct ts2020_config *config,
+static inline struct dvb_frontend *cx24117_attach(
+	const struct cx24117_config *config,
 	struct i2c_adapter *i2c)
 {
-	printk(KERN_WARNING "%s: driver disabled by Kconfig\n", __func__);
+	dev_warn(&i2c->dev, "%s: driver disabled by Kconfig\n", __func__);
 	return NULL;
 }
 #endif
 
-#endif /* TS2020_H */
+#endif /* CX24117_H */
