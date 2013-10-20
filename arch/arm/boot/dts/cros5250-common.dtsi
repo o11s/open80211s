@@ -229,7 +229,7 @@
 		};
 	};
 
-	dwmmc0@12200000 {
+	mmc@12200000 {
 		num-slots = <1>;
 		supports-highspeed;
 		broken-cd;
@@ -247,11 +247,11 @@
 		};
 	};
 
-	dwmmc1@12210000 {
+	mmc@12210000 {
 		status = "disabled";
 	};
 
-	dwmmc2@12220000 {
+	mmc@12220000 {
 		num-slots = <1>;
 		supports-highspeed;
 		fifo-depth = <0x80>;
@@ -269,7 +269,7 @@
 		};
 	};
 
-	dwmmc3@12230000 {
+	mmc@12230000 {
 		num-slots = <1>;
 		supports-highspeed;
 		broken-cd;
