@@ -12,7 +12,7 @@
 #
 
 ifneq ($(MACHINE),)
-include $(srctree)/$(MACHINE)/Makefile.boot
+sinclude $(srctree)/$(MACHINE)/Makefile.boot
 endif
 
 # Note: the following conditions must always be true:
@@ -51,10 +51,19 @@ $(obj)/Image: vmlinux FORCE
 $(obj)/compressed/vmlinux: $(obj)/Image FORCE
 	$(Q)$(MAKE) $(build)=$(obj)/compressed $@
 
+ifneq ($(CONFIG_AUTO_ZRELADDR)$(ZRELADDR),)
+
 $(obj)/zImage:	$(obj)/compressed/vmlinux FORCE
 	$(call if_changed,objcopy)
 	@$(kecho) '  Kernel: $@ is ready'
 
+else
+
+$(obj)/zImage: FORCE
+	@echo 'Either enable CONFIG_AUTO_ZRELADDR or provide zreladdr-y in Makefile.boot'
+	@false
+
+endif
 endif
 
 ifneq ($(LOADADDR),)
@@ -81,6 +90,8 @@ $(obj)/uImage:	$(obj)/zImage FORCE
 	@$(kecho) '  Image $@ is ready'
 
 $(obj)/bootp/bootp: $(obj)/zImage initrd FORCE
+	@test -n "$(PARAMS_PHYS)" || \
+	(echo This machine does not support BOOTP; exit -1)
 	$(Q)$(MAKE) $(build)=$(obj)/bootp $@
 	@:
 
