@@ -206,6 +206,7 @@ int mwl8787_cmd_delba(struct mwl8787_priv *priv,
 		      struct ieee80211_sta *sta,
 		      u16 tid);
 int mwl8787_cmd_tx_power(struct mwl8787_priv *priv, int max_tx_power);
+int mwl8787_cmd_ps_mode(struct mwl8787_priv *priv, bool enable);
 
 /* tx */
 void mwl8787_tx(struct ieee80211_hw *hw,

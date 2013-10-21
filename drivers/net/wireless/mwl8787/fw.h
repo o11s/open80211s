@@ -221,6 +221,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_ADDBA_RSP		= 0x00cf,
 	MWL8787_CMD_DELBA		= 0x00d0,
 	MWL8787_CMD_TX_POWER		= 0x00d1,
+	MWL8787_CMD_PS_MODE		= 0x00e4,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 	MWL8787_CMD_SET_TSF		= 0x010f,
 	MWL8787_CMD_SET_PEER		= 0x0110,
@@ -232,6 +233,15 @@ enum mwl8787_ba_status {
 	MWL8787_BA_EXEC_FAILURE		= 1,
 	MWL8787_BA_TIMEOUT		= 2,
 	MWL8787_BA_DATA_INVALID		= 3,
+};
+
+enum mwl8787_ps_modes {
+	MWL8787_PS_ENABLE		= 0x01,
+	MWL8787_PS_DISABLE		= 0x02,
+};
+
+enum mwl8787_ps_flags {
+	MWL8787_PS_FLAG_STA		= BIT(4),
 };
 
 enum mwl8787_event_id {
@@ -317,12 +327,16 @@ struct mwl8787_cmd_radio_ctrl {
 	__le16 control;
 } __packed;
 
-
 struct mwl8787_cmd_11n_cfg {
 	__le16 action;
 	__le16 ht_cap;
 	__le16 ht_info;
 	__le16 misc;
+} __packed;
+
+struct mwl8787_cmd_ps_mode {
+	__le16 action;
+	__le16 bitmap;
 } __packed;
 
 /*
@@ -594,6 +608,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_tx_power tx_power;
 		struct mwl8787_cmd_11n_cfg dot11n;
 		struct mwl8787_cmd_wmm_queue_cfg wmm;
+		struct mwl8787_cmd_ps_mode ps_mode;
 		u8 data[0];
 	} u;
 } __packed;

@@ -1,4 +1,5 @@
 #include "mwl8787.h"
+#include "trace.h"
 #include "fw.h"
 
 static int __mwl8787_send_cmd(struct mwl8787_priv *priv,
@@ -832,6 +833,28 @@ int mwl8787_cmd_tx_power(struct mwl8787_priv *priv, int max_tx_power)
 
 #undef POWER_GROUP
 
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
+
+int mwl8787_cmd_ps_mode(struct mwl8787_priv *priv, bool enable)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	trace_mwl8787_ps_mode(priv, enable);
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_PS_MODE,
+				sizeof(struct mwl8787_cmd_ps_mode),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.ps_mode.action = cpu_to_le16(enable ?
+		MWL8787_PS_ENABLE : MWL8787_PS_DISABLE);
+	cmd->u.ps_mode.bitmap = cpu_to_le16(MWL8787_PS_FLAG_STA);
 
 	ret = mwl8787_send_cmd(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);
