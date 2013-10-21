@@ -15,6 +15,8 @@
 	.max_power = MWL8787_DEFAULT_TX_POWER, \
 }
 
+#define USE_PS_CODE 0
+
 static char *mwl8787_modparam_mac_addr;
 module_param_named(mac_addr, mwl8787_modparam_mac_addr, charp, S_IRUGO);
 
@@ -321,6 +323,11 @@ static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 		mwl8787_cmd_rf_channel(priv, &hw->conf.chandef);
 		mwl8787_cmd_11n_cfg(priv, &hw->conf.chandef);
 	}
+
+#if USE_PS_CODE
+	if (changed & IEEE80211_CONF_CHANGE_PS)
+		mwl8787_cmd_ps_mode(priv, hw->conf.flags & IEEE80211_CONF_PS);
+#endif
 
 	return 0;
 }
@@ -650,6 +657,10 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->flags =
 		IEEE80211_HW_HAS_RATE_CONTROL |
 		IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING |
+#if USE_PS_CODE
+		IEEE80211_HW_SUPPORTS_PS |
+		IEEE80211_HW_PS_NULLFUNC_STACK |
+#endif
 		IEEE80211_HW_REPORTS_TX_ACK_STATUS |
 		IEEE80211_HW_CONNECTION_MONITOR |
 		IEEE80211_HW_AMPDU_AGGREGATION |

@@ -80,6 +80,22 @@ TRACE_EVENT(mwl8787_sdio,
 	)
 );
 
+TRACE_EVENT(mwl8787_ps_mode,
+	TP_PROTO(struct mwl8787_priv *priv, bool enabled),
+	TP_ARGS(priv, enabled),
+	TP_STRUCT__entry(
+		__field(struct mwl8787_priv *, priv)
+		__field(u8, enabled)
+	),
+	TP_fast_assign(
+		__entry->priv = priv;
+		__entry->enabled = enabled;
+	),
+	TP_printk(
+		"%s ps mode", __entry->enabled ? "entering" : "leaving"
+	)
+);
+
 #endif /* __TRACE_MLW8787_H */
 
 #if defined(CONFIG_MWL8787_TRACER) && !defined(__CHECKER__)
