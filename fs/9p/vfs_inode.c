@@ -299,15 +299,22 @@ int v9fs_init_inode(struct v9fs_session_info *v9ses,
 	case S_IFREG:
 		if (v9fs_proto_dotl(v9ses)) {
 			inode->i_op = &v9fs_file_inode_operations_dotl;
-			if (v9ses->cache)
+			if (v9ses->cache == CACHE_LOOSE ||
+			    v9ses->cache == CACHE_FSCACHE)
 				inode->i_fop =
 					&v9fs_cached_file_operations_dotl;
+			else if (v9ses->cache == CACHE_MMAP)
+				inode->i_fop = &v9fs_mmap_file_operations_dotl;
 			else
 				inode->i_fop = &v9fs_file_operations_dotl;
 		} else {
 			inode->i_op = &v9fs_file_inode_operations;
-			if (v9ses->cache)
-				inode->i_fop = &v9fs_cached_file_operations;
+			if (v9ses->cache == CACHE_LOOSE ||
+			    v9ses->cache == CACHE_FSCACHE)
+				inode->i_fop =
+					&v9fs_cached_file_operations;
+			else if (v9ses->cache == CACHE_MMAP)
+				inode->i_fop = &v9fs_mmap_file_operations;
 			else
 				inode->i_fop = &v9fs_file_operations;
 		}
@@ -814,7 +821,7 @@ struct dentry *v9fs_vfs_lookup(struct inode *dir, struct dentry *dentry,
 	 * unlink. For cached mode create calls request for new
 	 * inode. But with cache disabled, lookup should do this.
 	 */
-	if (v9ses->cache)
+	if (v9ses->cache == CACHE_LOOSE || v9ses->cache == CACHE_FSCACHE)
 		inode = v9fs_get_inode_from_fid(v9ses, fid, dir->i_sb);
 	else
 		inode = v9fs_get_new_inode_from_fid(v9ses, fid, dir->i_sb);
@@ -880,7 +887,8 @@ v9fs_vfs_atomic_open(struct inode *dir, struct dentry *dentry,
 	v9fs_invalidate_inode_attr(dir);
 	v9inode = V9FS_I(dentry->d_inode);
 	mutex_lock(&v9inode->v_mutex);
-	if (v9ses->cache && !v9inode->writeback_fid &&
+	if ((v9ses->cache == CACHE_LOOSE || v9ses->cache == CACHE_FSCACHE) &&
+	    !v9inode->writeback_fid &&
 	    ((flags & O_ACCMODE) != O_RDONLY)) {
 		/*
 		 * clone a fid and add it to writeback_fid
@@ -904,7 +912,7 @@ v9fs_vfs_atomic_open(struct inode *dir, struct dentry *dentry,
 
 	file->private_data = fid;
 #ifdef CONFIG_9P_FSCACHE
-	if (v9ses->cache)
+	if (v9ses->cache == CACHE_LOOSE || v9ses->cache == CACHE_FSCACHE)
 		v9fs_cache_inode_set_cookie(dentry->d_inode, file);
 #endif
 
@@ -1483,7 +1491,7 @@ int v9fs_refresh_inode(struct p9_fid *fid, struct inode *inode)
 	 */
 	i_size = inode->i_size;
 	v9fs_stat2inode(st, inode, inode->i_sb);
-	if (v9ses->cache)
+	if (v9ses->cache == CACHE_LOOSE || v9ses->cache == CACHE_FSCACHE)
 		inode->i_size = i_size;
 	spin_unlock(&inode->i_lock);
 out:
