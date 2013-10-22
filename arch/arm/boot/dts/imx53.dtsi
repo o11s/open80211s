@@ -599,6 +599,13 @@
 							MX53_PAD_GPIO_5__I2C3_SCL 0xc0000000
 						>;
 					};
+
+					pinctrl_i2c3_2: i2c3grp-2 {
+						fsl,pins = <
+							MX53_PAD_GPIO_3__I2C3_SCL	0xc0000000
+							MX53_PAD_GPIO_6__I2C3_SDA	0xc0000000
+						>;
+					};
 				};
 
 				ipu_disp0 {
