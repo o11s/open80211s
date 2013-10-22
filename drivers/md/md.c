@@ -5332,19 +5332,30 @@ EXPORT_SYMBOL_GPL(md_stop);
 static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 {
 	int err = 0;
+	int did_freeze = 0;
+
+	if (!test_bit(MD_RECOVERY_FROZEN, &mddev->recovery)) {
+		did_freeze = 1;
+		set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+		md_wakeup_thread(mddev->thread);
+	}
+	if (mddev->sync_thread)
+		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
+	mddev_unlock(mddev);
+	wait_event(resync_wait, mddev->sync_thread == NULL);
+	mddev_lock(mddev);
+
 	mutex_lock(&mddev->open_mutex);
-	if (atomic_read(&mddev->openers) > !!bdev) {
+	if (atomic_read(&mddev->openers) > !!bdev ||
+	    mddev->sync_thread ||
+	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
 		printk("md: %s still in use.\n",mdname(mddev));
+		if (did_freeze) {
+			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+			md_wakeup_thread(mddev->thread);
+		}
 		err = -EBUSY;
 		goto out;
-	}
-	if (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags)) {
-		/* Someone opened the device since we flushed it
-		 * so page cache could be dirty and it is too late
-		 * to flush.  So abort
-		 */
-		mutex_unlock(&mddev->open_mutex);
-		return -EBUSY;
 	}
 	if (mddev->pers) {
 		__md_stop_writes(mddev);
@@ -5356,7 +5367,7 @@ static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 		set_disk_ro(mddev->gendisk, 1);
 		clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 		sysfs_notify_dirent_safe(mddev->sysfs_state);
-		err = 0;	
+		err = 0;
 	}
 out:
 	mutex_unlock(&mddev->open_mutex);
@@ -5372,20 +5383,30 @@ static int do_md_stop(struct mddev * mddev, int mode,
 {
 	struct gendisk *disk = mddev->gendisk;
 	struct md_rdev *rdev;
+	int did_freeze = 0;
+
+	if (!test_bit(MD_RECOVERY_FROZEN, &mddev->recovery)) {
+		did_freeze = 1;
+		set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+		md_wakeup_thread(mddev->thread);
+	}
+	if (mddev->sync_thread)
+		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
+	mddev_unlock(mddev);
+	wait_event(resync_wait, mddev->sync_thread == NULL);
+	mddev_lock(mddev);
 
 	mutex_lock(&mddev->open_mutex);
 	if (atomic_read(&mddev->openers) > !!bdev ||
-	    mddev->sysfs_active) {
+	    mddev->sysfs_active ||
+	    mddev->sync_thread ||
+	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
 		printk("md: %s still in use.\n",mdname(mddev));
 		mutex_unlock(&mddev->open_mutex);
-		return -EBUSY;
-	}
-	if (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags)) {
-		/* Someone opened the device since we flushed it
-		 * so page cache could be dirty and it is too late
-		 * to flush.  So abort
-		 */
-		mutex_unlock(&mddev->open_mutex);
+		if (did_freeze) {
+			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+			md_wakeup_thread(mddev->thread);
+		}
 		return -EBUSY;
 	}
 	if (mddev->pers) {
@@ -7935,6 +7956,7 @@ void md_reap_sync_thread(struct mddev *mddev)
 
 	/* resync has finished, collect result */
 	md_unregister_thread(&mddev->sync_thread);
+	wake_up(&resync_wait);
 	if (!test_bit(MD_RECOVERY_INTR, &mddev->recovery) &&
 	    !test_bit(MD_RECOVERY_REQUESTED, &mddev->recovery)) {
 		/* success...*/
