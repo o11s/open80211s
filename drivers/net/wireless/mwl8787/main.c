@@ -601,6 +601,11 @@ static int mwl8787_conf_tx(struct ieee80211_hw *hw,
 	return mwl8787_cmd_set_wmm_conf(priv, ac, params);
 }
 
+static void mwl8787_flush(struct ieee80211_hw *hw, u32 queues, bool drop)
+{
+	mwl8787_tx_flush(hw->priv, queues, drop);
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -621,6 +626,7 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.sta_remove = mwl8787_sta_remove,
 	.ampdu_action = mwl8787_ampdu_action,
 	.get_link_stats = mwl8787_link_stats,
+	.flush = mwl8787_flush,
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
