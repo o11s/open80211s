@@ -226,6 +226,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_SET_TSF		= 0x010f,
 	MWL8787_CMD_SET_PEER		= 0x0110,
 	MWL8787_CMD_DEL_PEER		= 0x0111,
+	MWL8787_CMD_DOZE		= 0x0112,
 };
 
 enum mwl8787_ba_status {
@@ -337,6 +338,10 @@ struct mwl8787_cmd_11n_cfg {
 struct mwl8787_cmd_ps_mode {
 	__le16 action;
 	__le16 bitmap;
+} __packed;
+
+struct mwl8787_cmd_doze {
+	__le32 usecs_until_tbtt;
 } __packed;
 
 /*
@@ -609,6 +614,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_11n_cfg dot11n;
 		struct mwl8787_cmd_wmm_queue_cfg wmm;
 		struct mwl8787_cmd_ps_mode ps_mode;
+		struct mwl8787_cmd_doze doze;
 		u8 data[0];
 	} u;
 } __packed;

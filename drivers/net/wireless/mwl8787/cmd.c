@@ -861,3 +861,22 @@ int mwl8787_cmd_ps_mode(struct mwl8787_priv *priv, bool enable)
 
 	return ret;
 }
+
+int mwl8787_cmd_doze(struct mwl8787_priv *priv, u32 usecs_until_tbtt)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_DOZE,
+				sizeof(struct mwl8787_cmd_doze),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->u.doze.usecs_until_tbtt = cpu_to_le32(usecs_until_tbtt);
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
