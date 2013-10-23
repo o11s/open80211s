@@ -21,19 +21,31 @@
 	};
 };
 
+&iomuxc {
+	imx6q-udoo {
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX6QDL_UART2_PINGRP1>;
+		};
+
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP2>;
+		};
+	};
+};
+
 &sata {
 	status = "okay";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
 
 &usdhc3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc3_2>;
+	pinctrl-0 = <&pinctrl_usdhc3>;
 	non-removable;
 	status = "okay";
 };

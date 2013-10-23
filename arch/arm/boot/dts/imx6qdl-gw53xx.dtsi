@@ -126,19 +126,19 @@
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_1>;
+	pinctrl-0 = <&pinctrl_audmux>;
 	status = "okay";
 };
 
 &can1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan1_1>;
+	pinctrl-0 = <&pinctrl_flexcan1>;
 	status = "okay";
 };
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet_1>;
+	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
 	phy-reset-gpios = <&gpio1 30 0>;
 	status = "okay";
@@ -146,14 +146,14 @@
 
 &gpmi {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_2>;
+	pinctrl-0 = <&pinctrl_gpmi_nand>;
 	status = "okay";
 };
 
 &i2c1 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_1>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	eeprom1: eeprom@50 {
@@ -201,7 +201,7 @@
 &i2c2 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_2>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	pciclkgen: si53156@6b {
@@ -279,7 +279,7 @@
 &i2c3 {
 	clock-frequency = <100000>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c3_2>;
+	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 
 	accelerometer: fxos8700@1e {
@@ -323,7 +323,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx6qdl-gw53xx {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX6QDL_PAD_EIM_A19__GPIO2_IO19    0x80000000 /* PCIE6EXP_DIO0 */
@@ -346,6 +346,54 @@
 				MX6QDL_PAD_SD2_CMD__GPIO1_IO11    0x80000000 /* TOUCH_IRQ# */
 				MX6QDL_PAD_SD3_DAT5__GPIO7_IO00   0x80000000 /* SD3_DET# */
 			 >;
+		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX6QDL_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_enet: enetgrp {
+			fsl,pins = <MX6QDL_ENET_PINGRP1>;
+		};
+
+		pinctrl_flexcan1: flexcan1grp {
+			fsl,pins = <MX6QDL_FLEXCAN1_PINGRP1>;
+		};
+
+		pinctrl_gpmi_nand: gpminandgrp {
+			fsl,pins = <MX6QDL_GPMI_NAND_PINGRP1_NODQS>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX6QDL_I2C1_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX6QDL_I2C2_PINGRP2>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <MX6QDL_I2C3_PINGRP2>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX6QDL_UART1_PINGRP2>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX6QDL_UART2_PINGRP3>;
+		};
+
+		pinctrl_uart5: uart5grp {
+			fsl,pins = <MX6QDL_UART5_PINGRP1>;
+		};
+
+		pinctrl_usbotg: usbotggrp {
+			fsl,pins = <MX6QDL_USBOTG_PINGRP1>;
+		};
+
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP2>;
 		};
 	};
 };
@@ -391,26 +439,26 @@
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_2>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_3>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
 
 &uart5 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart5_1>;
+	pinctrl-0 = <&pinctrl_uart5>;
 	status = "okay";
 };
 
 &usbotg {
 	vbus-supply = <&reg_usb_otg_vbus>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg_1>;
+	pinctrl-0 = <&pinctrl_usbotg>;
 	disable-over-current;
 	status = "okay";
 };
@@ -422,7 +470,7 @@
 
 &usdhc3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc3_2>;
+	pinctrl-0 = <&pinctrl_usdhc3>;
 	cd-gpios = <&gpio7 0 0>;
 	vmmc-supply = <&reg_3p3v>;
 	status = "okay";
