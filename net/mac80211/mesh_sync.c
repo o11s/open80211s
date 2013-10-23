@@ -160,6 +160,8 @@ static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,
 			  (long long) sta->t_offset);
 	}
 
+	ieee80211_mps_sta_tbtt_update(sta, mgmt, elems->tim);
+
 no_sync:
 	rcu_read_unlock();
 }
