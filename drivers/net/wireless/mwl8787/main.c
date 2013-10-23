@@ -15,8 +15,6 @@
 	.max_power = MWL8787_DEFAULT_TX_POWER, \
 }
 
-#define USE_PS_CODE 0
-
 static char *mwl8787_modparam_mac_addr;
 module_param_named(mac_addr, mwl8787_modparam_mac_addr, charp, S_IRUGO);
 
@@ -324,7 +322,8 @@ static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
 		mwl8787_cmd_11n_cfg(priv, &hw->conf.chandef);
 	}
 
-#if USE_PS_CODE
+#if 0
+	/* FIXME this means different things in STA and mesh mode */
 	if (changed & IEEE80211_CONF_CHANGE_PS)
 		mwl8787_cmd_ps_mode(priv, hw->conf.flags & IEEE80211_CONF_PS);
 #endif
@@ -606,6 +605,16 @@ static void mwl8787_flush(struct ieee80211_hw *hw, u32 queues, bool drop)
 	mwl8787_tx_flush(hw->priv, queues, drop);
 }
 
+static void mwl8787_mesh_ps_doze(struct ieee80211_hw *hw, u64 next_tbtt)
+{
+	mwl8787_cmd_doze(hw->priv, (u32) next_tbtt);
+}
+
+static void mwl8787_mesh_ps_wakeup(struct ieee80211_hw *hw)
+{
+	/* not sure what we need to do here... */
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -627,6 +636,10 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.ampdu_action = mwl8787_ampdu_action,
 	.get_link_stats = mwl8787_link_stats,
 	.flush = mwl8787_flush,
+#ifdef CONFIG_MAC80211_MESH
+	.mesh_ps_doze = mwl8787_mesh_ps_doze,
+	.mesh_ps_wakeup = mwl8787_mesh_ps_wakeup,
+#endif
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
@@ -663,10 +676,8 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->flags =
 		IEEE80211_HW_HAS_RATE_CONTROL |
 		IEEE80211_HW_HOST_BROADCAST_PS_BUFFERING |
-#if USE_PS_CODE
 		IEEE80211_HW_SUPPORTS_PS |
 		IEEE80211_HW_PS_NULLFUNC_STACK |
-#endif
 		IEEE80211_HW_REPORTS_TX_ACK_STATUS |
 		IEEE80211_HW_CONNECTION_MONITOR |
 		IEEE80211_HW_AMPDU_AGGREGATION |
