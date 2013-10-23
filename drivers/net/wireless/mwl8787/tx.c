@@ -177,6 +177,28 @@ void mwl8787_tx_work(struct work_struct *work)
 	}
 }
 
+static bool mwl8787_tx_pending(struct mwl8787_priv *priv)
+{
+	int i;
+	for (i=0; i < ARRAY_SIZE(priv->tx_pending); i++)
+		if (atomic_read(&priv->tx_pending[i]))
+			return true;
+
+	return false;
+}
+
+void mwl8787_tx_flush(struct mwl8787_priv *priv, u32 queues, bool drop)
+{
+#define MAX_FLUSH_WAIT 200		/* millis */
+	int wait = MAX_FLUSH_WAIT;
+
+	/* queues are stopped.  FIXME if drop, clear priv->tx_queue */
+
+	/* wait for tx_queue and each tx_status_queue to empty */
+	while (mwl8787_tx_pending(priv) && wait--)
+		msleep(1);
+}
+
 void mwl8787_tx(struct ieee80211_hw *hw,
 		struct ieee80211_tx_control *control,
 		struct sk_buff *skb)

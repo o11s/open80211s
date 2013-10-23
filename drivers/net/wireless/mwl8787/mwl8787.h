@@ -218,6 +218,7 @@ void mwl8787_tx_status(struct mwl8787_priv *priv,
 void mwl8787_tx_fail(struct mwl8787_priv *priv,
 		     struct mwl8787_event *tx_fail_event);
 void mwl8787_tx_cleanup(struct mwl8787_priv *priv);
+void mwl8787_tx_flush(struct mwl8787_priv *priv, u32 queues, bool drop);
 
 /* ampdu.c */
 void mwl8787_ampdu_work(struct work_struct *work);
