@@ -621,6 +621,15 @@
 		};
 	};
 
+	i2c1 {
+		pinctrl_i2c1_1: i2c1grp-1 {
+			fsl,pins = <
+				MX51_PAD_SD2_CMD__I2C1_SCL 0x400001ed
+				MX51_PAD_SD2_CLK__I2C1_SDA 0x400001ed
+			>;
+		};
+	};
+
 	i2c2 {
 		pinctrl_i2c2_1: i2c2grp-1 {
 			fsl,pins = <
@@ -799,6 +808,13 @@
 			fsl,pins = <
 				MX51_PAD_UART3_RXD__UART3_RXD 0x1c5
 				MX51_PAD_UART3_TXD__UART3_TXD 0x1c5
+			>;
+		};
+
+		pinctrl_uart3_rtscts_2: uart3rtscts-2 {
+			fsl,pins = <
+				MX51_PAD_KEY_COL4__UART3_RTS 0x1c5
+				MX51_PAD_KEY_COL5__UART3_CTS 0x1c5
 			>;
 		};
 	};
