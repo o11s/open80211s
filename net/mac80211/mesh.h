@@ -265,8 +265,7 @@ void ieee80211_mps_frame_release(struct sta_info *sta,
 void ieee80211_mps_hw_conf(struct ieee80211_local *local);
 void ieee80211_mps_sta_tbtt_update(struct sta_info *sta,
 				   struct ieee80211_mgmt *mgmt,
-				   const struct ieee80211_tim_ie *tim,
-				   u64 tsf);
+				   const struct ieee80211_tim_ie *tim);
 void ieee80211_mps_sta_tbtt_timeout(unsigned long data);
 void ieee80211_mps_awake_window_start(struct ieee80211_sub_if_data *sdata);
 void ieee80211_mps_awake_window_end(unsigned long data);

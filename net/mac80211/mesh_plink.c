@@ -524,7 +524,6 @@ void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
 		changed = mesh_plink_open(sta);
 
 	ieee80211_mps_frame_release(sta, elems);
-	ieee80211_mps_sta_tbtt_update(sta, mgmt, elems->tim, t_r);
 out:
 	rcu_read_unlock();
 	ieee80211_mbss_info_change_notify(sdata, changed);

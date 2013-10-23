@@ -742,14 +742,13 @@ static void mps_sta_nexttbtt_calc(struct sta_info *sta,
  * @sta: mesh STA
  * @mgmt: beacon frame
  * @tim: TIM IE of beacon frame
- * @tsf_local: current HW TSF
  */
 void ieee80211_mps_sta_tbtt_update(struct sta_info *sta,
 				   struct ieee80211_mgmt *mgmt,
-				   const struct ieee80211_tim_ie *tim,
-				   u64 tsf_local)
+				   const struct ieee80211_tim_ie *tim)
 {
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
+	u64 tsf_local;
 
 	if (!sdata->local->mps_enabled ||
 	    sta->plink_state != NL80211_PLINK_ESTAB)
@@ -762,6 +761,7 @@ void ieee80211_mps_sta_tbtt_update(struct sta_info *sta,
 	else
 		clear_sta_flag(sta, WLAN_STA_MPS_WAIT_FOR_CAB);
 
+	tsf_local = mgmt->u.beacon.timestamp - sta->t_offset;
 	mps_sta_nexttbtt_calc(sta, tim, tsf_local);
 
 	mps_queue_work(sdata, MESH_WORK_PS_DOZE);
