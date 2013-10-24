@@ -71,6 +71,7 @@ ti	Texas Instruments
 toshiba	Toshiba Corporation
 v3	V3 Semiconductor
 via	VIA Technologies, Inc.
+voipac	Voipac Technologies s.r.o.
 wlf	Wolfson Microelectronics
 wm	Wondermedia Technologies, Inc.
 winbond Winbond Electronics corp.
