@@ -188,6 +188,7 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 action,
 				 u16 events);
 int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
 			 u16 value);
+int mwl8787_cmd_set_hs(struct mwl8787_priv *priv, bool sleep);
 int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf);
 int mwl8787_cmd_set_tsf(struct mwl8787_priv *priv, const u64 tsf);
 int mwl8787_cmd_log(struct mwl8787_priv *priv,
