@@ -633,7 +633,8 @@ static int mwl8787_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowl
 static int mwl8787_resume(struct ieee80211_hw *hw)
 {
 	mwl8787_start(hw);
-	return 0;
+	/* go through regular reconfig */
+	return 1;
 }
 
 static void mwl8787_set_wakeup(struct ieee80211_hw *hw, bool enabled)
