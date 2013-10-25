@@ -615,6 +615,33 @@ static void mwl8787_mesh_ps_wakeup(struct ieee80211_hw *hw)
 	/* not sure what we need to do here... */
 }
 
+/*
+ * Implement own suspend/resume ops so stack doesn't deconfigure
+ * the device completely -- we'll remain attached to the mesh and
+ * wake up the host with WoW settings.
+ */
+static int mwl8787_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
+{
+	/*
+	 * we should tell the device how to wake up the host based on
+	 * wowlan... and only suspend if succeeded.
+	 */
+	mwl8787_stop(hw);
+	return 0;
+}
+
+static int mwl8787_resume(struct ieee80211_hw *hw)
+{
+	mwl8787_start(hw);
+	return 0;
+}
+
+static void mwl8787_set_wakeup(struct ieee80211_hw *hw, bool enabled)
+{
+	struct mwl8787_priv *priv = hw->priv;
+	device_set_wakeup_enable(priv->dev, enabled);
+}
+
 static const struct ieee80211_ops mwl8787_ops = {
 	.tx = mwl8787_tx,
 	.start = mwl8787_start,
@@ -636,6 +663,11 @@ static const struct ieee80211_ops mwl8787_ops = {
 	.ampdu_action = mwl8787_ampdu_action,
 	.get_link_stats = mwl8787_link_stats,
 	.flush = mwl8787_flush,
+#ifdef CONFIG_PM
+	.suspend = mwl8787_suspend,
+	.resume = mwl8787_resume,
+	.set_wakeup = mwl8787_set_wakeup,
+#endif
 #ifdef CONFIG_MAC80211_MESH
 	.mesh_ps_doze = mwl8787_mesh_ps_doze,
 	.mesh_ps_wakeup = mwl8787_mesh_ps_wakeup,
@@ -683,6 +715,9 @@ struct mwl8787_priv *mwl8787_init(void)
 		IEEE80211_HW_AMPDU_AGGREGATION |
 		IEEE80211_HW_MFP_CAPABLE |
 		IEEE80211_HW_SIGNAL_DBM;
+
+	/* wowlan settings */
+	hw->wiphy->wowlan.flags = WIPHY_WOWLAN_ANY;
 
 	hw->queues = IEEE80211_NUM_ACS;
 	hw->max_rates = 4;
