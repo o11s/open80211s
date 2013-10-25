@@ -222,6 +222,7 @@ enum mwl8787_cmd_id {
 	MWL8787_CMD_DELBA		= 0x00d0,
 	MWL8787_CMD_TX_POWER		= 0x00d1,
 	MWL8787_CMD_PS_MODE		= 0x00e4,
+	MWL8787_CMD_HS_ENH		= 0x00e5,
 	MWL8787_CMD_BEACON_CTRL		= 0x010e,
 	MWL8787_CMD_SET_TSF		= 0x010f,
 	MWL8787_CMD_SET_PEER		= 0x0110,
@@ -342,6 +343,19 @@ struct mwl8787_cmd_ps_mode {
 
 struct mwl8787_cmd_doze {
 	__le32 usecs_until_tbtt;
+} __packed;
+
+struct mwl8787_cmd_hs_enh {
+	__le16 action;
+	union {
+		struct {
+			__le16 resp_ctl;
+		} activate;
+		struct {
+			__le32 is_invoke_hostcmd;
+			__le32 conditions;
+		} cfg;
+	};
 } __packed;
 
 /*
@@ -615,6 +629,7 @@ struct mwl8787_cmd {
 		struct mwl8787_cmd_wmm_queue_cfg wmm;
 		struct mwl8787_cmd_ps_mode ps_mode;
 		struct mwl8787_cmd_doze doze;
+		struct mwl8787_cmd_hs_enh hs;
 		u8 data[0];
 	} u;
 } __packed;

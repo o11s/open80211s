@@ -498,6 +498,32 @@ int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,
 	return ret;
 }
 
+int mwl8787_cmd_set_hs(struct mwl8787_priv *priv, bool sleep)
+{
+	struct mwl8787_cmd *cmd;
+	int ret;
+
+	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_HS_ENH,
+				sizeof(struct mwl8787_cmd_hs_enh),
+				GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	if (sleep) {
+		cmd->u.hs.action = cpu_to_le16(0x2);
+		cmd->u.hs.activate.resp_ctl = cpu_to_le16(0);
+	} else {
+		cmd->u.hs.action = cpu_to_le16(0x1);
+		/* cancel == ~0 */
+		cmd->u.hs.cfg.conditions = cpu_to_le32(-1);
+	}
+
+	ret = mwl8787_send_cmd(priv, cmd);
+	mwl8787_cmd_free(priv, cmd);
+
+	return ret;
+}
+
 int mwl8787_cmd_get_tsf(struct mwl8787_priv *priv, u64 *tsf)
 {
 	struct mwl8787_cmd *cmd, *resp;

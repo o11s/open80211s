@@ -989,6 +989,39 @@ static void mwl8787_sdio_card_reset(struct mwl8787_priv *priv)
 	schedule_work(&priv->card_reset_work);
 }
 
+#ifdef CONFIG_PM
+static int mwl8787_sdio_suspend(struct device *dev)
+{
+	struct sdio_func *func = dev_to_sdio_func(dev);
+	struct mwl8787_priv *priv;
+
+	priv = sdio_get_drvdata(func);
+
+	/* TODO: support wowlan / deep sleep */
+
+	mwl8787_cmd_set_hs(priv, true);
+
+	/* just leave card on for now */
+	return sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
+}
+
+static int mwl8787_sdio_resume(struct device *dev)
+{
+	struct sdio_func *func = dev_to_sdio_func(dev);
+	struct mwl8787_priv *priv;
+
+	priv = sdio_get_drvdata(func);
+
+	mwl8787_cmd_set_hs(priv, false);
+	return 0;
+}
+
+static struct dev_pm_ops mwl8787_sdio_pm_ops = {
+	.suspend = mwl8787_sdio_suspend,
+	.resume = mwl8787_sdio_resume,
+};
+#endif
+
 static struct mwl8787_bus_ops sdio_ops = {
 	.prog_fw = mwl8787_sdio_prog_fw,
 	.check_fw_ready = mwl8787_sdio_check_fw_ready,
@@ -1237,6 +1270,12 @@ static struct sdio_driver mwl8787_sdio_driver = {
 	.probe = mwl8787_sdio_probe,
 	.remove = mwl8787_sdio_remove,
 	.id_table = mwl8787_sdio_ids,
+#ifdef CONFIG_PM
+	.drv = {
+		.pm = &mwl8787_sdio_pm_ops,
+	},
+#endif
+
 };
 
 static int __init mwl8787_sdio_init(void)
