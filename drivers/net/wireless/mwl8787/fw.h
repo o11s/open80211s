@@ -259,6 +259,7 @@ enum mwl8787_event_sub_flags {
 	MWL8787_EVT_SUB_TX_FAIL		= BIT(2),
 	MWL8787_EVT_SUB_BCN_LOSS	= BIT(3),
 	MWL8787_EVT_SUB_TX_STATUS	= BIT(12),
+	MWL8787_EVT_SUB_PRE_TBTT	= BIT(13),
 };
 
 enum mwl8787_modulation_class {

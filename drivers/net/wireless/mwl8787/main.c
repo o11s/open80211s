@@ -465,6 +465,10 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 		mwl8787_beacon_prepare(priv, vif);
 
 	if (changed & BSS_CHANGED_BEACON_ENABLED) {
+		mwl8787_cmd_subscribe_events(priv,
+			(info->enable_beacon) ?
+			MWL8787_ACT_BITWISE_SET : MWL8787_ACT_BITWISE_CLR,
+			MWL8787_EVT_SUB_PRE_TBTT);
 		mwl8787_cmd_beacon_ctrl(priv, info->beacon_int,
 					info->enable_beacon);
 	}
