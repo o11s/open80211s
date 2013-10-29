@@ -21,4 +21,10 @@ void mwl8787_beacon_prepare(struct mwl8787_priv *priv,
 
 	mwl8787_cmd_beacon_set(priv, skb);
 	dev_kfree_skb_any(skb);
+
+	skb = ieee80211_get_buffered_bc(priv->hw, priv->vif);
+	while (skb) {
+		mwl8787_tx(priv->hw, NULL, skb);
+		skb = ieee80211_get_buffered_bc(priv->hw, priv->vif);
+	}
 }

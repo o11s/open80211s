@@ -101,13 +101,13 @@
 #define QUEUE_DATA_5    5 /* ampdu */
 #define QUEUE_DATA_6    6 /* ampdu */
 #define QUEUE_DATA_7    7 /* extra (off-channel) */
-#define MWL8787_QUEUE_MAX QUEUE_DATA_7
 /* misc. / unused? */
 #define QUEUE_DATA_BIG  8
 #define QUEUE_BCN       9
 #define QUEUE_MLME      10
 #define QUEUE_CMD       11 /* Cmd queue */
 #define QUEUE_MCBC	12 /* Multicast/Broadcast PS buffer queue (?) */
+#define MWL8787_QUEUE_MAX QUEUE_MCBC
 
 static const int mwl8787_hwq_to_ac[IEEE80211_NUM_ACS] = {
 	[QUEUE_DATA_0] = IEEE80211_AC_BK,
