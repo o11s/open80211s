@@ -629,11 +629,6 @@ static void mwl8787_mesh_ps_doze(struct ieee80211_hw *hw, u64 next_tbtt)
 	mwl8787_cmd_doze(hw->priv, next_tbtt);
 }
 
-static void mwl8787_mesh_ps_wakeup(struct ieee80211_hw *hw)
-{
-	/* not sure what we need to do here... */
-}
-
 /*
  * Implement own suspend/resume ops so stack doesn't deconfigure
  * the device completely -- we'll remain attached to the mesh and
@@ -690,7 +685,6 @@ static const struct ieee80211_ops mwl8787_ops = {
 #endif
 #ifdef CONFIG_MAC80211_MESH
 	.mesh_ps_doze = mwl8787_mesh_ps_doze,
-	.mesh_ps_wakeup = mwl8787_mesh_ps_wakeup,
 #endif
 	CFG80211_TESTMODE_CMD(mwl8787_testmode_cmd)
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
