@@ -70,6 +70,7 @@ struct mwl8787_bus_ops
 struct mwl8787_priv
 {
 	struct ieee80211_hw *hw;
+	struct ieee80211_vif *vif;	/* beaconing virtual interface */
 	const struct firmware *fw;
 	bool registered;
 

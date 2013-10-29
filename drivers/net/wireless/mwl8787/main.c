@@ -298,9 +298,26 @@ static void mwl8787_stop(struct ieee80211_hw *hw)
 	mwl8787_tx_cleanup(priv);
 }
 
+static bool is_beaconing_iftype(enum nl80211_iftype type)
+{
+	return type == NL80211_IFTYPE_AP ||
+	       type == NL80211_IFTYPE_MESH_POINT ||
+	       type == NL80211_IFTYPE_ADHOC;
+}
+
 static int mwl8787_add_interface(struct ieee80211_hw *hw,
 				 struct ieee80211_vif *vif)
 {
+	struct mwl8787_priv *priv = hw->priv;
+
+	/* only allow one beaconing vif */
+	if (is_beaconing_iftype(vif->type)) {
+		if (priv->vif)
+			return -ELNRNG;
+
+		priv->vif = vif;
+	}
+
 	mwl8787_cmd_set_mac_addr(hw->priv, vif->addr);
 	return 0;
 }
@@ -308,9 +325,14 @@ static int mwl8787_add_interface(struct ieee80211_hw *hw,
 static void mwl8787_remove_interface(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif)
 {
+	struct mwl8787_priv *priv = hw->priv;
+
 	u8 zero_addr[ETH_ALEN] = {};
 
-	mwl8787_cmd_set_mac_addr(hw->priv, zero_addr);
+	if (is_beaconing_iftype(vif->type))
+		priv->vif = NULL;
+
+	mwl8787_cmd_set_mac_addr(priv, zero_addr);
 }
 
 static int mwl8787_config(struct ieee80211_hw *hw, u32 changed)
