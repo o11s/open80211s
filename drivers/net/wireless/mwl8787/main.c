@@ -460,16 +460,9 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 				     u32 changed)
 {
 	struct mwl8787_priv *priv = hw->priv;
-	struct sk_buff *skb;
-	u16 tim_offset, tim_len;
 
-	if (changed & BSS_CHANGED_BEACON) {
-		skb = ieee80211_beacon_get_tim(hw, vif,
-					       &tim_offset, &tim_len);
-
-		mwl8787_cmd_beacon_set(priv, skb);
-		dev_kfree_skb_any(skb);
-	}
+	if (changed & BSS_CHANGED_BEACON)
+		mwl8787_beacon_prepare(priv, vif);
 
 	if (changed & BSS_CHANGED_BEACON_ENABLED) {
 		mwl8787_cmd_beacon_ctrl(priv, info->beacon_int,

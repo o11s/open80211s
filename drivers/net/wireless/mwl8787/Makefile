@@ -1,5 +1,5 @@
 mwl8787_sdio-objs := main.o tx.o rx.o cmd.o sdio.o event.o debugfs.o \
-		     ampdu.o
+		     ampdu.o beacon.o
 
 mwl8787_sdio-$(CONFIG_NL80211_TESTMODE) += testmode.o
 
