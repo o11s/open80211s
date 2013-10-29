@@ -585,10 +585,8 @@ void ieee80211_mpsp_trigger_process(u8 *qc, struct sta_info *sta,
 	if (!local->mps_enabled)
 		return;
 
-	if (test_sta_flag(sta, WLAN_STA_MPSP_OWNER) ||
-	    test_sta_flag(sta, WLAN_STA_MPSP_RECIPIENT))
-		drv_mesh_ps_wakeup(local);
-	else
+	if (!test_sta_flag(sta, WLAN_STA_MPSP_OWNER) &&
+	    !test_sta_flag(sta, WLAN_STA_MPSP_RECIPIENT))
 		mps_queue_work(sta->sdata, MESH_WORK_PS_DOZE);
 }
 
@@ -646,8 +644,7 @@ static bool mps_hw_conf_check(struct ieee80211_local *local)
 	struct ieee80211_if_mesh *ifmsh;
 	bool enable = true;
 
-	if (!local->ops->mesh_ps_doze ||
-	    !local->ops->mesh_ps_wakeup)
+	if (!local->ops->mesh_ps_doze)
 		return false;
 
 	mutex_lock(&local->iflist_mtx);
@@ -702,9 +699,7 @@ void ieee80211_mps_hw_conf(struct ieee80211_local *local)
 	ieee80211_hw_config(local, IEEE80211_CONF_CHANGE_PS);
 	local->mps_enabled = enable;
 
-	/* receive all peer beacons once before doze */
-	if (enable)
-		drv_mesh_ps_wakeup(local);
+	/* we wait for peer beacons before doze */
 }
 
 static void mps_sta_nexttbtt_calc(struct sta_info *sta,
@@ -816,8 +811,6 @@ void ieee80211_mps_awake_window_start(struct ieee80211_sub_if_data *sdata)
 	timeout = jiffies + usecs_to_jiffies(ieee80211_tu_to_usec(
 			ifmsh->mshcfg.dot11MeshAwakeWindowDuration));
 	mod_timer(&ifmsh->awake_window_end_timer, timeout);
-
-	drv_mesh_ps_wakeup(local);
 }
 
 /**

@@ -2916,7 +2916,6 @@ struct ieee80211_ops {
 	void (*leave_ibss)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
 #ifdef CONFIG_MAC80211_MESH
 	void (*mesh_ps_doze)(struct ieee80211_hw *hw, u64 nexttbtt);
-	void (*mesh_ps_wakeup)(struct ieee80211_hw *hw);
 #endif
 };
 

@@ -1559,11 +1559,6 @@ TRACE_EVENT(drv_mesh_ps_doze,
 	)
 );
 
-DEFINE_EVENT(local_only_evt, drv_mesh_ps_wakeup,
-	TP_PROTO(struct ieee80211_local *local),
-	TP_ARGS(local)
-);
-
 #endif
 
 /*
