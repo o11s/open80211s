@@ -228,6 +228,11 @@ void mwl8787_ampdu_work(struct work_struct *work);
 void mwl8787_ampdu_check(struct mwl8787_priv *priv,
 			 struct ieee80211_sta *sta,
 			 struct sk_buff *skb);
+
+/* beacon.c */
+void mwl8787_beacon_prepare(struct mwl8787_priv *priv,
+			    struct ieee80211_vif *vif);
+
 /* rx.c */
 void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
 
