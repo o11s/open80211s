@@ -607,7 +607,7 @@ static void mwl8787_flush(struct ieee80211_hw *hw, u32 queues, bool drop)
 
 static void mwl8787_mesh_ps_doze(struct ieee80211_hw *hw, u64 next_tbtt)
 {
-	mwl8787_cmd_doze(hw->priv, (u32) next_tbtt);
+	mwl8787_cmd_doze(hw->priv, next_tbtt);
 }
 
 static void mwl8787_mesh_ps_wakeup(struct ieee80211_hw *hw)
