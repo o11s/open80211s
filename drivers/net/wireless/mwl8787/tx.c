@@ -52,6 +52,9 @@ static void mwl8787_tx_setup(struct mwl8787_priv *priv,
 	if (info->flags & IEEE80211_TX_CTL_AMPDU)
 		tx_ctl |= MWL8787_AMPDU;
 
+	if (info->flags & IEEE80211_TX_CTL_SEND_AFTER_DTIM)
+		desc->priority = QUEUE_MCBC;
+
 	desc->tx_control = cpu_to_le32(tx_ctl);
 }
 
@@ -210,7 +213,8 @@ void mwl8787_tx(struct ieee80211_hw *hw,
 	if (atomic_inc_return(&priv->tx_pending[hw_queue]) >= MWL8787_TX_CT_HI)
 		mwl8787_stop_queue(priv, hw_queue);
 
-	mwl8787_ampdu_check(priv, control->sta, skb);
+	if (control)
+		mwl8787_ampdu_check(priv, control->sta, skb);
 
 	skb_queue_tail(&priv->tx_queue, skb);
 	ieee80211_queue_work(priv->hw, &priv->tx_work);
