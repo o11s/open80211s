@@ -888,7 +888,7 @@ int mwl8787_cmd_ps_mode(struct mwl8787_priv *priv, bool enable)
 	return ret;
 }
 
-int mwl8787_cmd_doze(struct mwl8787_priv *priv, u32 usecs_until_tbtt)
+int mwl8787_cmd_doze(struct mwl8787_priv *priv, u64 tsf_at_wake)
 {
 	struct mwl8787_cmd *cmd;
 	int ret;
@@ -899,7 +899,7 @@ int mwl8787_cmd_doze(struct mwl8787_priv *priv, u32 usecs_until_tbtt)
 	if (!cmd)
 		return -ENOMEM;
 
-	cmd->u.doze.usecs_until_tbtt = cpu_to_le32(usecs_until_tbtt);
+	cmd->u.doze.tsf_at_wake = cpu_to_le64(tsf_at_wake);
 
 	ret = mwl8787_send_cmd(priv, cmd);
 	mwl8787_cmd_free(priv, cmd);

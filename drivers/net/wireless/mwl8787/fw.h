@@ -342,7 +342,7 @@ struct mwl8787_cmd_ps_mode {
 } __packed;
 
 struct mwl8787_cmd_doze {
-	__le32 usecs_until_tbtt;
+	__le64 tsf_at_wake;
 } __packed;
 
 struct mwl8787_cmd_hs_enh {
