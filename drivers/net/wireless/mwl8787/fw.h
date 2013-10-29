@@ -106,7 +106,7 @@
 #define QUEUE_BCN       9
 #define QUEUE_MLME      10
 #define QUEUE_CMD       11 /* Cmd queue */
-#define QUEUE_MCBC	12 /* Multicast/Broadcast PS buffer queue (?) */
+#define QUEUE_MCBC	12 /* Multicast/Broadcast PS buffer queue */
 #define MWL8787_QUEUE_MAX QUEUE_MCBC
 
 static const int mwl8787_hwq_to_ac[IEEE80211_NUM_ACS] = {
@@ -250,6 +250,7 @@ enum mwl8787_event_id {
 	MWL8787_EVT_WAKEUP		= 0x0001,
 	MWL8787_EVT_TX_FAIL		= 0x001b,
 	MWL8787_EVT_TX_STATUS		= 0x0067,
+	MWL8787_EVT_PRE_TBTT		= 0x009d,
 };
 
 enum mwl8787_event_sub_flags {
