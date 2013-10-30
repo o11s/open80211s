@@ -461,9 +461,6 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 {
 	struct mwl8787_priv *priv = hw->priv;
 
-	if (changed & BSS_CHANGED_BEACON)
-		mwl8787_beacon_prepare(priv, vif);
-
 	if (changed & BSS_CHANGED_BEACON_ENABLED) {
 		mwl8787_cmd_subscribe_events(priv,
 			(info->enable_beacon) ?
