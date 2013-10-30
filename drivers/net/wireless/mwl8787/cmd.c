@@ -632,11 +632,9 @@ int mwl8787_cmd_link_stats(struct mwl8787_priv *priv, u8 *addr,
 		if (resp->u.rate_query.ht_info & BIT(2))
 			stats->last_tx_rate.flags |= IEEE80211_TX_RC_SHORT_GI;
 	} else {
-		for (idx = 0; idx < sband->n_bitrates; idx++) {
-			/* fw rate is in 500kb/s */
-			if (fwrate * 5 == sband->bitrates[idx].bitrate)
+		for (idx = 0; idx < sband->n_bitrates; idx++)
+			if (fwrate == sband->bitrates[idx].hw_value)
 				break;
-		}
 
 		if (idx == sband->n_bitrates) {
 			dev_err(priv->dev, "got bogus tx rate?\n");
