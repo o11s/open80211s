@@ -522,6 +522,58 @@ static void mps_frame_deliver(struct sta_info *sta, int n_frames)
 	sta_info_recalc_tim(sta);
 }
 
+static void mps_frame_flush(struct sta_info *sta)
+{
+	struct ieee80211_local *local = sta->sdata->local;
+	int ac;
+	struct sk_buff_head frames;
+	struct sk_buff *skb;
+	bool more_data = false;
+
+	skb_queue_head_init(&frames);
+
+	/* collect frame(s) from buffers */
+	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+		while (true) {
+			skb = skb_dequeue(&sta->tx_filtered[ac]);
+			if (!skb) {
+				skb = skb_dequeue(
+					&sta->ps_tx_buf[ac]);
+				if (skb)
+					local->total_ps_buffered--;
+			}
+			if (!skb)
+				break;
+			__skb_queue_tail(&frames, skb);
+		}
+	}
+
+	mps_dbg(sta->sdata, "sending %d frames to PS STA %pM\n",
+		skb_queue_len(&frames), sta->sta.addr);
+	/* prepare collected frames for transmission */
+	skb_queue_walk(&frames, skb) {
+		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+		struct ieee80211_hdr *hdr = (void *) skb->data;
+
+		/*
+		 * Tell TX path to send this frame even though the
+		 * STA may still remain is PS mode after this frame
+		 * exchange.
+		 */
+		info->flags |= IEEE80211_TX_CTL_NO_PS_BUFFER;
+
+		if (more_data || !skb_queue_is_last(&frames, skb))
+			hdr->frame_control |=
+				cpu_to_le16(IEEE80211_FCTL_MOREDATA);
+		else
+			hdr->frame_control &=
+				cpu_to_le16(~IEEE80211_FCTL_MOREDATA);
+	}
+
+	ieee80211_add_pending_skbs(local, &frames);
+	sta_info_recalc_tim(sta);
+}
+
 /**
  * ieee80211_mpsp_trigger_process - track status of mesh Peer Service Periods
  *
@@ -585,10 +637,20 @@ void ieee80211_mps_frame_release(struct sta_info *sta,
 		mps_dbg(sta->sdata, "%pM indicates buffered frames\n",
 			sta->sta.addr);
 
-	/* only transmit to PS STA with announced, non-zero awake window */
-	if (test_sta_flag(sta, WLAN_STA_PS_STA) &&
-	    (!elems->awake_window || !le16_to_cpu(*elems->awake_window)))
-		return;
+	/* Is a ps enable STA */
+	if (test_sta_flag(sta, WLAN_STA_PS_STA)) {
+		/* Does it advertise an awake window ? */
+		if (!elems->awake_window) {
+			/* No awake window but we have buffered frames
+			 * it might be STA on ACTIVE mode, let's flush */
+			if (has_buffered)
+				mps_frame_flush(sta);
+			return;
+		}
+		/* If we have awake window we require a non-zero value */
+		if (!le16_to_cpu(*elems->awake_window))
+			return;
+	}
 
 	if (!test_sta_flag(sta, WLAN_STA_MPSP_OWNER))
 		for (ac = 0; ac < IEEE80211_NUM_ACS; ac++)
