@@ -14,10 +14,8 @@ void mwl8787_beacon_prepare(struct mwl8787_priv *priv,
 			    struct ieee80211_vif *vif)
 {
 	struct sk_buff *skb;
-	u16 tim_offset, tim_len;
 
-	skb = ieee80211_beacon_get_tim(priv->hw, priv->vif,
-				       &tim_offset, &tim_len);
+	skb = ieee80211_beacon_get(priv->hw, priv->vif);
 
 	mwl8787_cmd_beacon_set(priv, skb);
 	dev_kfree_skb_any(skb);
