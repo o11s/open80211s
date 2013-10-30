@@ -1954,7 +1954,7 @@ static void slab_destroy_debugcheck(struct kmem_cache *cachep,
  */
 static void slab_destroy(struct kmem_cache *cachep, struct page *page)
 {
-	struct freelist *freelist;
+	void *freelist;
 
 	freelist = page->freelist;
 	slab_destroy_debugcheck(cachep, page);
@@ -2520,25 +2520,17 @@ int __kmem_cache_shutdown(struct kmem_cache *cachep)
  * kmem_find_general_cachep till the initialization is complete.
  * Hence we cannot have freelist_cache same as the original cache.
  */
-static struct freelist *alloc_slabmgmt(struct kmem_cache *cachep,
+static void *alloc_slabmgmt(struct kmem_cache *cachep,
 				   struct page *page, int colour_off,
 				   gfp_t local_flags, int nodeid)
 {
-	struct freelist *freelist;
+	void *freelist;
 	void *addr = page_address(page);
 
 	if (OFF_SLAB(cachep)) {
 		/* Slab management obj is off-slab. */
 		freelist = kmem_cache_alloc_node(cachep->freelist_cache,
 					      local_flags, nodeid);
-		/*
-		 * If the first object in the slab is leaked (it's allocated
-		 * but no one has a reference to it), we want to make sure
-		 * kmemleak does not treat the ->s_mem pointer as a reference
-		 * to the object. Otherwise we will not report the leak.
-		 */
-		kmemleak_scan_area(&page->lru, sizeof(struct list_head),
-				   local_flags);
 		if (!freelist)
 			return NULL;
 	} else {
@@ -2654,7 +2646,7 @@ static void slab_put_obj(struct kmem_cache *cachep, struct page *page,
  * virtual address for kfree, ksize, and slab debugging.
  */
 static void slab_map_pages(struct kmem_cache *cache, struct page *page,
-			   struct freelist *freelist)
+			   void *freelist)
 {
 	page->slab_cache = cache;
 	page->freelist = freelist;
@@ -2667,7 +2659,7 @@ static void slab_map_pages(struct kmem_cache *cache, struct page *page,
 static int cache_grow(struct kmem_cache *cachep,
 		gfp_t flags, int nodeid, struct page *page)
 {
-	struct freelist *freelist;
+	void *freelist;
 	size_t offset;
 	gfp_t local_flags;
 	struct kmem_cache_node *n;
