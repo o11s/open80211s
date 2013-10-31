@@ -110,7 +110,8 @@ struct mwl8787_priv
 	int num_ampdu_sessions;		/* how many ampdu sessions active */
 	u8 addba_dialog_token;		/* cookie for ampdu requests */
 
-	struct work_struct tx_work;
+	struct work_struct tx_work;		/* queues frames to hw */
+	struct work_struct beacon_work;		/* updates beacon in fw */
 	struct work_struct card_reset_work;
 	struct sk_buff_head tx_queue;
 	struct sk_buff_head tx_status_queue[IEEE80211_NUM_ACS];
@@ -232,6 +233,7 @@ void mwl8787_ampdu_check(struct mwl8787_priv *priv,
 /* beacon.c */
 void mwl8787_beacon_prepare(struct mwl8787_priv *priv,
 			    struct ieee80211_vif *vif);
+void mwl8787_beacon_work(struct work_struct *work);
 
 /* rx.c */
 void mwl8787_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
