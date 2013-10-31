@@ -98,10 +98,12 @@ struct mwl8787_priv
 
 	/* information about pending command */
 	struct mutex cmd_mutex;
-	spinlock_t cmd_resp_lock;	/* protects next 3 fields */
+	spinlock_t cmd_resp_lock;	/* protects next 4 fields */
 	u16 cmd_id;			/* fw id of submitted command */
 	struct sk_buff *cmd_resp_skb;	/* stores return result */
 	bool keep_resp;			/* true if caller wants response */
+	int cmd_result;			/* error code from cmd */
+
 	struct completion cmd_wait;	/* completed on command response */
 	int cmd_seq;			/* next cmd sequence number */
 
