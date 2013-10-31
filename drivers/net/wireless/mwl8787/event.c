@@ -16,7 +16,7 @@ void mwl8787_event_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 		mwl8787_tx_fail(priv, event);
 		break;
 	case MWL8787_EVT_PRE_TBTT:
-		mwl8787_beacon_prepare(priv, priv->vif);
+		ieee80211_queue_work(priv->hw, &priv->beacon_work);
 		break;
 	default:
 		dev_err(priv->dev, "Unknown event: %d\n", le16_to_cpu(event->hdr.id));

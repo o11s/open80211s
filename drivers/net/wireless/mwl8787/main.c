@@ -707,6 +707,7 @@ struct mwl8787_priv *mwl8787_init(void)
 	spin_lock_init(&priv->cmd_resp_lock);
 
 	INIT_WORK(&priv->tx_work, mwl8787_tx_work);
+	INIT_WORK(&priv->beacon_work, mwl8787_beacon_work);
 	skb_queue_head_init(&priv->tx_queue);
 
 	for (i=0; i < IEEE80211_NUM_ACS; i++)

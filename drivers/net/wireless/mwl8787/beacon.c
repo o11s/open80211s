@@ -26,3 +26,12 @@ void mwl8787_beacon_prepare(struct mwl8787_priv *priv,
 		skb = ieee80211_get_buffered_bc(priv->hw, priv->vif);
 	}
 }
+
+void mwl8787_beacon_work(struct work_struct *work)
+{
+	struct mwl8787_priv *priv;
+
+	priv = container_of(work, struct mwl8787_priv, beacon_work);
+
+	mwl8787_beacon_prepare(priv, priv->vif);
+}
