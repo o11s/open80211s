@@ -31,6 +31,7 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 	spin_lock(&priv->cmd_resp_lock);
 	priv->cmd_id = le16_to_cpu(cmd->hdr.id);
 	priv->cmd_resp_skb = NULL;
+	priv->cmd_result = 0;
 	priv->keep_resp = reply != NULL;
 	INIT_COMPLETION(priv->cmd_wait);
 	spin_unlock(&priv->cmd_resp_lock);
@@ -47,8 +48,8 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 		goto out;
 	}
 
-	ret = 0;
 	spin_lock(&priv->cmd_resp_lock);
+	ret = priv->cmd_result;
 	if (reply)
 		*reply = priv->cmd_resp_skb;
 	spin_unlock(&priv->cmd_resp_lock);
@@ -163,51 +164,51 @@ int mwl8787_cmd_rx(struct mwl8787_priv *priv, struct sk_buff *skb)
 		goto out;
 	}
 
-	if (result != MWL8787_CMD_SUCCESS) {
-		ret = -EIO;
-		goto out;
-	}
-
 	cmdid &= ~MWL8787_CMD_RET_BIT;
 	/* FIXME check that skb is large enough for response struct */
 
-	switch (cmdid) {
-	case MWL8787_CMD_HW_SPEC:
-		ret = mwl8787_cmd_hw_spec_resp(priv, resp);
-		break;
+	if (result == MWL8787_CMD_SUCCESS) {
+		switch (cmdid) {
+		case MWL8787_CMD_HW_SPEC:
+			ret = mwl8787_cmd_hw_spec_resp(priv, resp);
+			break;
 
-	case MWL8787_CMD_MAC_ADDR:
-		ret = mwl8787_cmd_mac_addr_resp(priv, resp);
-		break;
+		case MWL8787_CMD_MAC_ADDR:
+			ret = mwl8787_cmd_mac_addr_resp(priv, resp);
+			break;
 
-	case MWL8787_CMD_FUNC_INIT:
-		if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING) {
-			priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
-			complete(&priv->init_wait);
+		case MWL8787_CMD_FUNC_INIT:
+			if (priv->hw_status == MWL8787_HW_STATUS_INITIALIZING) {
+				priv->hw_status = MWL8787_HW_STATUS_INIT_DONE;
+				complete(&priv->init_wait);
+			}
+			break;
+		default:
+			break;
 		}
-		break;
-	default:
-		break;
 	}
 
 	/*
-	 * Complete the pending command only on successful response,
-	 * and if this cmd id matches that of the waiting thread.
-	 * If a different response is received (or none) then the
-	 * pending command will timeout.
+	 * Complete the pending command only if this cmd id matches that
+	 * of the waiting thread.  If a different response is received (or
+	 * none) then the pending command will timeout.
 	 */
-	ret = 0;
 	spin_lock(&priv->cmd_resp_lock);
-	if (cmdid != priv->cmd_id)
+	if (cmdid != priv->cmd_id) {
+		ret = -EIO;
 		goto out_unlock;
+	}
 
-	if (priv->keep_resp) {
+	ret = (result == MWL8787_CMD_SUCCESS) ? 0 : -EINVAL;
+
+	if (priv->keep_resp && ret == 0) {
 		priv->cmd_resp_skb = skb;
 		free_skb = false;
 	}
 	complete(&priv->cmd_wait);
 
 out_unlock:
+	priv->cmd_result = ret;
 	spin_unlock(&priv->cmd_resp_lock);
 out:
 	if (free_skb)
