@@ -1,15 +1,27 @@
+/*
+ * Device Tree file for OpenBlocks A7 board
+ *
+ * Copyright (C) 2013 Free Electrons
+ *
+ * Thomas Petazzoni <thomas.petazzoni@free-electrons.com>
+ *
+ * This file is licensed under the terms of the GNU General Public
+ * License version 2.  This program is licensed "as is" without any
+ * warranty of any kind, whether express or implied.
+ */
+
 /dts-v1/;
 
 #include "kirkwood.dtsi"
 #include "kirkwood-6282.dtsi"
 
 / {
-	model = "Plat'Home OpenBlocksA6";
-	compatible = "plathome,openblocks-a6", "marvell,kirkwood-88f6283", "marvell,kirkwood";
+	model = "Plat'Home OpenBlocksA7";
+	compatible = "plathome,openblocks-a7", "marvell,kirkwood-88f6283", "marvell,kirkwood";
 
 	memory {
 		device_type = "memory";
-		reg = <0x00000000 0x20000000>;
+		reg = <0x00000000 0x40000000>; /* 1 GB */
 	};
 
 	chosen {
@@ -39,9 +51,9 @@
 			pinctrl-0 = <&pmx_twsi1>;
 			pinctrl-names = "default";
 
-			s35390a: s35390a@30 {
-				compatible = "s35390a";
-				reg = <0x30>;
+			s24c02: s24c02@50 {
+				compatible = "24c02";
+				reg = <0x50>;
 			};
 		};
 
@@ -67,13 +79,19 @@
 			};
 
 			pmx_dip_switches: pmx-dip-switches {
-				marvell,pins = "mpp20", "mpp21", "mpp22", "mpp23";
+				marvell,pins = "mpp44", "mpp45", "mpp46", "mpp47";
 				marvell,function = "gpio";
 			};
 
+			/*
+			 * Accessible on connector J202. The MPP
+			 * listed below are pin 1-7, pin 8 is unused,
+			 * pin 9 is external reset input and pin 10 is
+			 * ground.
+			 */
 			pmx_gpio_header: pmx-gpio-header {
-				marvell,pins = "mpp24", "mpp25", "mpp26", "mpp27",
-					       "mpp28", "mpp29", "mpp30", "mpp31";
+				marvell,pins = "mpp17", "mpp7", "mpp29", "mpp28",
+					       "mpp35", "mpp34", "mpp40";
 				marvell,function = "gpio";
 			};
 
@@ -91,6 +109,13 @@
 				marvell,pins = "mpp41", "mpp42", "mpp43";
 				marvell,function = "gpio";
 			};
+
+			pmx_ge1: pmx-ge1 {
+				marvell,pins = "mpp20", "mpp21", "mpp22", "mpp23",
+					       "mpp24", "mpp25", "mpp26", "mpp27",
+					       "mpp30", "mpp31", "mpp32", "mpp33";
+				marvell,function = "ge1";
+			};
 		};
 	};
 
@@ -100,17 +125,17 @@
 		pinctrl-names = "default";
 
 		led-red {
-			label = "obsa6:red:stat";
+			label = "obsa7:red:stat";
 			gpios = <&gpio1 9 1>;
 		};
 
 		led-green {
-			label = "obsa6:green:stat";
+			label = "obsa7:green:stat";
 			gpios = <&gpio1 10 1>;
 		};
 
 		led-yellow {
-			label = "obsa6:yellow:stat";
+			label = "obsa7:yellow:stat";
 			gpios = <&gpio1 11 1>;
 		};
         };
@@ -138,32 +163,32 @@
 
 	partition@0 {
 		label = "uboot";
-		reg = <0x0 0x90000>;
+		reg = <0x0 0x1c0000>;
 	};
 
-	partition@90000 {
+	partition@1c0000 {
 		label = "env";
-		reg = <0x90000 0x44000>;
+		reg = <0x1c0000 0x2c0000>;
 	};
 
-	partition@d4000 {
+	partition@480000 {
 		label = "test";
-		reg = <0xd4000 0x24000>;
+		reg = <0x480000 0x160000>;
 	};
 
-	partition@f4000 {
+	partition@5e0000 {
 		label = "conf";
-		reg = <0xf4000 0x400000>;
+		reg = <0x5e0000 0x540000>;
 	};
 
-	partition@4f4000 {
+	partition@b20000 {
 		label = "linux";
-		reg = <0x4f4000 0x1d20000>;
+		reg = <0xb20000 0x3d40000>;
 	};
 
-	partition@2214000 {
+	partition@4860000 {
 		label = "user";
-		reg = <0x2214000 0x1dec000>;
+		reg = <0x4860000 0xb7a0000>;
 	};
 };
 
@@ -174,11 +199,25 @@
 		device_type = "ethernet-phy";
 		reg = <0>;
 	};
+
+	ethphy1: ethernet-phy@1 {
+		device_type = "ethernet-phy";
+		reg = <1>;
+	};
 };
 
 &eth0 {
 	status = "okay";
 	ethernet0-port@0 {
 		phy-handle = <&ethphy0>;
+	};
+};
+
+&eth1 {
+	status = "okay";
+	pinctrl-0 = <&pmx_ge1>;
+	pinctrl-names = "default";
+	ethernet1-port@0 {
+		phy-handle = <&ethphy1>;
 	};
 };
