@@ -40,8 +40,26 @@ mwl8787_reset_write(struct file *file,
 	return count;
 }
 
+static ssize_t
+mwl8787_radio_set_write(struct file *file,
+			const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	struct mwl8787_priv *priv =
+		(struct mwl8787_priv *) file->private_data;
+	int state;
+
+	sscanf(ubuf, "%d", &state);
+	mwl8787_cmd_radio_ctrl(priv, state);
+	return count;
+}
+
 static const struct file_operations mwl8787_reset_fops = {
 	.write = mwl8787_reset_write,
+	.open = simple_open,
+};
+
+static const struct file_operations mwl8787_radio_set_fops = {
+	.write = mwl8787_radio_set_write,
 	.open = simple_open,
 };
 
@@ -85,6 +103,7 @@ mwl8787_dev_debugfs_init(struct mwl8787_priv *priv)
 
 	MWL8787_DFS_ADD_FILE(scratch);
 	MWL8787_DFS_ADD_MODE(reset, 0200);
+	MWL8787_DFS_ADD_MODE(radio_set, 0200);
 }
 
 /*
