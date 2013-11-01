@@ -36,6 +36,7 @@
 #include <media/tvaudio.h>
 #include <media/i2c-addr.h>
 #include <media/tveeprom.h>
+#include <media/v4l2-clk.h>
 #include <media/v4l2-common.h>
 
 #include "em28xx.h"
@@ -174,7 +175,7 @@ static struct em28xx_reg_seq evga_indtube_digital[] = {
 };
 
 /*
- * KWorld PlusTV 340U and UB435-Q (ATSC) GPIOs map:
+ * KWorld PlusTV 340U, UB435-Q and UB435-Q V2 (ATSC) GPIOs map:
  * EM_GPIO_0 - currently unknown
  * EM_GPIO_1 - LED disable/enable (1 = off, 0 = on)
  * EM_GPIO_2 - currently unknown
@@ -2030,6 +2031,18 @@ struct em28xx_board em28xx_boards[] = {
 		.i2c_speed     = EM28XX_I2C_CLK_WAIT_ENABLE |
 				EM28XX_I2C_FREQ_400_KHZ,
 	},
+	/*
+	 * 1b80:e346 KWorld USB ATSC TV Stick UB435-Q V2
+	 * Empia EM2874B + LG DT3305 + NXP TDA18271HDC2
+	 */
+	[EM2874_BOARD_KWORLD_UB435Q_V2] = {
+		.name		= "KWorld USB ATSC TV Stick UB435-Q V2",
+		.tuner_type	= TUNER_ABSENT,
+		.has_dvb	= 1,
+		.dvb_gpio	= kworld_a340_digital,
+		.tuner_gpio	= default_tuner_gpio,
+		.def_i2c_bus	= 1,
+	},
 };
 const unsigned int em28xx_bcount = ARRAY_SIZE(em28xx_boards);
 
@@ -2173,6 +2186,8 @@ struct usb_device_id em28xx_id_table[] = {
 			.driver_info = EM2860_BOARD_GADMEI_UTV330 },
 	{ USB_DEVICE(0x1b80, 0xa340),
 			.driver_info = EM2870_BOARD_KWORLD_A340 },
+	{ USB_DEVICE(0x1b80, 0xe346),
+			.driver_info = EM2874_BOARD_KWORLD_UB435Q_V2 },
 	{ USB_DEVICE(0x2013, 0x024f),
 			.driver_info = EM28174_BOARD_PCTV_290E },
 	{ USB_DEVICE(0x2013, 0x024c),
@@ -2857,6 +2872,8 @@ void em28xx_release_resources(struct em28xx *dev)
 	if (dev->def_i2c_bus)
 		em28xx_i2c_unregister(dev, 1);
 	em28xx_i2c_unregister(dev, 0);
+	if (dev->clk)
+		v4l2_clk_unregister_fixed(dev->clk);
 
 	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 
