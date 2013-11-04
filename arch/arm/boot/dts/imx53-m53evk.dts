@@ -26,7 +26,7 @@
 			crtcs = <&ipu 1>;
 			interface-pix-fmt = "bgr666";
 			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_ipu_disp2_1>;
+			pinctrl-0 = <&pinctrl_ipu_disp2>;
 
 			display-timings {
 				800x480p60 {
@@ -102,25 +102,25 @@
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_2>;
+	pinctrl-0 = <&pinctrl_audmux>;
 	status = "okay";
 };
 
 &can1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_can1_3>;
+	pinctrl-0 = <&pinctrl_can1>;
 	status = "okay";
 };
 
 &can2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_can2_1>;
+	pinctrl-0 = <&pinctrl_can2>;
 	status = "okay";
 };
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	cd-gpios = <&gpio1 1 0>;
 	wp-gpios = <&gpio1 9 0>;
 	status = "okay";
@@ -128,14 +128,14 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	status = "okay";
 };
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_2>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	sgtl5000: codec@0a {
@@ -149,7 +149,7 @@
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_2>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	clock-frequency = <400000>;
 	status = "okay";
 
@@ -193,7 +193,7 @@
 
 &i2c3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c3_1>;
+	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 };
 
@@ -201,7 +201,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-m53evk {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX53_PAD_GPIO_0__CCM_SSI_EXT1_CLK	0x80000000
@@ -218,12 +218,68 @@
 				MX53_PAD_PATA_DATA9__GPIO2_9		0x80000000
 			>;
 		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX53_AUDMUX_PINGRP2>;
+		};
+
+		pinctrl_can1: can1grp {
+			fsl,pins = <MX53_CAN1_PINGRP3>;
+		};
+
+		pinctrl_can2: can2grp {
+			fsl,pins = <MX53_CAN2_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX53_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX53_I2C1_PINGRP2>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX53_I2C2_PINGRP2>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <MX53_I2C3_PINGRP1>;
+		};
+
+		pinctrl_ipu_disp2: ipudisp2grp {
+			fsl,pins = <MX53_IPU_DISP2_PINGRP1>;
+		};
+
+		pinctrl_nand: nandgrp {
+			fsl,pins = <MX53_NAND_PINGRP1>;
+		};
+
+		pinctrl_pwm1: pwm1grp {
+			fsl,pins = <MX53_PWM1_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP2>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX53_UART2_PINGRP1>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <MX53_UART3_PINGRP1>;
+		};
 	};
 };
 
 &nfc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_nand_1>;
+	pinctrl-0 = <&pinctrl_nand>;
 	nand-bus-width = <8>;
 	nand-ecc-mode = "hw";
 	status = "okay";
@@ -231,7 +287,7 @@
 
 &pwm1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm1_1>;
+	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
 
@@ -242,18 +298,18 @@
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_2>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_1>;
+	pinctrl-0 = <&pinctrl_uart3>;
 	status = "okay";
 };

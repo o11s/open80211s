@@ -42,7 +42,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-voipac {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				/* Make DA9053 regulator functional */
@@ -53,12 +53,28 @@
 				MX53_PAD_GPIO_12__GPIO4_2	0x80000000
 			>;
 		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX53_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX53_I2C1_PINGRP2>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP2>;
+		};
 	};
 };
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <4>;
 	cs-gpios = <&gpio2 30 0>, <&gpio3 19 0>, <&gpio2 16 0>, <&gpio2 17 0>;
 	status = "okay";
@@ -66,7 +82,7 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	phy-reset-gpios = <&gpio4 2 0>;
 	status = "okay";
@@ -74,7 +90,7 @@
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_2>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	pmic: dialog@48 {
@@ -188,6 +204,6 @@
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_2>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };

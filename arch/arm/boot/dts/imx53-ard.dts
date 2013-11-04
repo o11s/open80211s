@@ -99,7 +99,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_2>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	cd-gpios = <&gpio1 1 0>;
 	wp-gpios = <&gpio1 9 0>;
 	status = "okay";
@@ -109,7 +109,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-ard {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX53_PAD_GPIO_1__GPIO1_1             0x80000000
@@ -148,11 +148,19 @@
 				MX53_PAD_EIM_CS1__EMI_WEIM_CS_1	     0x80000000
 			>;
 		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX53_ESDHC1_PINGRP2>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP2>;
+		};
 	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_2>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };

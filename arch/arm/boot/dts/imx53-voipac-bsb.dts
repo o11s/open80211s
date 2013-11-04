@@ -48,7 +48,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-voipac {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				/* SD2_CD */
@@ -64,10 +64,8 @@
 				MX53_PAD_EIM_EB3__GPIO2_31	0x80000000
 			>;
 		};
-	};
 
-	/* Keyboard controller */
-	kpp {
+		/* Keyboard controller */
 		pinctrl_kpp_1: kppgrp-1 {
 			fsl,pins = <
 				MX53_PAD_GPIO_9__KPP_COL_6	0xe8
@@ -75,7 +73,6 @@
 				MX53_PAD_KEY_COL2__KPP_COL_2	0xe8
 				MX53_PAD_KEY_COL3__KPP_COL_3	0xe8
 				MX53_PAD_KEY_COL4__KPP_COL_4	0xe8
-
 				MX53_PAD_GPIO_2__KPP_ROW_6	0xe0
 				MX53_PAD_GPIO_5__KPP_ROW_7	0xe0
 				MX53_PAD_KEY_ROW2__KPP_ROW_2	0xe0
@@ -83,18 +80,30 @@
 				MX53_PAD_KEY_ROW4__KPP_ROW_4	0xe0
 			>;
 		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX53_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_esdhc2: esdhc2grp {
+			fsl,pins = <MX53_ESDHC2_PINGRP1>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <MX53_I2C3_PINGRP2>;
+		};
 	};
 };
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_1>; /* SSI1 */
+	pinctrl-0 = <&pinctrl_audmux>; /* SSI1 */
 	status = "okay";
 };
 
 &esdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc2_1>;
+	pinctrl-0 = <&pinctrl_esdhc2>;
 	cd-gpios = <&gpio3 25 0>;
 	wp-gpios = <&gpio2 19 0>;
 	vmmc-supply = <&reg_3p3v>;
@@ -103,7 +112,7 @@
 
 &i2c3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c3_2>;
+	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "okay";
 
 	sgtl5000: codec@0a {

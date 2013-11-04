@@ -35,8 +35,8 @@
 
 &esdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc2_1>,
-		    <&pinctrl_tqma53_esdhc2_2>;
+	pinctrl-0 = <&pinctrl_esdhc2>,
+		    <&pinctrl_esdhc2_cdwp>;
 	vmmc-supply = <&reg_3p3v>;
 	wp-gpios = <&gpio1 2 0>;
 	cd-gpios = <&gpio1 4 0>;
@@ -45,13 +45,13 @@
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_2>;
+	pinctrl-0 = <&pinctrl_uart3>;
 	status = "disabled";
 };
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <4>;
 	cs-gpios = <&gpio2 30 0>, <&gpio3 19 0>,
 		   <&gpio3 24 0>, <&gpio3 25 0>;
@@ -60,7 +60,7 @@
 
 &esdhc3 { /* EMMC */
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc3_1>;
+	pinctrl-0 = <&pinctrl_esdhc3>;
 	vmmc-supply = <&reg_3p3v>;
 	non-removable;
 	bus-width = <8>;
@@ -71,27 +71,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	esdhc2_2 {
-		pinctrl_tqma53_esdhc2_2: esdhc2-tqma53-grp2 {
-			fsl,pins = <
-				MX53_PAD_GPIO_4__GPIO1_4	0x80000000 /* SD2_CD */
-				MX53_PAD_GPIO_2__GPIO1_2	0x80000000 /* SD2_WP */
-			>;
-		};
-	};
-
-	i2s {
-		pinctrl_i2s_1: i2s-grp1 {
-			fsl,pins = <
-				 MX53_PAD_KEY_COL0__AUDMUX_AUD5_TXC  0x80000000 /* I2S_SCLK */
-				 MX53_PAD_KEY_ROW0__AUDMUX_AUD5_TXD  0x80000000 /* I2S_DOUT */
-				 MX53_PAD_KEY_COL1__AUDMUX_AUD5_TXFS 0x80000000 /* I2S_LRCLK */
-				 MX53_PAD_KEY_ROW1__AUDMUX_AUD5_RXD  0x80000000 /* I2S_DIN */
-			>;
-		};
-	};
-
-	hog {
+	imx53-tqma53 {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				 MX53_PAD_GPIO_0__CCM_SSI_EXT1_CLK 0x80000000 /* SSI_MCLK */
@@ -107,43 +87,102 @@
 				 MX53_PAD_GPIO_1__PWM2_PWMO	 0x80000000 /* LCD_CONTRAST */
 			>;
 		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX53_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_can1: can1grp {
+			fsl,pins = <MX53_CAN1_PINGRP2>;
+		};
+
+		pinctrl_can2: can2grp {
+			fsl,pins = <MX53_CAN2_PINGRP1>;
+		};
+
+		pinctrl_cspi: cspigrp {
+			fsl,pins = <MX53_CSPI_PINGRP1>;
+		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX53_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_esdhc2: esdhc2grp {
+			fsl,pins = <MX53_ESDHC2_PINGRP1>;
+		};
+
+		pinctrl_esdhc2_cdwp: esdhc2cdwp {
+			fsl,pins = <
+				MX53_PAD_GPIO_4__GPIO1_4	0x80000000 /* SD2_CD */
+				MX53_PAD_GPIO_2__GPIO1_2	0x80000000 /* SD2_WP */
+			>;
+		};
+
+		pinctrl_esdhc3: esdhc3grp {
+			fsl,pins = <MX53_ESDHC3_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX53_I2C2_PINGRP1>;
+		};
+
+		pinctrl_i2c3: i2c3grp {
+			fsl,pins = <MX53_I2C3_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP2>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX53_UART2_PINGRP1>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,ps = <MX53_UART3_PINGRP2>;
+		};
 	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_2>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	fsl,uart-has-rtscts;
 	status = "disabled";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "disabled";
 };
 
 &can1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_can1_2>;
+	pinctrl-0 = <&pinctrl_can1>;
 	status = "disabled";
 };
 
 &can2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_can2_1>;
+	pinctrl-0 = <&pinctrl_can2>;
 	status = "disabled";
 };
 
 &i2c3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c3_1>;
+	pinctrl-0 = <&pinctrl_i2c3>;
 	status = "disabled";
 };
 
 &cspi {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_cspi_1>;
+	pinctrl-0 = <&pinctrl_cspi>;
 	fsl,spi-num-chipselects = <3>;
 	cs-gpios = <&gpio1 18 0>, <&gpio1 19 0>,
 		   <&gpio1 21 0>;
@@ -152,7 +191,7 @@
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	pmic: mc34708@8 {
@@ -177,7 +216,7 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	status = "disabled";
 };

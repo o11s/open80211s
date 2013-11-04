@@ -26,7 +26,7 @@
 		crtcs = <&ipu 0>;
 		interface-pix-fmt = "rgb565";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu_disp0_1>;
+		pinctrl-0 = <&pinctrl_ipu_disp0>;
 		status = "disabled";
 		display-timings {
 			claawvga {
@@ -122,7 +122,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	status = "okay";
 };
 
@@ -133,7 +133,7 @@
 
 &esdhc3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc3_1>;
+	pinctrl-0 = <&pinctrl_esdhc3>;
 	cd-gpios = <&gpio3 11 0>;
 	wp-gpios = <&gpio3 12 0>;
 	bus-width = <8>;
@@ -144,7 +144,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-qsb {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX53_PAD_GPIO_0__CCM_SSI_EXT1_CLK 0x80000000
@@ -164,19 +164,50 @@
 				MX53_PAD_PATA_DA_1__GPIO7_7 0x80000000
 			>;
 		};
-	};
 
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX53_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX53_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_esdhc3: esdhc3grp {
+			fsl,pins = <MX53_ESDHC3_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX53_I2C1_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX53_I2C2_PINGRP1>;
+		};
+
+		pinctrl_ipu_disp0: ipudisp0grp {
+			fsl,pins = <MX53_IPU_DISP0_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP1>;
+		};
+	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	sgtl5000: codec@0a {
@@ -190,7 +221,7 @@
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_1>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	accelerometer: mma8450@1c {
@@ -295,13 +326,13 @@
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_1>;
+	pinctrl-0 = <&pinctrl_audmux>;
 	status = "okay";
 };
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	phy-reset-gpios = <&gpio7 6 0>;
 	status = "okay";
