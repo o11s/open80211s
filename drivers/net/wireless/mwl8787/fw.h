@@ -281,6 +281,7 @@ enum mwl8787_tlv_type {
 	MWL8787_TYPE_WILDCARD_SSID	= 0x0112,
 	MWL8787_TYPE_BAND_CHAN		= 0x012A,
 	MWL8787_TLV_POWER_GROUP		= 0x0154,
+	MWL8787_TLV_PRE_TBTT		= 0x019d,
 };
 
 struct mwl8787_cmd_hw_spec {
@@ -515,6 +516,10 @@ struct mwl8787_tlv_ht_cap {
 	struct ieee80211_ht_cap ht_cap;
 } __packed;
 
+struct mwl8787_tlv_pre_tbtt {
+	__le16 pre_tbtt_tu;
+} __packed;
+
 struct mwl8787_tlv_tx_fail {
 	u8 fail_threshold;
 	u8 reporting_freq;
@@ -641,6 +646,7 @@ struct mwl8787_tlv {
 	union {
 		struct mwl8787_tlv_tx_fail tx_fail;
 		struct mwl8787_tlv_power_group power_group;
+		struct mwl8787_tlv_pre_tbtt pre_tbtt;
 		u8 data[0];
 	} u;
 } __packed;

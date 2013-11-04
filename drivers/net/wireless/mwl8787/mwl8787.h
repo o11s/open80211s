@@ -17,6 +17,10 @@
 #define MWL8787_TX_CT_HI		100
 #define MWL8787_TX_CT_LO		80
 
+/* pre-tbtt lead (in TUs). Needed for sleeping busses since beacon updates
+ * happen on a work queue. */
+#define MWL8787_PRE_TBTT_LEAD		10
+
 /*
  * We can only track 7 frames in the sdio aggregation buffer: because
  * the bitmap to represent pending frames has 8 bits, 8 neighboring ports

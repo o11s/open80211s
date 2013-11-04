@@ -433,13 +433,17 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 action,
 				 u16 events)
 {
 	struct mwl8787_cmd *cmd;
+	struct mwl8787_tlv *tlv;
 	struct mwl8787_tlv *tx_fail_params;
+	struct mwl8787_tlv *pre_tbtt;
 	int ret;
 	size_t cmd_len;
 
 	cmd_len = sizeof(struct mwl8787_cmd_subscribe_events);
 	if (events & MWL8787_EVT_SUB_TX_FAIL)
-		cmd_len += sizeof(struct mwl8787_tlv_tx_fail);
+		cmd_len += sizeof(*tx_fail_params);
+	if (events & MWL8787_EVT_SUB_PRE_TBTT)
+		cmd_len += sizeof(*pre_tbtt);
 
 	cmd = mwl8787_cmd_alloc(priv, MWL8787_CMD_SUBSCRIBE_EVENTS,
 				cmd_len, GFP_KERNEL);
@@ -449,13 +453,25 @@ int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 action,
 	cmd->u.subscribe_events.action = cpu_to_le16(action);
 	cmd->u.subscribe_events.events = cpu_to_le16(events);
 
+	/* cursor */
+	tlv = (struct mwl8787_tlv *) cmd->u.subscribe_events.tlvs;
+
 	if (events & MWL8787_EVT_SUB_TX_FAIL) {
-		tx_fail_params = (struct mwl8787_tlv *)
-			cmd->u.subscribe_events.tlvs;
+		tx_fail_params = tlv;
+		tlv += sizeof(*tlv);
 		tx_fail_params->hdr.type = cpu_to_le16(MWL8787_TYPE_TX_FAIL);
 		tx_fail_params->hdr.len = cpu_to_le16(2);
 		tx_fail_params->u.tx_fail.fail_threshold = priv->tx_fail;
 		tx_fail_params->u.tx_fail.reporting_freq = 1;
+	}
+
+	if (events & MWL8787_EVT_SUB_PRE_TBTT) {
+		pre_tbtt = tlv;
+		tlv += sizeof(*tlv);
+		pre_tbtt->hdr.type = cpu_to_le16(MWL8787_TLV_PRE_TBTT);
+		pre_tbtt->hdr.len = cpu_to_le16(2);
+		pre_tbtt->u.pre_tbtt.pre_tbtt_tu =
+			cpu_to_le16(MWL8787_PRE_TBTT_LEAD);
 	}
 
 	ret = mwl8787_send_cmd(priv, cmd);
