@@ -25,7 +25,7 @@
 
 &cspi {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_cspi_1>;
+	pinctrl-0 = <&pinctrl_cspi>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio4 11 0>, <&gpio4 13 0>;
 	status = "okay";
@@ -52,15 +52,31 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	phy-reset-gpios = <&gpio4 12 0>;
 	status = "okay";
 };
 
+&iomuxc {
+	imx50-evk {
+		pinctrl_cspi: cspigrp {
+			fsl,pins = <MX50_CSPI_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX50_FEC_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX50_UART1_PINGRP1>;
+		};
+	};
+};
+
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
