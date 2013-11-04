@@ -26,7 +26,7 @@
 		crtcs = <&ipu 0>;
 		interface-pix-fmt = "rgb24";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu_disp1_1>;
+		pinctrl-0 = <&pinctrl_ipu_disp1>;
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: dvi {
@@ -48,7 +48,7 @@
 		crtcs = <&ipu 1>;
 		interface-pix-fmt = "rgb565";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu_disp2_1>;
+		pinctrl-0 = <&pinctrl_ipu_disp2>;
 		status = "disabled";
 		display-timings {
 			native-mode = <&timing1>;
@@ -112,7 +112,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	fsl,cd-controller;
 	fsl,wp-controller;
 	status = "okay";
@@ -120,7 +120,7 @@
 
 &esdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc2_1>;
+	pinctrl-0 = <&pinctrl_esdhc2>;
 	cd-gpios = <&gpio1 6 0>;
 	wp-gpios = <&gpio1 5 0>;
 	status = "okay";
@@ -128,14 +128,14 @@
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_1 &pinctrl_uart3_rtscts_1>;
+	pinctrl-0 = <&pinctrl_uart3 &pinctrl_uart3_rtscts>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio4 24 0>, <&gpio4 25 0>;
 	status = "okay";
@@ -267,7 +267,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx51-babbage {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX51_PAD_GPIO1_0__SD1_CD     0x20d5
@@ -280,25 +280,81 @@
 				MX51_PAD_CSPI1_RDY__GPIO4_26 0x80000000
 			>;
 		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX51_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX51_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX51_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_esdhc2: esdhc2grp {
+			fsl,pins = <MX51_ESDHC2_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX51_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX51_I2C2_PINGRP1>;
+		};
+
+		pinctrl_ipu_disp1: ipudisp1grp {
+			fsl,pins = <MX51_IPU_DISP1_PINGRP1>;
+		};
+
+		pinctrl_ipu_disp2: ipudisp2grp {
+			fsl,pins = <MX51_IPU_DISP2_PINGRP1>;
+		};
+
+		pinctrl_kpp: kppgrp {
+			fsl,pins = <MX51_KPP_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX51_UART1_PINGRP1>;
+		};
+
+		pinctrl_uart1_rtscts: uart1rtsctsgrp {
+			fsl,pins = <MX51_UART1_RTSCTS_PINGRP1>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX51_UART2_PINGRP1>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <MX51_UART3_PINGRP1>;
+		};
+
+		pinctrl_uart3_rtscts: uart3rtsctsgrp {
+			fsl,pins = <MX51_UART3_RTSCTS_PINGRP1>;
+		};
 	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1 &pinctrl_uart1_rtscts_1>;
+	pinctrl-0 = <&pinctrl_uart1 &pinctrl_uart1_rtscts>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	sgtl5000: codec@0a {
@@ -312,20 +368,20 @@
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_1>;
+	pinctrl-0 = <&pinctrl_audmux>;
 	status = "okay";
 };
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "mii";
 	status = "okay";
 };
 
 &kpp {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_kpp_1>;
+	pinctrl-0 = <&pinctrl_kpp>;
 	linux,keymap = <0x00000067	/* KEY_UP */
 			0x0001006c	/* KEY_DOWN */
 			0x00020072	/* KEY_VOLUMEDOWN */

@@ -52,13 +52,13 @@
 
 &audmux {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_audmux_1>;
+	pinctrl-0 = <&pinctrl_audmux>;
 	status = "okay";
 };
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1 &pinctrl_esdhc1_cd>;
+	pinctrl-0 = <&pinctrl_esdhc1 &pinctrl_esdhc1_cd>;
 	fsl,cd-controller;
 	status = "okay";
 };
@@ -71,39 +71,51 @@
 };
 
 &iomuxc {
-	backlight {
+	imx51-eukrea {
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <MX51_AUDMUX_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX51_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX51_UART1_PINGRP1>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <MX51_UART3_PINGRP2>;
+		};
+
+		pinctrl_uart3_rtscts: uart3rtsctsgrp {
+			fsl,pins = <MX51_UART3_RTSCTS_PINGRP2>;
+		};
+
 		pinctrl_backlight_1: backlightgrp-1 {
 			fsl,pins = <
 				MX51_PAD_DI1_D1_CS__GPIO3_4 0x1f5
 			>;
 		};
-	};
 
-	esdhc1 {
 		pinctrl_esdhc1_cd: esdhc1_cd {
 			fsl,pins = <
 				MX51_PAD_GPIO1_0__SD1_CD 0x20d5
 			>;
 		};
-	};
 
-	gpio-keys {
 		pinctrl_gpiokeys_1: gpiokeysgrp-1 {
 			fsl,pins = <
 				MX51_PAD_NANDF_D9__GPIO3_31 0x1f5
 			>;
 		};
-	};
 
-	leds {
 		pinctrl_gpioled: gpioledgrp-1 {
 			fsl,pins = <
 				MX51_PAD_NANDF_D10__GPIO3_30 0x80000000
 			>;
 		};
-	};
 
-	reg_lcd_3v3 {
 		pinctrl_reg_lcd_3v3: reg_lcd_3v3 {
 			fsl,pins = <
 				MX51_PAD_CSI1_D9__GPIO3_13 0x1f5
@@ -119,14 +131,14 @@
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_2 &pinctrl_uart3_rtscts_2>;
+	pinctrl-0 = <&pinctrl_uart3 &pinctrl_uart3_rtscts>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };

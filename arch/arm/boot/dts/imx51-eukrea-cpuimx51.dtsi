@@ -29,13 +29,13 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_2>;
+	pinctrl-0 = <&pinctrl_fec>;
 	status = "okay";
 };
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_1>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	pcf8563@51 {
@@ -45,12 +45,20 @@
 };
 
 &iomuxc {
-	tsc2007 {
+	imx51-eukrea {
 		pinctrl_tsc2007_1: tsc2007grp-1 {
 			fsl,pins = <
 				MX51_PAD_GPIO_NAND__GPIO_NAND 0x1f5
 				MX51_PAD_NANDF_D8__GPIO4_0 0x1f5
 			>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX51_FEC_PINGRP2>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX51_I2C1_PINGRP1>;
 		};
 	};
 };
