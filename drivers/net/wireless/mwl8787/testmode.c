@@ -145,7 +145,8 @@ out:
 	return -ENOMEM;
 }
 
-int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len)
+int mwl8787_testmode_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			 void *data, int len)
 {
 	struct mwl8787_priv *priv = hw->priv;
 

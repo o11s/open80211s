@@ -687,6 +687,13 @@ static const struct ieee80211_ops mwl8787_ops = {
 	CFG80211_TESTMODE_DUMP(mwl8787_testmode_dump)
 };
 
+#ifdef CONFIG_PM
+static const struct wiphy_wowlan_support mwl8787_wowlan_support = {
+	/* Support only for limited wowlan functionalities */
+	.flags = WIPHY_WOWLAN_ANY
+};
+#endif
+
 struct mwl8787_priv *mwl8787_init(void)
 {
 	struct mwl8787_priv *priv;
@@ -729,7 +736,9 @@ struct mwl8787_priv *mwl8787_init(void)
 		IEEE80211_HW_SIGNAL_DBM;
 
 	/* wowlan settings */
-	hw->wiphy->wowlan.flags = WIPHY_WOWLAN_ANY;
+#ifdef CONFIG_PM
+	hw->wiphy->wowlan = &mwl8787_wowlan_support;
+#endif
 
 	hw->queues = IEEE80211_NUM_ACS;
 	hw->max_rates = 4;

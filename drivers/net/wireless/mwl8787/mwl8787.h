@@ -245,7 +245,8 @@ void mwl8787_event_rx(struct mwl8787_priv *priv, struct sk_buff *skb);
 
 /* testmode */
 #ifdef CONFIG_NL80211_TESTMODE
-int mwl8787_testmode_cmd(struct ieee80211_hw *hw, void *data, int len);
+int mwl8787_testmode_cmd(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			 void *data, int len);
 int mwl8787_testmode_dump(struct ieee80211_hw *hw, struct sk_buff *skb,
 			  struct netlink_callback *cb,
 			  void *data, int len);

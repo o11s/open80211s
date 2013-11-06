@@ -781,6 +781,11 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct ieee80211_local *local = sdata->local;
+	enum ieee80211_band band;
+	struct ieee80211_chanctx_conf *chanctx_conf;
+	struct ieee80211_supported_band *sband;
+	enum nl80211_bss_scan_width scan_width;
+
 	u32 changed = BSS_CHANGED_BEACON |
 		      BSS_CHANGED_BEACON_ENABLED |
 		      BSS_CHANGED_HT |
@@ -788,7 +793,6 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 		      BSS_CHANGED_BEACON_INT |
 		      BSS_CHANGED_LOW_ACK_COUNT |
 		      BSS_CHANGED_MCAST_RATE;
-	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
 
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
@@ -806,9 +810,19 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	sdata->vif.bss_conf.ht_operation_mode =
 				ifmsh->mshcfg.ht_opmode;
 	sdata->vif.bss_conf.enable_beacon = true;
-	sdata->vif.bss_conf.basic_rates =
-		ieee80211_mandatory_rates(local, band);
 	sdata->vif.bss_conf.low_ack_count = ifmsh->mshcfg.low_ack;
+
+	rcu_read_lock();
+	chanctx_conf = rcu_dereference(sdata->vif.chanctx_conf);
+	if (WARN_ON_ONCE(!chanctx_conf))
+		return -EINVAL;
+
+	band = chanctx_conf->def.chan->band;
+	scan_width = cfg80211_chandef_to_scan_width(&chanctx_conf->def);
+	rcu_read_unlock();
+	sband = local->hw.wiphy->bands[band];
+	sdata->vif.bss_conf.basic_rates =
+		ieee80211_mandatory_rates(sband, scan_width);
 
 	changed |= ieee80211_mps_local_status_update(sdata);
 
