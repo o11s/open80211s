@@ -684,20 +684,7 @@ static bool mps_hw_conf_check(struct ieee80211_local *local)
  */
 void ieee80211_mps_hw_conf(struct ieee80211_local *local)
 {
-	bool enable;
-
-	enable = mps_hw_conf_check(local);
-
-	if (local->mps_enabled == enable)
-		return;
-
-	if (enable)
-		local->hw.conf.flags |= IEEE80211_CONF_PS;
-	else
-		local->hw.conf.flags &= ~IEEE80211_CONF_PS;
-
-	ieee80211_hw_config(local, IEEE80211_CONF_CHANGE_PS);
-	local->mps_enabled = enable;
+	local->mps_enabled = mps_hw_conf_check(local);
 
 	/* we wait for peer beacons before doze */
 }
