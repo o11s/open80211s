@@ -65,9 +65,12 @@
 
 	regulators {
 		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
 
-		reg_1p0v: 1p0v {
+		reg_1p0v: regulator@0 {
 			compatible = "regulator-fixed";
+			reg = <0>;
 			regulator-name = "1P0V";
 			regulator-min-microvolt = <1000000>;
 			regulator-max-microvolt = <1000000>;
@@ -75,32 +78,36 @@
 		};
 
 		/* remove when pmic 1p8 regulator available */
-		reg_1p8v: 1p8v {
+		reg_1p8v: regulator@1 {
 			compatible = "regulator-fixed";
+			reg = <1>;
 			regulator-name = "1P8V";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			regulator-always-on;
 		};
 
-		reg_3p3v: 3p3v {
+		reg_3p3v: regulator@2 {
 			compatible = "regulator-fixed";
+			reg = <2>;
 			regulator-name = "3P3V";
 			regulator-min-microvolt = <3300000>;
 			regulator-max-microvolt = <3300000>;
 			regulator-always-on;
 		};
 
-		reg_usb_h1_vbus: usb_h1_vbus {
+		reg_usb_h1_vbus: regulator@3 {
 			compatible = "regulator-fixed";
+			reg = <3>;
 			regulator-name = "usb_h1_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			regulator-always-on;
 		};
 
-		reg_usb_otg_vbus: usb_otg_vbus {
+		reg_usb_otg_vbus: regulator@4 {
 			compatible = "regulator-fixed";
+			reg = <4>;
 			regulator-name = "usb_otg_vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
