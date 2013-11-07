@@ -251,6 +251,7 @@ static int move_expired_inodes(struct list_head *delaying_queue,
 	int do_sb_sort = 0;
 	int moved = 0;
 
+	WARN_ON_ONCE(!work->older_than_this_is_set);
 	while (!list_empty(delaying_queue)) {
 		inode = wb_inode(delaying_queue->prev);
 		if (inode_dirtied_after(inode, work->older_than_this))
@@ -800,8 +801,10 @@ static long wb_writeback(struct bdi_writeback *wb,
 	struct inode *inode;
 	long progress;
 
-	if (!work->older_than_this_is_set)
+	if (!work->older_than_this_is_set) {
 		work->older_than_this = jiffies;
+		work->older_than_this_is_set = 1;
+	}
 
 	spin_lock(&wb->list_lock);
 	for (;;) {
