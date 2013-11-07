@@ -127,9 +127,6 @@ static int can_set_xattr(struct inode *inode, const char *name,
 	return 0;
 }
 
-#define SETOFFSET(buf, ndsiz, offset, rec) \
-	(*(u16 *)((u8 *)(buf) + (ndsiz) + (-2 * (rec))) = (cpu_to_be16(offset)))
-
 static void hfsplus_init_header_node(struct inode *attr_file,
 					u32 clump_size,
 					char *buf, size_t node_size)
@@ -137,18 +134,23 @@ static void hfsplus_init_header_node(struct inode *attr_file,
 	struct hfs_bnode_desc *desc;
 	struct hfs_btree_header_rec *head;
 	u16 offset;
+	__be16 *rec_offsets;
 	u32 hdr_node_map_rec_bits;
 	char *bmp;
-	u32 temp;
+	u32 used_nodes;
+	u32 used_bmp_bytes;
 
 	hfs_dbg(ATTR_MOD, "init_hdr_attr_file: clump %u, node_size %zu\n",
 				clump_size, node_size);
+
+	/* The end of the node contains list of record offsets */
+	rec_offsets = (__be16 *)(buf + node_size);
 
 	desc = (struct hfs_bnode_desc *)buf;
 	desc->type = HFS_NODE_HEADER;
 	desc->num_recs = cpu_to_be16(HFSPLUS_BTREE_HDR_NODE_RECS_COUNT);
 	offset = sizeof(struct hfs_bnode_desc);
-	SETOFFSET(buf, node_size, offset, 1);
+	*--rec_offsets = cpu_to_be16(offset);
 
 	head = (struct hfs_btree_header_rec *)(buf + offset);
 	head->node_size = cpu_to_be16(node_size);
@@ -158,10 +160,9 @@ static void hfsplus_init_header_node(struct inode *attr_file,
 	head->attributes |= cpu_to_be32(HFS_TREE_BIGKEYS | HFS_TREE_VARIDXKEYS);
 	head->max_key_len = cpu_to_be16(HFSPLUS_ATTR_KEYLEN - sizeof(u16));
 	offset += sizeof(struct hfs_btree_header_rec);
-	SETOFFSET(buf, node_size, offset, 2);
-
+	*--rec_offsets = cpu_to_be16(offset);
 	offset += HFSPLUS_BTREE_HDR_USER_BYTES;
-	SETOFFSET(buf, node_size, offset, 3);
+	*--rec_offsets = cpu_to_be16(offset);
 
 	hdr_node_map_rec_bits = 8 * (node_size - offset - (4 * sizeof(u16)));
 	if (be32_to_cpu(head->node_count) > hdr_node_map_rec_bits) {
@@ -178,16 +179,17 @@ static void hfsplus_init_header_node(struct inode *attr_file,
 	}
 
 	bmp = buf + offset;
-	temp = be32_to_cpu(head->node_count) - be32_to_cpu(head->free_nodes);
-
-	/* Working a byte at a time is endian safe */
-	while (temp >= 8) {
-		*bmp = 0xFF; temp -= 8; bmp++;
+	used_nodes =
+		be32_to_cpu(head->node_count) - be32_to_cpu(head->free_nodes);
+	used_bmp_bytes = used_nodes / 8;
+	if (used_bmp_bytes) {
+		memset(bmp, 0xFF, used_bmp_bytes);
+		bmp += used_bmp_bytes;
+		used_nodes %= 8;
 	}
-	*bmp = ~(0xFF >> temp);
+	*bmp = ~(0xFF >> used_nodes);
 	offset += hdr_node_map_rec_bits / 8;
-
-	SETOFFSET(buf, node_size, offset, 4);
+	*--rec_offsets = cpu_to_be16(offset);
 }
 
 int __hfsplus_setxattr(struct inode *inode, const char *name,
