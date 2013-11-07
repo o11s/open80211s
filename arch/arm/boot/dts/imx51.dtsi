@@ -13,6 +13,7 @@
 #include "skeleton.dtsi"
 #include "imx51-pinfunc.h"
 #include "imx51-pingrp.h"
+#include <dt-bindings/interrupt-controller/irq.h>
 
 / {
 	aliases {
