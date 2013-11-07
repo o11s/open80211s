@@ -217,9 +217,21 @@ check_attr_tree_state_again:
 			goto check_attr_tree_state_again;
 		break;
 	case HFSPLUS_CREATING_ATTR_TREE:
-		schedule_timeout_uninterruptible(HZ);
-		goto check_attr_tree_state_again;
-		break;
+		/*
+		 * This state means that another thread is in process
+		 * of AttributesFile creation. Theoretically, it is
+		 * possible to be here. But really __setxattr() method
+		 * first of all calls hfs_find_init() for lookup in
+		 * B-tree of CatalogFile. This method locks mutex of
+		 * CatalogFile's B-tree. As a result, if some thread
+		 * is inside AttributedFile creation operation then
+		 * another threads will be waiting unlocking of
+		 * CatalogFile's B-tree's mutex. However, if code will
+		 * change then we will return error code (-EAGAIN) from
+		 * here. Really, it means that first try to set of xattr
+		 * fails with error but second attempt will have success.
+		 */
+		return -EAGAIN;
 	case HFSPLUS_VALID_ATTR_TREE:
 		return 0;
 	case HFSPLUS_FAILED_ATTR_TREE:
@@ -281,8 +293,10 @@ check_attr_tree_state_again:
 		void *kaddr;
 
 		page = read_mapping_page(mapping, index, NULL);
-		if (IS_ERR(page))
+		if (IS_ERR(page)) {
+			err = PTR_ERR(page);
 			goto failed_header_node_init;
+		}
 
 		kaddr = kmap_atomic(page);
 		memcpy(kaddr, buf + written,
