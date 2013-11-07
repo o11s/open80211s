@@ -93,6 +93,7 @@ static inline int __fat_get_block(struct inode *inode, sector_t iblock,
 
 	*max_blocks = min(mapped_blocks, *max_blocks);
 	MSDOS_I(inode)->mmu_private += *max_blocks << sb->s_blocksize_bits;
+	MSDOS_I(inode)->i_disksize = MSDOS_I(inode)->mmu_private;
 
 	err = fat_bmap(inode, iblock, &phys, &mapped_blocks, create);
 	if (err)
@@ -408,6 +409,7 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		if (error < 0)
 			return error;
 		MSDOS_I(inode)->mmu_private = inode->i_size;
+		MSDOS_I(inode)->i_disksize = inode->i_size;
 
 		set_nlink(inode, fat_subdirs(inode));
 	} else { /* not a directory */
@@ -423,6 +425,7 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		inode->i_fop = &fat_file_operations;
 		inode->i_mapping->a_ops = &fat_aops;
 		MSDOS_I(inode)->mmu_private = inode->i_size;
+		MSDOS_I(inode)->i_disksize = inode->i_size;
 	}
 	if (de->attr & ATTR_SYS) {
 		if (sbi->options.sys_immutable)
@@ -1220,6 +1223,7 @@ static int fat_read_root(struct inode *inode)
 			   & ~((loff_t)sbi->cluster_size - 1)) >> 9;
 	MSDOS_I(inode)->i_logstart = 0;
 	MSDOS_I(inode)->mmu_private = inode->i_size;
+	MSDOS_I(inode)->i_disksize = inode->i_size;
 
 	fat_save_attrs(inode, ATTR_DIR);
 	inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;

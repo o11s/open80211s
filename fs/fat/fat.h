@@ -117,7 +117,8 @@ struct msdos_inode_info {
 	unsigned int cache_valid_id;
 
 	/* NOTE: mmu_private is 64bits, so must hold ->i_mutex to access */
-	loff_t mmu_private;	/* physically allocated size */
+	loff_t mmu_private;	/* physically allocated size (uninitialized) */
+	loff_t i_disksize;	/* physically allocated size (initialized) */
 
 	int i_start;		/* first cluster or 0 */
 	int i_logstart;		/* logical first cluster */
