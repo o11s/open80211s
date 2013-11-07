@@ -312,6 +312,7 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 	const unsigned char blocksize_bits = sb->s_blocksize_bits;
 	sector_t last_block;
 	int cluster, offset;
+	loff_t i_size = i_size_read(inode);
 
 	*phys = 0;
 	*mapped_blocks = 0;
@@ -323,10 +324,20 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 		return 0;
 	}
 
-	last_block = (i_size_read(inode) + (blocksize - 1)) >> blocksize_bits;
+	last_block = (i_size + (blocksize - 1)) >> blocksize_bits;
 	if (sector >= last_block) {
-		if (!create)
+		if (!create) {
+			/*
+			 * to map cluster in case of read request
+			 * for a block in fallocated region
+			 */
+			if (MSDOS_I(inode)->i_disksize >
+			    round_up(i_size, sb->s_blocksize)) {
+				goto out_map_cluster;
+			}
+
 			return 0;
+		}
 
 		/*
 		 * ->i_disksize can access on only allocation path.
@@ -339,6 +350,7 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 			return 0;
 	}
 
+out_map_cluster:
 	cluster = sector >> (sbi->cluster_bits - sb->s_blocksize_bits);
 	offset  = sector & (sbi->sec_per_clus - 1);
 	cluster = fat_bmap_cluster(inode, cluster);
