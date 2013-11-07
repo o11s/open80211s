@@ -6,9 +6,6 @@ klibcdirs:;
 PHONY += klibcdirs
 
 
-# Gzip
-suffix_$(CONFIG_RD_GZIP)   = .gz
-
 # Bzip2
 suffix_$(CONFIG_RD_BZIP2)  = .bz2
 
@@ -23,6 +20,9 @@ suffix_$(CONFIG_RD_LZO)    = .lzo
 
 # Lz4
 suffix_$(CONFIG_RD_LZ4)    = .lz4
+
+# Gzip
+suffix_$(CONFIG_RD_GZIP)   = .gz
 
 AFLAGS_initramfs_data.o += -DINITRAMFS_IMAGE="usr/initramfs_data.cpio$(suffix_y)"
 

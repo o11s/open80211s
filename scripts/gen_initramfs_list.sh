@@ -240,13 +240,18 @@ case "$arg" in
 		output_file="$1"
 		cpio_list="$(mktemp ${TMPDIR:-/tmp}/cpiolist.XXXXXX)"
 		output=${cpio_list}
-		echo "$output_file" | grep -q "\.gz$" && compr="gzip -n -9 -f"
-		echo "$output_file" | grep -q "\.bz2$" && compr="bzip2 -9 -f"
-		echo "$output_file" | grep -q "\.lzma$" && compr="lzma -9 -f"
-		echo "$output_file" | grep -q "\.xz$" && \
-				compr="xz --check=crc32 --lzma2=dict=1MiB"
-		echo "$output_file" | grep -q "\.lzo$" && compr="lzop -9 -f"
-		echo "$output_file" | grep -q "\.lz4$" && compr="lz4 -9 -f"
+		echo "$output_file" | grep -q "\.gz$" && [ -x "/bin/gzip" ] \
+                && compr="gzip -n -9 -f"
+		echo "$output_file" | grep -q "\.bz2$" && [ -x "/bin/bzip2" ] \
+                && compr="bzip2 -9 -f"
+		echo "$output_file" | grep -q "\.lzma$" && [ -x "/bin/lzma" ] \
+                && compr="lzma -9 -f"
+		echo "$output_file" | grep -q "\.xz$" && [ -x "/bin/xz" ] \
+                && compr="xz --check=crc32 --lzma2=dict=1MiB"
+		echo "$output_file" | grep -q "\.lzo$" && [ -x "/bin/lzop" ] \
+                && compr="lzop -9 -f"
+		echo "$output_file" | grep -q "\.lz4$" && [ -x "/bin/lz4" ] \
+                && compr="lz4 -9 -f"
 		echo "$output_file" | grep -q "\.cpio$" && compr="cat"
 		shift
 		;;
