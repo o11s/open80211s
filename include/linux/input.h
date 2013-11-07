@@ -540,12 +540,12 @@ void input_led_disconnect(struct input_dev *dev);
 
 #else
 
-int input_led_connect(struct input_dev *dev)
+static inline int input_led_connect(struct input_dev *dev)
 {
 	return 0;
 }
 
-void input_led_disconnect(struct input_dev *dev)
+static inline void input_led_disconnect(struct input_dev *dev)
 {
 }
 
