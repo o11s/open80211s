@@ -4019,8 +4019,8 @@ sub process {
 		    defined $stat &&
 		    $stat =~ /\bsscanf\b/ &&
 		    ($stat !~ /$Ident\s*=\s*sscanf\s*$balanced_parens/ &&
-		     $stat !~ /\bsscanf\s*$balanced_parens\s*(?:==|\!=)/ &&
-		     $stat !~ /(?:==|\!=)\s*\bsscanf\s*$balanced_parens/)) {
+		     $stat !~ /\bsscanf\s*$balanced_parens\s*(?:$Compare)/ &&
+		     $stat !~ /(?:$Compare)\s*\bsscanf\s*$balanced_parens/)) {
 			my $lc = $stat =~ tr@\n@@;
 			$lc = $lc + $linenr;
 			my $stat_real = raw_line($linenr, 0);
