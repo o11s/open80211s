@@ -344,8 +344,8 @@ static int __init crd_load(int in_fd, int out_fd, decompress_fn deco)
 	crd_outfd = out_fd;
 
 	if (!deco) {
-		pr_emerg("Invalid decompression routine: %p; "
-				 "Select appropriate config option.\n", deco);
+		pr_emerg("Invalid ramdisk decompression routine.  "
+			 "Select appropriate config option.\n");
 		panic("Could not decompress initial ramdisk image.");
 	}
 
