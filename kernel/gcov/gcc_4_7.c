@@ -176,8 +176,7 @@ void gcov_info_reset(struct gcov_info *info)
 	unsigned int fi_idx;
 	unsigned int ct_idx;
 
-	for (fi_idx = 0; fi_idx < info->n_functions; fi_idx++)
-	{
+	for (fi_idx = 0; fi_idx < info->n_functions; fi_idx++) {
 		ci_ptr = info->functions[fi_idx]->ctrs;
 
 		for (ct_idx = 0; ct_idx < GCOV_COUNTERS; ct_idx++) {
@@ -218,8 +217,7 @@ void gcov_info_add(struct gcov_info *dst, struct gcov_info *src)
 	unsigned int ct_idx;
 	unsigned int val_idx;
 
-	for (fi_idx = 0; fi_idx < src->n_functions; fi_idx++)
-	{
+	for (fi_idx = 0; fi_idx < src->n_functions; fi_idx++) {
 		dci_ptr = dst->functions[fi_idx]->ctrs;
 		sci_ptr = src->functions[fi_idx]->ctrs;
 
