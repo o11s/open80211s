@@ -39,6 +39,10 @@
 struct wb_writeback_work {
 	long nr_pages;
 	struct super_block *sb;
+	/*
+	 * Write only inodes dirtied before this time. Don't forget to set
+	 * older_than_this_is_set when you set this.
+	 */
 	unsigned long older_than_this;
 	enum writeback_sync_modes sync_mode;
 	unsigned int tagged_writepages:1;
@@ -46,6 +50,7 @@ struct wb_writeback_work {
 	unsigned int range_cyclic:1;
 	unsigned int for_background:1;
 	unsigned int for_sync:1;	/* sync(2) WB_SYNC_ALL writeback */
+	unsigned int older_than_this_is_set:1;
 	enum wb_reason reason;		/* why was writeback initiated? */
 
 	struct list_head list;		/* pending work list */
@@ -732,6 +737,8 @@ static long writeback_inodes_wb(struct bdi_writeback *wb, long nr_pages,
 		.sync_mode	= WB_SYNC_NONE,
 		.range_cyclic	= 1,
 		.reason		= reason,
+		.older_than_this = jiffies,
+		.older_than_this_is_set = 1,
 	};
 
 	spin_lock(&wb->list_lock);
@@ -793,7 +800,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 	struct inode *inode;
 	long progress;
 
-	if (!work->older_than_this)
+	if (!work->older_than_this_is_set)
 		work->older_than_this = jiffies;
 
 	spin_lock(&wb->list_lock);
@@ -1356,6 +1363,7 @@ void sync_inodes_sb(struct super_block *sb, unsigned long older_than_this)
 		.sync_mode	= WB_SYNC_ALL,
 		.nr_pages	= LONG_MAX,
 		.older_than_this = older_than_this,
+		.older_than_this_is_set = 1,
 		.range_cyclic	= 0,
 		.done		= &done,
 		.reason		= WB_REASON_SYNC,
