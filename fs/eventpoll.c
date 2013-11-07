@@ -585,13 +585,14 @@ static inline void ep_pm_stay_awake_rcu(struct epitem *epi)
  * @sproc: Pointer to the scan callback.
  * @priv: Private opaque data passed to the @sproc callback.
  * @depth: The current depth of recursive f_op->poll calls.
+ * @ep_locked: caller already holds ep->mtx
  *
  * Returns: The same integer error code returned by the @sproc callback.
  */
 static int ep_scan_ready_list(struct eventpoll *ep,
 			      int (*sproc)(struct eventpoll *,
 					   struct list_head *, void *),
-			      void *priv, int depth, int ep_locked)
+			      void *priv, int depth, bool ep_locked)
 {
 	int error, pwake = 0;
 	unsigned long flags;
@@ -829,12 +830,12 @@ static void ep_ptable_queue_proc(struct file *file, wait_queue_head_t *whead,
 
 struct readyevents_arg {
 	struct eventpoll *ep;
-	int locked;
+	bool locked;
 };
 
 static int ep_poll_readyevents_proc(void *priv, void *cookie, int call_nests)
 {
-	struct readyevents_arg *arg = (struct readyevents_arg *)priv;
+	struct readyevents_arg *arg = priv;
 
 	return ep_scan_ready_list(arg->ep, ep_read_events_proc, NULL,
 				  call_nests + 1, arg->locked);
@@ -850,7 +851,7 @@ static unsigned int ep_eventpoll_poll(struct file *file, poll_table *wait)
 	 * During ep_insert() we already hold the ep->mtx for the tfile.
 	 * Prevent re-aquisition.
 	 */
-	arg.locked = ((wait && (wait->_qproc == ep_ptable_queue_proc)) ? 1 : 0);
+	arg.locked = wait && (wait->_qproc == ep_ptable_queue_proc);
 	arg.ep = ep;
 
 	/* Insert inside our poll wait queue */
@@ -1553,7 +1554,7 @@ static int ep_send_events(struct eventpoll *ep,
 	esed.maxevents = maxevents;
 	esed.events = events;
 
-	return ep_scan_ready_list(ep, ep_send_events_proc, &esed, 0, 0);
+	return ep_scan_ready_list(ep, ep_send_events_proc, &esed, 0, false);
 }
 
 static inline struct timespec ep_set_mstimeout(long ms)
