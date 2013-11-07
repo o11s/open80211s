@@ -24,7 +24,15 @@
 
 static struct vfsmount *anon_inode_mnt __read_mostly;
 static struct inode *anon_inode_inode;
-static const struct file_operations anon_inode_fops;
+
+static int anon_open(struct inode *inode, struct file *file)
+{
+	return -ENXIO;
+}
+
+static const struct file_operations anon_inode_fops = {
+	.open = anon_open,
+};
 
 /*
  * anon_inodefs_dname() is called from d_path().
