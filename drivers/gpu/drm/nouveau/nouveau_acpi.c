@@ -373,6 +373,7 @@ void nouveau_unregister_dsm_handler(void)
 #else
 void nouveau_register_dsm_handler(void) {}
 void nouveau_unregister_dsm_handler(void) {}
+void nouveau_switcheroo_optimus_dsm(void) {}
 #endif
 
 /* retrieve the ROM in 4k blocks */
