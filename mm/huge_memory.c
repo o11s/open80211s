@@ -2159,10 +2159,11 @@ static void khugepaged_alloc_sleep(void)
 }
 
 static int khugepaged_node_load[MAX_NUMNODES];
+
 #ifdef CONFIG_NUMA
-static int last_khugepaged_target_node = NUMA_NO_NODE;
 static int khugepaged_find_target_node(void)
 {
+	static int last_khugepaged_target_node = NUMA_NO_NODE;
 	int nid, target_node = 0, max_value = 0;
 
 	/* find first node with max normal pages hit */
