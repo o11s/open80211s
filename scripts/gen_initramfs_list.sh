@@ -246,6 +246,7 @@ case "$arg" in
 		echo "$output_file" | grep -q "\.xz$" && \
 				compr="xz --check=crc32 --lzma2=dict=1MiB"
 		echo "$output_file" | grep -q "\.lzo$" && compr="lzop -9 -f"
+		echo "$output_file" | grep -q "\.lz4$" && compr="lz4 -9 -f"
 		echo "$output_file" | grep -q "\.cpio$" && compr="cat"
 		shift
 		;;
