@@ -7,9 +7,6 @@
 #include <linux/atomic.h>
 #include <uapi/linux/mman.h>
 
-#include <linux/hugetlb.h>
-#include <linux/swap.h>
-
 extern int sysctl_overcommit_memory;
 extern int sysctl_overcommit_ratio;
 extern struct percpu_counter vm_committed_as;
@@ -91,12 +88,5 @@ calc_vm_flag_bits(unsigned long flags)
 	       _calc_vm_trans(flags, MAP_LOCKED,     VM_LOCKED    );
 }
 
-/*
- * Commited memory limit enforced when OVERCOMMIT_NEVER policy is used
- */
-static inline unsigned long vm_commit_limit()
-{
-	return ((totalram_pages - hugetlb_total_pages())
-		* sysctl_overcommit_ratio / 100) + total_swap_pages;
-}
+unsigned long vm_commit_limit(void);
 #endif /* _LINUX_MMAN_H */
