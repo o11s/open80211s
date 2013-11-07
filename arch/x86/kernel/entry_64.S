@@ -1340,7 +1340,7 @@ bad_gs:
 	.previous
 
 /* Call softirq on interrupt stack. Interrupts are off. */
-ENTRY(call_softirq)
+ENTRY(do_softirq_own_stack)
 	CFI_STARTPROC
 	pushq_cfi %rbp
 	CFI_REL_OFFSET rbp,0
@@ -1357,7 +1357,7 @@ ENTRY(call_softirq)
 	decl PER_CPU_VAR(irq_count)
 	ret
 	CFI_ENDPROC
-END(call_softirq)
+END(do_softirq_own_stack)
 
 #ifdef CONFIG_XEN
 zeroentry xen_hypervisor_callback xen_do_hypervisor_callback
