@@ -1353,10 +1353,11 @@ EXPORT_SYMBOL(try_to_writeback_inodes_sb);
 
 /**
  * sync_inodes_sb	-	sync sb inode pages
- * @sb: the superblock
+ * @sb:			the superblock
+ * @older_than_this:	timestamp
  *
  * This function writes and waits on any dirty inode belonging to this
- * super_block.
+ * superblock that has been dirtied before given timestamp.
  */
 void sync_inodes_sb(struct super_block *sb, unsigned long older_than_this)
 {
