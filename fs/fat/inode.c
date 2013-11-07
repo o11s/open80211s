@@ -493,6 +493,13 @@ EXPORT_SYMBOL_GPL(fat_build_inode);
 
 static void fat_evict_inode(struct inode *inode)
 {
+	struct super_block *sb = inode->i_sb;
+
+	/* Release unwritten fallocated blocks on file release. */
+	if (round_up(inode->i_size, sb->s_blocksize) <
+	    MSDOS_I(inode)->i_disksize && inode->i_nlink != 0)
+		fat_truncate_blocks(inode, inode->i_size);
+
 	truncate_inode_pages(&inode->i_data, 0);
 	if (!inode->i_nlink) {
 		inode->i_size = 0;
