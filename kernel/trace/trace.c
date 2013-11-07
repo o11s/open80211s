@@ -1284,21 +1284,6 @@ int is_tracing_stopped(void)
 }
 
 /**
- * ftrace_off_permanent - disable all ftrace code permanently
- *
- * This should only be called when a serious anomally has
- * been detected.  This will turn off the function tracing,
- * ring buffers, and other tracing utilites. It takes no
- * locks and can be called from any context.
- */
-void ftrace_off_permanent(void)
-{
-	tracing_disabled = 1;
-	ftrace_stop();
-	tracing_off_permanent();
-}
-
-/**
  * tracing_start - quick start of the tracer
  *
  * If tracing is enabled but was stopped by tracing_stop,
@@ -2985,6 +2970,11 @@ int tracing_open_generic(struct inode *inode, struct file *filp)
 
 	filp->private_data = inode->i_private;
 	return 0;
+}
+
+bool tracing_is_disabled(void)
+{
+	return (tracing_disabled) ? true: false;
 }
 
 /*
@@ -6276,6 +6266,17 @@ void trace_init_global_iter(struct trace_iterator *iter)
 	iter->trace = iter->tr->current_trace;
 	iter->cpu_file = RING_BUFFER_ALL_CPUS;
 	iter->trace_buffer = &global_trace.trace_buffer;
+
+	if (iter->trace && iter->trace->open)
+		iter->trace->open(iter);
+
+	/* Annotate start of buffers if we had overruns */
+	if (ring_buffer_overruns(iter->trace_buffer->buffer))
+		iter->iter_flags |= TRACE_FILE_ANNOTATE;
+
+	/* Output in nanoseconds only if we are using a clock in nanoseconds. */
+	if (trace_clocks[iter->tr->clock_id].in_ns)
+		iter->iter_flags |= TRACE_FILE_TIME_IN_NS;
 }
 
 void ftrace_dump(enum ftrace_dump_mode oops_dump_mode)
