@@ -128,6 +128,10 @@ void __init setup_sched_clock(u32 (*read)(void), int bits, unsigned long rate)
 	clocks_calc_mult_shift(&cd.mult, &cd.shift, rate, NSEC_PER_SEC, 0);
 
 	r = rate;
+	/*
+	 * Use 4MHz instead of 1MHz so that things like 1.832Mhz show as
+	 * 1832Khz
+	 */
 	if (r >= 4000000) {
 		r /= 1000000;
 		r_unit = 'M';
