@@ -254,11 +254,10 @@ struct gcov_info *gcov_info_dup(struct gcov_info *info)
 	size_t fi_size; /* function info size */
 	size_t cv_size; /* counter values size */
 
-	dup = kmalloc(sizeof(struct gcov_info), GFP_KERNEL);
+	dup = kmemdup(info, sizeof(*dup), GFP_KERNEL);
 	if (!dup)
 		return NULL;
 
-	*dup = *info;
 	dup->next = NULL;
 	dup->filename = NULL;
 	dup->functions = NULL;
@@ -267,8 +266,8 @@ struct gcov_info *gcov_info_dup(struct gcov_info *info)
 	if (!dup->filename)
 		goto err_free;
 
-	dup->functions = kzalloc(sizeof(struct gcov_fn_info *) *
-			info->n_functions, GFP_KERNEL);
+	dup->functions = kcalloc(sizeof(struct gcov_fn_info *),
+				 info->n_functions, GFP_KERNEL);
 	if (!dup->functions)
 		goto err_free;
 
