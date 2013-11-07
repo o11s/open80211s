@@ -334,7 +334,8 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 		 */
 		last_block = (MSDOS_I(inode)->i_disksize + (blocksize - 1))
 			>> blocksize_bits;
-		if (sector >= last_block)
+		if (sector >= last_block &&
+		    MSDOS_I(inode)->mmu_private == MSDOS_I(inode)->i_disksize)
 			return 0;
 	}
 
