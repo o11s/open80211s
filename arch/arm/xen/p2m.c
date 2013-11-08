@@ -162,7 +162,7 @@ bool __set_phys_to_machine_multi(unsigned long pfn,
 				rb_erase(&p2m_entry->rbnode_mach, &mach_to_phys);
 				rb_erase(&p2m_entry->rbnode_phys, &phys_to_mach);
 				write_unlock_irqrestore(&p2m_lock, irqflags);
-				kfree(p2m_entry);	
+				kfree(p2m_entry);
 				return true;
 			}
 			if (pfn < p2m_entry->pfn)
