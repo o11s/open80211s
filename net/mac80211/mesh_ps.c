@@ -789,7 +789,7 @@ void ieee80211_mps_awake_window_start(struct ieee80211_sub_if_data *sdata)
 	if (!local->mps_enabled)
 		return;
 
-	mps_dbg(sdata, "awake window start (%d TU), beacon in %d TU\n",
+	mps_dbg(sdata, "awake window start (%d TU), beacon in %lu TU\n",
 		ifmsh->mshcfg.dot11MeshAwakeWindowDuration,
 		pre_tbtt_lead);
 
