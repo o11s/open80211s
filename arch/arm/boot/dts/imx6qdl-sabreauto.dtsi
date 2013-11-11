@@ -20,7 +20,7 @@
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio3 19 0>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1 &pinctrl_ecspi1_sabreauto>;
+	pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
 	status = "disabled"; /* pin conflict with WEIM NOR */
 
 	flash: m25p80@0 {
@@ -34,14 +34,14 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet_2>;
+	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
 	status = "okay";
 };
 
 &gpmi {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
+	pinctrl-0 = <&pinctrl_gpmi_nand>;
 	status = "okay";
 };
 
@@ -49,7 +49,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx6qdl-sabreauto {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX6QDL_PAD_NANDF_CS2__GPIO6_IO15 0x80000000
@@ -57,28 +57,62 @@
 				MX6QDL_PAD_GPIO_18__SD3_VSELECT 0x17059
 			>;
 		};
-	};
 
-	ecspi1 {
-		pinctrl_ecspi1_sabreauto: ecspi1-sabreauto {
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX6QDL_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_ecspi1_cs: ecspi1cs {
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D19__GPIO3_IO19 0x80000000
 			>;
+		};
+
+		pinctrl_enet: enetgrp {
+			fsl,pins = <MX6QDL_ENET_PINGRP2>;
+		};
+
+		pinctrl_gpmi_nand: gpminandgrp {
+			fsl,pins = <MX6QDL_GPMI_NAND_PINGRP1>;
+		};
+
+		pinctrl_uart4: uart4grp {
+			fsl,pins = <MX6QDL_UART4_PINGRP1>;
+		};
+
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP1>;
+		};
+
+		pinctrl_usdhc3_100mhz: usdhc3grp100mhz {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP1_100MHZ>;
+		};
+
+		pinctrl_usdhc3_200mhz: usdhc3grp200mhz {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP1_200MHZ>;
+		};
+
+		pinctrl_weim_cs0: weimcs0grp {
+			fsl,pins = <MX6QDL_WEIM_CS0_PINGRP1>;
+		};
+
+		pinctrl_weim_nor: weimnorgrp {
+			fsl,pins = <MX6QDL_WEIM_NOR_PINGRP1>;
 		};
 	};
 };
 
 &uart4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart4_1>;
+	pinctrl-0 = <&pinctrl_uart4>;
 	status = "okay";
 };
 
 &usdhc3 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc3_1>;
-	pinctrl-1 = <&pinctrl_usdhc3_1_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc3_1_200mhz>;
+	pinctrl-0 = <&pinctrl_usdhc3>;
+	pinctrl-1 = <&pinctrl_usdhc3_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc3_200mhz>;
 	cd-gpios = <&gpio6 15 0>;
 	wp-gpios = <&gpio1 13 0>;
 	status = "okay";
@@ -86,7 +120,7 @@
 
 &weim {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_weim_nor_1 &pinctrl_weim_cs0_1>;
+	pinctrl-0 = <&pinctrl_weim_nor &pinctrl_weim_cs0>;
 	#address-cells = <2>;
 	#size-cells = <1>;
 	ranges = <0 0 0x08000000 0x08000000>;

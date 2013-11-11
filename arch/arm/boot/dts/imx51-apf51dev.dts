@@ -21,7 +21,7 @@
 		crtcs = <&ipu 0>;
 		interface-pix-fmt = "bgr666";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ipu_disp1_1>;
+		pinctrl-0 = <&pinctrl_ipu_disp1>;
 
 		display-timings {
 			lw700 {
@@ -66,7 +66,7 @@
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio4 24 0>, <&gpio4 25 0>;
 	status = "okay";
@@ -74,7 +74,7 @@
 
 &ecspi2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi2_1>;
+	pinctrl-0 = <&pinctrl_ecspi2>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio3 28 1>, <&gpio3 27 1>;
 	status = "okay";
@@ -82,7 +82,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	cd-gpios = <&gpio2 29 0>;
 	bus-width = <4>;
 	status = "okay";
@@ -90,7 +90,7 @@
 
 &esdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc2_1>;
+	pinctrl-0 = <&pinctrl_esdhc2>;
 	bus-width = <4>;
 	non-removable;
 	status = "okay";
@@ -98,7 +98,7 @@
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_2>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 };
 
@@ -106,7 +106,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx51-apf51dev {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX51_PAD_EIM_EB2__GPIO2_22   0x0C5
@@ -119,6 +119,30 @@
 				MX51_PAD_GPIO1_2__GPIO1_2    0x0C5
 				MX51_PAD_GPIO1_3__GPIO1_3    0x0C5
 			>;
+		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX51_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_ecspi2: ecspi2grp {
+			fsl,pins = <MX51_ECSPI2_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX51_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_esdhc2: esdhc2grp {
+			fsl,pins = <MX51_ESDHC2_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX51_I2C2_PINGRP2>;
+		};
+
+		pinctrl_ipu_disp1: ipudisp1grp {
+			fsl,pins = <MX51_IPU_DISP1_PINGRP1>;
 		};
 	};
 };

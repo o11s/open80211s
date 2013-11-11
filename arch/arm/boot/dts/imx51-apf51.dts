@@ -34,11 +34,23 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_2>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "mii";
 	phy-reset-gpios = <&gpio3 0 0>;
 	phy-reset-duration = <1>;
 	status = "okay";
+};
+
+&iomuxc {
+	imx51-apf51 {
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX51_FEC_PINGRP2>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <MX51_UART3_PINGRP2>;
+		};
+	};
 };
 
 &nfc {
@@ -50,6 +62,6 @@
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_2>;
+	pinctrl-0 = <&pinctrl_uart3>;
 	status = "okay";
 };

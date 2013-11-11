@@ -127,19 +127,33 @@ dtb-$(CONFIG_ARCH_MXC) += \
 	imx27-phytec-phycard-s-som.dtb \
 	imx27-phytec-phycard-s-rdk.dtb \
 	imx31-bug.dtb \
+	imx50-evk.dtb \
 	imx51-apf51.dtb \
 	imx51-apf51dev.dtb \
 	imx51-babbage.dtb \
+	imx51-eukrea-mbimxsd51-baseboard.dtb \
 	imx53-ard.dtb \
 	imx53-evk.dtb \
 	imx53-m53evk.dtb \
 	imx53-mba53.dtb \
 	imx53-qsb.dtb \
 	imx53-smd.dtb \
+	imx53-voipac-bsb.dtb \
+	imx6dl-gw51xx.dtb \
+	imx6dl-gw52xx.dtb \
+	imx6dl-gw53xx.dtb \
+	imx6dl-gw54xx.dtb \
 	imx6dl-sabreauto.dtb \
 	imx6dl-sabresd.dtb \
 	imx6dl-wandboard.dtb \
 	imx6q-arm2.dtb \
+	imx6q-cm-fx6.dtb \
+	imx6q-dmo-edmqmx6.dtb \
+	imx6q-gw51xx.dtb \
+	imx6q-gw52xx.dtb \
+	imx6q-gw53xx.dtb \
+	imx6q-gw5400-a.dtb \
+	imx6q-gw54xx.dtb \
 	imx6q-phytec-pbab01.dtb \
 	imx6q-sabreauto.dtb \
 	imx6q-sabrelite.dtb \
@@ -163,6 +177,7 @@ dtb-$(CONFIG_ARCH_MXS) += imx23-evk.dtb \
 	imx28-cfa10056.dtb \
 	imx28-cfa10057.dtb \
 	imx28-cfa10058.dtb \
+	imx28-duckbill.dtb \
 	imx28-evk.dtb \
 	imx28-m28cu3.dtb \
 	imx28-m28evk.dtb \
