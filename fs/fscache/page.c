@@ -755,6 +755,7 @@ static void fscache_write_op(struct fscache_operation *_op)
 	struct fscache_object *object = op->op.object;
 	struct fscache_cookie *cookie;
 	struct page *page;
+	pgoff_t index;
 	unsigned n;
 	void *results[1];
 	int ret;
@@ -803,7 +804,7 @@ static void fscache_write_op(struct fscache_operation *_op)
 	_debug("gang %d [%lx]", n, page->index);
 	if (page->index > op->store_limit) {
 		fscache_stat(&fscache_n_store_pages_over_limit);
-		goto superseded;
+		goto page_beyond_limit;
 	}
 
 	radix_tree_tag_set(&cookie->stores, page->index,
@@ -826,6 +827,40 @@ static void fscache_write_op(struct fscache_operation *_op)
 		fscache_enqueue_operation(&op->op);
 	}
 
+	_leave("");
+	return;
+
+page_beyond_limit:
+	spin_unlock(&object->lock);
+
+page_beyond_limit_unlocked:
+	/* pages that are now beyond the end of the storage object must have
+	 * their pending storage records cleared.
+	 */
+	index = page->index;
+	radix_tree_tag_clear(&cookie->stores, page->index,
+			     FSCACHE_COOKIE_PENDING_TAG);
+	if (!radix_tree_tag_get(&cookie->stores, page->index,
+				FSCACHE_COOKIE_STORING_TAG)) {
+		fscache_stat(&fscache_n_store_radix_deletes);
+		radix_tree_delete(&cookie->stores, page->index);
+		page_cache_release(page);
+	}
+	if (!need_resched()) {
+		n = radix_tree_gang_lookup_tag(&cookie->stores, results,
+					       index + 1, 1,
+					       FSCACHE_COOKIE_PENDING_TAG);
+		if (n == 1) {
+			page = results[0];
+			goto page_beyond_limit_unlocked;
+		}
+		spin_unlock(&cookie->stores_lock);
+		wake_up_bit(&cookie->flags, 0);
+	} else {
+		spin_unlock(&cookie->stores_lock);
+	}
+
+	fscache_enqueue_operation(&op->op);
 	_leave("");
 	return;
 
