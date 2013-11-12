@@ -23,6 +23,7 @@ FILES=					\
 	test-libpython-version		\
 	test-libslang			\
 	test-libunwind			\
+	test-libunwind-debug-frame	\
 	test-on-exit			\
 	test-stackprotector-all		\
 	test-stackprotector		\
@@ -74,6 +75,9 @@ test-libnuma:
 
 test-libunwind:
 	$(BUILD) $(LIBUNWIND_LIBS) -lelf
+
+test-libunwind-debug-frame:
+	$(BUILD) -lunwind -lunwind-x86_64 -lelf
 
 test-libaudit:
 	$(BUILD) -laudit
