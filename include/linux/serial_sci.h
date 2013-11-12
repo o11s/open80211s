@@ -11,12 +11,16 @@
 #define SCIx_NOT_SUPPORTED	(-1)
 
 enum {
+	SCBRR_ALGO_INVALID,
+
 	SCBRR_ALGO_1,		/* ((clk + 16 * bps) / (16 * bps) - 1) */
 	SCBRR_ALGO_2,		/* ((clk + 16 * bps) / (32 * bps) - 1) */
 	SCBRR_ALGO_3,		/* (((clk * 2) + 16 * bps) / (16 * bps) - 1) */
 	SCBRR_ALGO_4,		/* (((clk * 2) + 16 * bps) / (32 * bps) - 1) */
 	SCBRR_ALGO_5,		/* (((clk * 1000 / 32) / bps) - 1) */
 	SCBRR_ALGO_6,		/* HSCIF variable sample rate algorithm */
+
+	SCBRR_NR_ALGOS,
 };
 
 #define SCSCR_TIE	(1 << 7)

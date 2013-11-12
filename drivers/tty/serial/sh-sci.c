@@ -52,6 +52,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
+#include <linux/of.h>
 
 #ifdef CONFIG_SUPERH
 #include <asm/sh_bios.h>
@@ -2437,6 +2438,112 @@ static int sci_remove(struct platform_device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_OF
+static const struct of_device_id of_sci_match[] = {
+	{ .compatible = "renesas,sci-SCI-uart",
+		.data = (void *)PORT_SCI },
+	{ .compatible = "renesas,sci-SCIF-uart",
+		.data = (void *)PORT_SCIF },
+	{ .compatible = "renesas,sci-IRDA-uart",
+		.data = (void *)PORT_IRDA },
+	{ .compatible = "renesas,sci-SCIFA-uart",
+		.data = (void *)PORT_SCIFA },
+	{ .compatible = "renesas,sci-SCIFB-uart",
+		.data = (void *)PORT_SCIFB },
+	{},
+};
+MODULE_DEVICE_TABLE(of, of_sci_match);
+
+static struct plat_sci_port *sci_parse_dt(struct platform_device *pdev,
+								int *dev_id)
+{
+	struct plat_sci_port *p;
+	struct device_node *np = pdev->dev.of_node;
+	const struct of_device_id *match;
+	struct resource *res;
+	const __be32 *prop;
+	int i, irq, val;
+
+	match = of_match_node(of_sci_match, pdev->dev.of_node);
+	if (!match || !match->data) {
+		dev_err(&pdev->dev, "OF match error\n");
+		return NULL;
+	}
+
+	p = devm_kzalloc(&pdev->dev, sizeof(struct plat_sci_port), GFP_KERNEL);
+	if (!p) {
+		dev_err(&pdev->dev, "failed to allocate DT config data\n");
+		return NULL;
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "failed to get I/O memory\n");
+		return NULL;
+	}
+	p->mapbase = res->start;
+
+	for (i = 0; i < SCIx_NR_IRQS; i++) {
+		irq = platform_get_irq(pdev, i);
+		if (irq < 0) {
+			dev_err(&pdev->dev, "failed to get irq data %d\n", i);
+			return NULL;
+		}
+		p->irqs[i] = irq;
+	}
+
+	prop = of_get_property(np, "cell-index", NULL);
+	if (!prop) {
+		dev_err(&pdev->dev, "required DT prop cell-index missing\n");
+		return NULL;
+	}
+	*dev_id = be32_to_cpup(prop);
+
+	prop = of_get_property(np, "renesas,scscr", NULL);
+	if (!prop) {
+		dev_err(&pdev->dev, "required DT prop scscr missing\n");
+		return NULL;
+	}
+	p->scscr = be32_to_cpup(prop);
+
+	prop = of_get_property(np, "renesas,scbrr-algo-id", NULL);
+	if (!prop) {
+		dev_err(&pdev->dev, "required DT prop scbrr-algo-id missing\n");
+		return NULL;
+	}
+	val = be32_to_cpup(prop);
+	if (val <= SCBRR_ALGO_INVALID || val >= SCBRR_NR_ALGOS) {
+		dev_err(&pdev->dev, "DT prop scbrr-algo-id out of range\n");
+		return NULL;
+	}
+	p->scbrr_algo_id = val;
+
+	p->flags = UPF_IOREMAP;
+	if (of_get_property(np, "renesas,autoconf", NULL))
+		p->flags |= UPF_BOOT_AUTOCONF;
+
+	prop = of_get_property(np, "renesas,regtype", NULL);
+	if (prop) {
+		val = be32_to_cpup(prop);
+		if (val < SCIx_PROBE_REGTYPE || val >= SCIx_NR_REGTYPES) {
+			dev_err(&pdev->dev, "DT prop regtype out of range\n");
+			return NULL;
+		}
+		p->regtype = val;
+	}
+
+	p->type = (unsigned int)match->data;
+
+	return p;
+}
+#else
+static struct plat_sci_port *sci_parse_dt(struct platform_device *pdev,
+								int *dev_id)
+{
+	return NULL;
+}
+#endif /* CONFIG_OF */
+
 static int sci_probe_single(struct platform_device *dev,
 				      unsigned int index,
 				      struct plat_sci_port *p,
@@ -2469,9 +2576,9 @@ static int sci_probe_single(struct platform_device *dev,
 
 static int sci_probe(struct platform_device *dev)
 {
-	struct plat_sci_port *p = dev_get_platdata(&dev->dev);
-	struct sci_port *sp = &sci_ports[dev->id];
-	int ret;
+	struct plat_sci_port *p;
+	struct sci_port *sp;
+	int ret, dev_id = dev->id;
 
 	/*
 	 * If we've come here via earlyprintk initialization, head off to
@@ -2481,9 +2588,20 @@ static int sci_probe(struct platform_device *dev)
 	if (is_early_platform_device(dev))
 		return sci_probe_earlyprintk(dev);
 
+	if (dev->dev.of_node)
+		p = sci_parse_dt(dev, &dev_id);
+	else
+		p = dev_get_platdata(&dev->dev);
+
+	if (!p) {
+		dev_err(&dev->dev, "no setup data supplied\n");
+		return -EINVAL;
+	}
+
+	sp = &sci_ports[dev_id];
 	platform_set_drvdata(dev, sp);
 
-	ret = sci_probe_single(dev, dev->id, p, sp);
+	ret = sci_probe_single(dev, dev_id, p, sp);
 	if (ret)
 		return ret;
 
@@ -2535,6 +2653,7 @@ static struct platform_driver sci_driver = {
 		.name	= "sh-sci",
 		.owner	= THIS_MODULE,
 		.pm	= &sci_dev_pm_ops,
+		.of_match_table = of_match_ptr(of_sci_match),
 	},
 };
 
