@@ -264,6 +264,12 @@ config NEED_MACH_MEMORY_H
 	  definitions for this platform.  The need for mach/memory.h should
 	  be avoided when possible.
 
+config NEED_MACH_TIMEX_H
+	bool
+	help
+	  Select this when mach/timex.h is required to provide special
+	  definitions for this platform. This should be avoided when possible.
+
 config PHYS_OFFSET
 	hex "Physical address of main memory" if MMU
 	depends on !ARM_PATCH_PHYS_VIRT && !NEED_MACH_MEMORY_H
@@ -366,6 +372,7 @@ config ARCH_AT91
 	select IRQ_DOMAIN
 	select NEED_MACH_GPIO_H
 	select NEED_MACH_IO_H if PCCARD
+	select NEED_MACH_TIMEX_H
 	select PINCTRL
 	select PINCTRL_AT91 if USE_OF
 	help
@@ -409,6 +416,24 @@ config ARCH_EBSA110
 	  Ethernet interface, two PCMCIA sockets, two serial ports and a
 	  parallel port.
 
+config ARCH_EFM32
+	bool "Energy Micro efm32"
+	depends on !MMU
+	select ARCH_REQUIRE_GPIOLIB
+	select ARM_NVIC
+	select CLKSRC_MMIO
+	select CLKSRC_OF
+	select COMMON_CLK
+	select CPU_V7M
+	select GENERIC_CLOCKEVENTS
+	select NO_DMA
+	select NO_IOPORT
+	select SPARSE_IRQ
+	select USE_OF
+	help
+	  Support for Energy Micro's (now Silicon Labs) efm32 Giant Gecko
+	  processors.
+
 config ARCH_EP93XX
 	bool "EP93xx-based"
 	select ARCH_HAS_HOLES_MEMORYMODEL
@@ -419,6 +444,7 @@ config ARCH_EP93XX
 	select CLKDEV_LOOKUP
 	select CPU_ARM920T
 	select NEED_MACH_MEMORY_H
+	select NEED_MACH_TIMEX_H
 	help
 	  This enables support for the Cirrus EP93xx series of CPUs.
 
@@ -440,6 +466,7 @@ config ARCH_NETX
 	select CLKSRC_MMIO
 	select CPU_ARM926T
 	select GENERIC_CLOCKEVENTS
+	select NEED_MACH_TIMEX_H
 	help
 	  This enables support for systems based on the Hilscher NetX Soc
 
@@ -492,6 +519,7 @@ config ARCH_IXP4XX
 	select GENERIC_CLOCKEVENTS
 	select MIGHT_HAVE_PCI
 	select NEED_MACH_IO_H
+	select NEED_MACH_TIMEX_H
 	select USB_EHCI_BIG_ENDIAN_DESC
 	select USB_EHCI_BIG_ENDIAN_MMIO
 	help
@@ -563,6 +591,7 @@ config ARCH_MMP
 	select GPIO_PXA
 	select IRQ_DOMAIN
 	select MULTI_IRQ_HANDLER
+	select NEED_MACH_TIMEX_H
 	select PINCTRL
 	select PLAT_PXA
 	select SPARSE_IRQ
@@ -576,6 +605,7 @@ config ARCH_KS8695
 	select CPU_ARM922T
 	select GENERIC_CLOCKEVENTS
 	select NEED_MACH_MEMORY_H
+	select NEED_MACH_TIMEX_H
 	help
 	  Support for Micrel/Kendin KS8695 "Centaur" (ARM922T) based
 	  System-on-Chip devices.
@@ -625,6 +655,7 @@ config ARCH_PXA
 	select GPIO_PXA
 	select HAVE_IDE
 	select MULTI_IRQ_HANDLER
+	select NEED_MACH_TIMEX_H
 	select PLAT_PXA
 	select SPARSE_IRQ
 	help
@@ -673,6 +704,7 @@ config ARCH_RPC
 	select ISA_DMA_API
 	select NEED_MACH_IO_H
 	select NEED_MACH_MEMORY_H
+	select NEED_MACH_TIMEX_H
 	select NO_IOPORT
 	select VIRT_TO_BUS
 	help
@@ -693,6 +725,7 @@ config ARCH_SA1100
 	select HAVE_IDE
 	select ISA
 	select NEED_MACH_MEMORY_H
+	select NEED_MACH_TIMEX_H
 	select SPARSE_IRQ
 	help
 	  Support for StrongARM 11x0 based boards.
@@ -1794,7 +1827,7 @@ config FORCE_MAX_ZONEORDER
 	int "Maximum zone order" if ARCH_SHMOBILE
 	range 11 64 if ARCH_SHMOBILE
 	default "12" if SOC_AM33XX
-	default "9" if SA1111
+	default "9" if SA1111 || ARCH_EFM32
 	default "11"
 	help
 	  The kernel memory allocator divides physically contiguous memory

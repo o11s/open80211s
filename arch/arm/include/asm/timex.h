@@ -12,10 +12,10 @@
 #ifndef _ASMARM_TIMEX_H
 #define _ASMARM_TIMEX_H
 
-#ifdef CONFIG_ARCH_MULTIPLATFORM
-#define CLOCK_TICK_RATE 1000000
-#else
+#ifdef CONFIG_NEED_MACH_TIMEX_H
 #include <mach/timex.h>
+#else
+#define CLOCK_TICK_RATE 1000000
 #endif
 
 typedef unsigned long cycles_t;
