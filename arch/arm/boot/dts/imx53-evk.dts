@@ -34,7 +34,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	cd-gpios = <&gpio3 13 0>;
 	wp-gpios = <&gpio3 14 0>;
 	status = "okay";
@@ -42,7 +42,7 @@
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio2 30 0>, <&gpio3 19 0>;
 	status = "okay";
@@ -69,7 +69,7 @@
 
 &esdhc3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc3_1>;
+	pinctrl-0 = <&pinctrl_esdhc3>;
 	cd-gpios = <&gpio3 11 0>;
 	wp-gpios = <&gpio3 12 0>;
 	status = "okay";
@@ -79,7 +79,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-evk {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX53_PAD_EIM_EB2__GPIO2_30  0x80000000
@@ -92,18 +92,42 @@
 				MX53_PAD_PATA_DA_1__GPIO7_7 0x80000000
 			>;
 		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX53_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX53_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_esdhc3: esdhc3grp {
+			fsl,pins = <MX53_ESDHC3_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX53_I2C2_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP1>;
+		};
 	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	pmic: mc13892@08 {
@@ -119,7 +143,7 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	phy-reset-gpios = <&gpio7 6 0>;
 	status = "okay";

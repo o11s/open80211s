@@ -40,7 +40,7 @@
 
 &esdhc1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc1_1>;
+	pinctrl-0 = <&pinctrl_esdhc1>;
 	cd-gpios = <&gpio3 13 0>;
 	wp-gpios = <&gpio4 11 0>;
 	status = "okay";
@@ -48,21 +48,21 @@
 
 &esdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc2_1>;
+	pinctrl-0 = <&pinctrl_esdhc2>;
 	non-removable;
 	status = "okay";
 };
 
 &uart3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart3_1>;
+	pinctrl-0 = <&pinctrl_uart3>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
 &ecspi1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi1_1>;
+	pinctrl-0 = <&pinctrl_ecspi1>;
 	fsl,spi-num-chipselects = <2>;
 	cs-gpios = <&gpio2 30 0>, <&gpio3 19 0>;
 	status = "okay";
@@ -95,7 +95,7 @@
 
 &esdhc3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_esdhc3_1>;
+	pinctrl-0 = <&pinctrl_esdhc3>;
 	non-removable;
 	status = "okay";
 };
@@ -104,7 +104,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx53-smd {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX53_PAD_PATA_DATA14__GPIO2_14 0x80000000
@@ -116,24 +116,64 @@
 				MX53_PAD_PATA_DA_0__GPIO7_6    0x80000000
 			>;
 		};
+
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <MX53_ECSPI1_PINGRP1>;
+		};
+
+		pinctrl_esdhc1: esdhc1grp {
+			fsl,pins = <MX53_ESDHC1_PINGRP1>;
+		};
+
+		pinctrl_esdhc2: esdhc2grp {
+			fsl,pins = <MX53_ESDHC2_PINGRP1>;
+		};
+
+		pinctrl_esdhc3: esdhc3grp {
+			fsl,pins = <MX53_ESDHC3_PINGRP1>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <MX53_FEC_PINGRP1>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX53_I2C1_PINGRP1>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <MX53_I2C2_PINGRP1>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <MX53_UART1_PINGRP1>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <MX53_UART2_PINGRP1>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <MX53_UART3_PINGRP1>;
+		};
 	};
 };
 
 &uart1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart1_1>;
+	pinctrl-0 = <&pinctrl_uart1>;
 	status = "okay";
 };
 
 &uart2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart2_1>;
+	pinctrl-0 = <&pinctrl_uart2>;
 	status = "okay";
 };
 
 &i2c2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2_1>;
+	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
 	codec: sgtl5000@0a {
@@ -154,7 +194,7 @@
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_1>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	accelerometer: mma8450@1c {
@@ -175,7 +215,7 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_fec_1>;
+	pinctrl-0 = <&pinctrl_fec>;
 	phy-mode = "rmii";
 	phy-reset-gpios = <&gpio7 6 0>;
 	status = "okay";

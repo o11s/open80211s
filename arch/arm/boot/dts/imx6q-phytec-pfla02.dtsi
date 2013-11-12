@@ -22,7 +22,7 @@
 
 &ecspi3 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi3_1>;
+	pinctrl-0 = <&pinctrl_ecspi3>;
 	status = "okay";
 	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 24 0>;
@@ -36,7 +36,7 @@
 
 &i2c1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1_1>;
+	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	eeprom@50 {
@@ -128,7 +128,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	hog {
+	imx6q-phytec-pfla02 {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				MX6QDL_PAD_EIM_D23__GPIO3_IO23 0x80000000
@@ -136,10 +136,32 @@
 				MX6QDL_PAD_DI0_PIN15__GPIO4_IO17  0x80000000 /* PMIC interrupt */
 			>;
 		};
-	};
 
-	pfla02 {
-		pinctrl_usdhc3_pfla02: usdhc3grp-pfla02 {
+		pinctrl_ecspi3: ecspi3grp {
+			fsl,pins = <MX6QDL_ECSPI3_PINGRP1>;
+		};
+
+		pinctrl_enet: enetgrp {
+			fsl,pins = <MX6QDL_ENET_PINGRP3>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <MX6QDL_I2C1_PINGRP1>;
+		};
+
+		pinctrl_uart4: uart4grp {
+			fsl,pins = <MX6QDL_UART4_PINGRP1>;
+		};
+
+		pinctrl_usdhc2: usdhc2grp {
+			fsl,pins = <MX6QDL_USDHC2_PINGRP2>;
+		};
+
+		pinctrl_usdhc3: usdhc3grp {
+			fsl,pins = <MX6QDL_USDHC3_PINGRP2>;
+		};
+
+		pinctrl_usdhc3_cdwp: usdhc3cdwp {
 			fsl,pins = <
 				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27 0x80000000
 				MX6QDL_PAD_ENET_TXD1__GPIO1_IO29 0x80000000
@@ -150,7 +172,7 @@
 
 &fec {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet_3>;
+	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
 	phy-reset-gpios = <&gpio3 23 0>;
 	status = "disabled";
@@ -158,13 +180,13 @@
 
 &uart4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_uart4_1>;
+	pinctrl-0 = <&pinctrl_uart4>;
 	status = "disabled";
 };
 
 &usdhc2 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc2_2>;
+	pinctrl-0 = <&pinctrl_usdhc2>;
 	cd-gpios = <&gpio1 4 0>;
 	wp-gpios = <&gpio1 2 0>;
 	status = "disabled";
@@ -172,8 +194,8 @@
 
 &usdhc3 {
         pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_usdhc3_2
-		     &pinctrl_usdhc3_pfla02>;
+        pinctrl-0 = <&pinctrl_usdhc3
+		     &pinctrl_usdhc3_cdwp>;
         cd-gpios = <&gpio1 27 0>;
         wp-gpios = <&gpio1 29 0>;
         status = "disabled";
