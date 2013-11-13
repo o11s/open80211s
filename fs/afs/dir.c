@@ -683,8 +683,7 @@ not_found:
 
 out_bad:
 	/* don't unhash if we have submounts */
-	if (check_submounts_and_drop(dentry) != 0)
-		goto out_skip;
+	shrink_submounts_and_drop(dentry);
 
 	_debug("dropping dentry %s/%s",
 	       parent->d_name.name, dentry->d_name.name);

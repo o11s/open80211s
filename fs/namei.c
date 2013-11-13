@@ -3518,6 +3518,20 @@ void dentry_unhash(struct dentry *dentry)
 	spin_unlock(&dentry->d_lock);
 }
 
+static bool covered(struct vfsmount *mnt, struct dentry *dentry)
+{
+	/* test to see if a dentry is covered with a mount in
+	 * the current mount namespace.
+	 */
+	bool is_covered;
+
+	rcu_read_lock();
+	is_covered = d_mountpoint(dentry) && __lookup_mnt(mnt, dentry);
+	rcu_read_unlock();
+
+	return is_covered;
+}
+
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	int error = may_delete(dir, dentry, 1);
@@ -3531,10 +3545,6 @@ int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 	dget(dentry);
 	mutex_lock(&dentry->d_inode->i_mutex);
 
-	error = -EBUSY;
-	if (d_mountpoint(dentry))
-		goto out;
-
 	error = security_inode_rmdir(dir, dentry);
 	if (error)
 		goto out;
@@ -3546,6 +3556,7 @@ int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 
 	dentry->d_inode->i_flags |= S_DEAD;
 	dont_mount(dentry);
+	detach_mounts(dentry);
 
 out:
 	mutex_unlock(&dentry->d_inode->i_mutex);
@@ -3593,6 +3604,9 @@ retry:
 		error = -ENOENT;
 		goto exit3;
 	}
+	error = -EBUSY;
+	if (covered(nd.path.mnt, dentry))
+		goto exit3;
 	error = security_path_rmdir(&nd.path, dentry);
 	if (error)
 		goto exit3;
@@ -3647,17 +3661,15 @@ int vfs_unlink(struct inode *dir, struct dentry *dentry, struct inode **delegate
 		return -EPERM;
 
 	mutex_lock(&target->i_mutex);
-	if (d_mountpoint(dentry))
-		error = -EBUSY;
-	else {
-		error = security_inode_unlink(dir, dentry);
+	error = security_inode_unlink(dir, dentry);
+	if (!error) {
+		error = try_break_deleg(target, delegated_inode);
+		if (error)
+			goto out;
+		error = dir->i_op->unlink(dir, dentry);
 		if (!error) {
-			error = try_break_deleg(target, delegated_inode);
-			if (error)
-				goto out;
-			error = dir->i_op->unlink(dir, dentry);
-			if (!error)
-				dont_mount(dentry);
+			dont_mount(dentry);
+			detach_mounts(dentry);
 		}
 	}
 out:
@@ -3711,6 +3723,9 @@ retry_deleg:
 		inode = dentry->d_inode;
 		if (d_is_negative(dentry))
 			goto slashes;
+		error = -EBUSY;
+		if (covered(nd.path.mnt, dentry))
+			goto exit2;
 		ihold(inode);
 		error = security_path_unlink(&nd.path, dentry);
 		if (error)
@@ -4022,10 +4037,6 @@ static int vfs_rename_dir(struct inode *old_dir, struct dentry *old_dentry,
 	if (target)
 		mutex_lock(&target->i_mutex);
 
-	error = -EBUSY;
-	if (d_mountpoint(old_dentry) || d_mountpoint(new_dentry))
-		goto out;
-
 	error = -EMLINK;
 	if (max_links && !target && new_dir != old_dir &&
 	    new_dir->i_nlink >= max_links)
@@ -4040,6 +4051,7 @@ static int vfs_rename_dir(struct inode *old_dir, struct dentry *old_dentry,
 	if (target) {
 		target->i_flags |= S_DEAD;
 		dont_mount(new_dentry);
+		detach_mounts(new_dentry);
 	}
 out:
 	if (target)
@@ -4066,10 +4078,6 @@ static int vfs_rename_other(struct inode *old_dir, struct dentry *old_dentry,
 	dget(new_dentry);
 	lock_two_nondirectories(source, target);
 
-	error = -EBUSY;
-	if (d_mountpoint(old_dentry)||d_mountpoint(new_dentry))
-		goto out;
-
 	error = try_break_deleg(source, delegated_inode);
 	if (error)
 		goto out;
@@ -4082,8 +4090,10 @@ static int vfs_rename_other(struct inode *old_dir, struct dentry *old_dentry,
 	if (error)
 		goto out;
 
-	if (target)
+	if (target) {
 		dont_mount(new_dentry);
+		detach_mounts(new_dentry);
+	}
 	if (!(old_dir->i_sb->s_type->fs_flags & FS_RENAME_DOES_D_MOVE))
 		d_move(old_dentry, new_dentry);
 out:
@@ -4229,6 +4239,11 @@ retry_deleg:
 	/* target should not be an ancestor of source */
 	error = -ENOTEMPTY;
 	if (new_dentry == trap)
+		goto exit5;
+	error = -EBUSY;
+	if (covered(oldnd.path.mnt, old_dentry))
+		goto exit5;
+	if (covered(newnd.path.mnt, new_dentry))
 		goto exit5;
 
 	error = security_path_rename(&oldnd.path, old_dentry,

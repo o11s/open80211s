@@ -309,7 +309,6 @@ static int sysfs_dentry_revalidate(struct dentry *dentry, unsigned int flags)
 	}
 
 	mutex_unlock(&sysfs_mutex);
-out_valid:
 	return 1;
 out_bad:
 	/* Remove the dentry from the dcache hashes.
@@ -323,13 +322,7 @@ out_bad:
 	 * to the dcache hashes.
 	 */
 	mutex_unlock(&sysfs_mutex);
-
-	/* If we have submounts we must allow the vfs caches
-	 * to lie about the state of the filesystem to prevent
-	 * leaks and other nasty things.
-	 */
-	if (check_submounts_and_drop(dentry) != 0)
-		goto out_valid;
+	shrink_submounts_and_drop(dentry);
 
 	return 0;
 }

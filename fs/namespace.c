@@ -195,6 +195,7 @@ static struct mount *alloc_vfsmnt(const char *name)
 		INIT_LIST_HEAD(&mnt->mnt_share);
 		INIT_LIST_HEAD(&mnt->mnt_slave_list);
 		INIT_LIST_HEAD(&mnt->mnt_slave);
+		INIT_LIST_HEAD(&mnt->mnt_mp_list);
 #ifdef CONFIG_FSNOTIFY
 		INIT_HLIST_HEAD(&mnt->mnt_fsnotify_marks);
 #endif
@@ -660,6 +661,7 @@ static struct mountpoint *new_mountpoint(struct dentry *dentry)
 	mp->m_dentry = dentry;
 	mp->m_count = 1;
 	list_add(&mp->m_hash, chain);
+	INIT_LIST_HEAD(&mp->m_list);
 	return mp;
 }
 
@@ -667,6 +669,7 @@ static void put_mountpoint(struct mountpoint *mp)
 {
 	if (!--mp->m_count) {
 		struct dentry *dentry = mp->m_dentry;
+		BUG_ON(!list_empty(&mp->m_list));
 		spin_lock(&dentry->d_lock);
 		dentry->d_flags &= ~DCACHE_MOUNTED;
 		spin_unlock(&dentry->d_lock);
@@ -713,6 +716,7 @@ static void detach_mnt(struct mount *mnt, struct path *old_path)
 	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
 	list_del_init(&mnt->mnt_child);
 	list_del_init(&mnt->mnt_hash);
+	list_del_init(&mnt->mnt_mp_list);
 	put_mountpoint(mnt->mnt_mp);
 	mnt->mnt_mp = NULL;
 }
@@ -729,6 +733,7 @@ void mnt_set_mountpoint(struct mount *mnt,
 	child_mnt->mnt_mountpoint = dget(mp->m_dentry);
 	child_mnt->mnt_parent = mnt;
 	child_mnt->mnt_mp = mp;
+	list_add_tail(&child_mnt->mnt_mp_list, &mp->m_list);
 }
 
 /*
@@ -1211,6 +1216,7 @@ void umount_tree(struct mount *mnt, int how)
 			p->mnt.mnt_flags |= MNT_SYNC_UMOUNT;
 		list_del_init(&p->mnt_child);
 		if (mnt_has_parent(p)) {
+			list_del_init(&p->mnt_mp_list);
 			put_mountpoint(p->mnt_mp);
 			/* move the reference to mountpoint into ->mnt_ex_mountpoint */
 			p->mnt_ex_mountpoint.dentry = p->mnt_mountpoint;
@@ -1316,6 +1322,30 @@ static int do_umount(struct mount *mnt, int flags)
 	unlock_mount_hash();
 	namespace_unlock();
 	return retval;
+}
+
+void detach_mounts(struct dentry *dentry)
+{
+	struct mountpoint *mp;
+	struct mount *mnt;
+
+	namespace_lock();
+	if (!d_mountpoint(dentry))
+		goto out_unlock;
+
+	mp = new_mountpoint(dentry);
+	if (IS_ERR(mp))
+		goto out_unlock;
+
+	lock_mount_hash();
+	while (!list_empty(&mp->m_list)) {
+		mnt = list_first_entry(&mp->m_list, struct mount, mnt_mp_list);
+		umount_tree(mnt, 1);
+	}
+	unlock_mount_hash();
+	put_mountpoint(mp);
+out_unlock:
+	namespace_unlock();
 }
 
 /* 
