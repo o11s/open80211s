@@ -374,20 +374,6 @@ static void release_inactive_stripe_list(struct r5conf *conf,
 	}
 }
 
-static struct llist_node *llist_reverse_order(struct llist_node *head)
-{
-	struct llist_node *new_head = NULL;
-
-	while (head) {
-		struct llist_node *tmp = head;
-		head = head->next;
-		tmp->next = new_head;
-		new_head = tmp;
-	}
-
-	return new_head;
-}
-
 /* should hold conf->device_lock already */
 static int release_stripe_list(struct r5conf *conf,
 			       struct list_head *temp_inactive_list)

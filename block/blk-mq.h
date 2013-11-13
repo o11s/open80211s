@@ -38,7 +38,6 @@ void blk_mq_init_cpu_notifier(struct blk_mq_cpu_notifier *notifier,
 void blk_mq_register_cpu_notifier(struct blk_mq_cpu_notifier *notifier);
 void blk_mq_unregister_cpu_notifier(struct blk_mq_cpu_notifier *notifier);
 void blk_mq_cpu_init(void);
-DECLARE_PER_CPU(struct llist_head, ipi_lists);
 
 /*
  * CPU -> queue mappings
