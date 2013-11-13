@@ -623,7 +623,6 @@ static int kyrofb_ioctl(struct fb_info *info,
 				"command instead.\n");
 			return -EINVAL;
 		}
-		break;
 	case KYRO_IOCTL_UVSTRIDE:
 		if (copy_to_user(argp, &deviceInfo.ulOverlayUVStride, sizeof(unsigned long)))
 			return -EFAULT;
@@ -779,7 +778,6 @@ static void kyrofb_remove(struct pci_dev *pdev)
 #endif
 
 	unregister_framebuffer(info);
-	pci_set_drvdata(pdev, NULL);
 	framebuffer_release(info);
 }
 

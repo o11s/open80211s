@@ -1048,7 +1048,7 @@ static int ark_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	rc = register_framebuffer(info);
 	if (rc < 0) {
-		dev_err(info->device, "cannot register framebugger\n");
+		dev_err(info->device, "cannot register framebuffer\n");
 		goto err_reg_fb;
 	}
 
@@ -1108,7 +1108,6 @@ static void ark_pci_remove(struct pci_dev *dev)
 		pci_release_regions(dev);
 /*		pci_disable_device(dev); */
 
-		pci_set_drvdata(dev, NULL);
 		framebuffer_release(info);
 	}
 }
