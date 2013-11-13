@@ -644,8 +644,6 @@ static int module_unload_init(struct module *mod)
 
 	/* Hold reference count during initialization. */
 	__this_cpu_write(mod->refptr->incs, 1);
-	/* Backwards compatibility macros put refcount during init. */
-	mod->waiter = current;
 
 	return 0;
 }
@@ -771,16 +769,9 @@ static int __try_stop_module(void *_sref)
 
 static int try_stop_module(struct module *mod, int flags, int *forced)
 {
-	if (flags & O_NONBLOCK) {
-		struct stopref sref = { mod, flags, forced };
+	struct stopref sref = { mod, flags, forced };
 
-		return stop_machine(__try_stop_module, &sref, NULL);
-	} else {
-		/* We don't need to stop the machine for this. */
-		mod->state = MODULE_STATE_GOING;
-		synchronize_sched();
-		return 0;
-	}
+	return stop_machine(__try_stop_module, &sref, NULL);
 }
 
 unsigned long module_refcount(struct module *mod)
@@ -813,21 +804,6 @@ EXPORT_SYMBOL(module_refcount);
 /* This exists whether we can unload or not */
 static void free_module(struct module *mod);
 
-static void wait_for_zero_refcount(struct module *mod)
-{
-	/* Since we might sleep for some time, release the mutex first */
-	mutex_unlock(&module_mutex);
-	for (;;) {
-		pr_debug("Looking at refcount...\n");
-		set_current_state(TASK_UNINTERRUPTIBLE);
-		if (module_refcount(mod) == 0)
-			break;
-		schedule();
-	}
-	current->state = TASK_RUNNING;
-	mutex_lock(&module_mutex);
-}
-
 SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 		unsigned int, flags)
 {
@@ -841,6 +817,11 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	if (strncpy_from_user(name, name_user, MODULE_NAME_LEN-1) < 0)
 		return -EFAULT;
 	name[MODULE_NAME_LEN-1] = '\0';
+
+	if (!(flags & O_NONBLOCK)) {
+		printk(KERN_WARNING
+		       "waiting module removal not supported: please upgrade");
+	}
 
 	if (mutex_lock_interruptible(&module_mutex) != 0)
 		return -EINTR;
@@ -859,8 +840,7 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 
 	/* Doing init or already dying? */
 	if (mod->state != MODULE_STATE_LIVE) {
-		/* FIXME: if (force), slam module count and wake up
-                   waiter --RR */
+		/* FIXME: if (force), slam module count damn the torpedoes */
 		pr_debug("%s already dying\n", mod->name);
 		ret = -EBUSY;
 		goto out;
@@ -876,17 +856,10 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 		}
 	}
 
-	/* Set this up before setting mod->state */
-	mod->waiter = current;
-
 	/* Stop the machine so refcounts can't move and disable module. */
 	ret = try_stop_module(mod, flags, &forced);
 	if (ret != 0)
 		goto out;
-
-	/* Never wait if forced. */
-	if (!forced && module_refcount(mod) != 0)
-		wait_for_zero_refcount(mod);
 
 	mutex_unlock(&module_mutex);
 	/* Final destruction now no one is using it. */
@@ -1005,9 +978,6 @@ void module_put(struct module *module)
 		__this_cpu_inc(module->refptr->decs);
 
 		trace_module_put(module, _RET_IP_);
-		/* Maybe they're waiting for us to drop reference? */
-		if (unlikely(!module_is_live(module)))
-			wake_up_process(module->waiter);
 		preempt_enable();
 	}
 }
@@ -2738,7 +2708,7 @@ static int check_modinfo(struct module *mod, struct load_info *info, int flags)
 	return 0;
 }
 
-static void find_module_sections(struct module *mod, struct load_info *info)
+static int find_module_sections(struct module *mod, struct load_info *info)
 {
 	mod->kp = section_objs(info, "__param",
 			       sizeof(*mod->kp), &mod->num_kp);
@@ -2768,6 +2738,18 @@ static void find_module_sections(struct module *mod, struct load_info *info)
 #ifdef CONFIG_CONSTRUCTORS
 	mod->ctors = section_objs(info, ".ctors",
 				  sizeof(*mod->ctors), &mod->num_ctors);
+	if (!mod->ctors)
+		mod->ctors = section_objs(info, ".init_array",
+				sizeof(*mod->ctors), &mod->num_ctors);
+	else if (find_sec(info, ".init_array")) {
+		/*
+		 * This shouldn't happen with same compiler and binutils
+		 * building all parts of the module.
+		 */
+		printk(KERN_WARNING "%s: has both .ctors and .init_array.\n",
+		       mod->name);
+		return -EINVAL;
+	}
 #endif
 
 #ifdef CONFIG_TRACEPOINTS
@@ -2806,6 +2788,8 @@ static void find_module_sections(struct module *mod, struct load_info *info)
 
 	info->debug = section_objs(info, "__verbose",
 				   sizeof(*info->debug), &info->num_debug);
+
+	return 0;
 }
 
 static int move_module(struct module *mod, struct load_info *info)
@@ -3263,7 +3247,9 @@ static int load_module(struct load_info *info, const char __user *uargs,
 
 	/* Now we've got everything in the final locations, we can
 	 * find optional sections. */
-	find_module_sections(mod, info);
+	err = find_module_sections(mod, info);
+	if (err)
+		goto free_unload;
 
 	err = check_module_license_and_versions(mod);
 	if (err)
