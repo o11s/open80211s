@@ -58,6 +58,7 @@
 #define TA_DEMO_MODE_WRITE_PROTECT	1
 /* Disabled by default in production mode w/ explict ACLs */
 #define TA_PROD_MODE_WRITE_PROTECT	0
+#define TA_DEMO_MODE_DISCOVERY		1
 #define TA_CACHE_CORE_NPS		0
 
 
@@ -755,11 +756,6 @@ struct iscsi_node_acl {
 	struct se_node_acl	se_node_acl;
 };
 
-#define NODE_STAT_GRPS(nacl)	(&(nacl)->node_stat_grps)
-
-#define ISCSI_NODE_ATTRIB(t)	(&(t)->node_attrib)
-#define ISCSI_NODE_AUTH(t)	(&(t)->node_auth)
-
 struct iscsi_tpg_attrib {
 	u32			authentication;
 	u32			login_timeout;
@@ -769,6 +765,7 @@ struct iscsi_tpg_attrib {
 	u32			default_cmdsn_depth;
 	u32			demo_mode_write_protect;
 	u32			prod_mode_write_protect;
+	u32			demo_mode_discovery;
 	struct iscsi_portal_group *tpg;
 };
 
@@ -835,12 +832,6 @@ struct iscsi_portal_group {
 	struct list_head	tpg_list;
 } ____cacheline_aligned;
 
-#define ISCSI_TPG_C(c)		((struct iscsi_portal_group *)(c)->tpg)
-#define ISCSI_TPG_LUN(c, l)  ((iscsi_tpg_list_t *)(c)->tpg->tpg_lun_list_t[l])
-#define ISCSI_TPG_S(s)		((struct iscsi_portal_group *)(s)->tpg)
-#define ISCSI_TPG_ATTRIB(t)	(&(t)->tpg_attrib)
-#define SE_TPG(tpg)		(&(tpg)->tpg_se_tpg)
-
 struct iscsi_wwn_stat_grps {
 	struct config_group	iscsi_stat_group;
 	struct config_group	iscsi_instance_group;
@@ -870,8 +861,6 @@ struct iscsi_tiqn {
 	struct iscsi_login_stats     login_stats;
 	struct iscsi_logout_stats    logout_stats;
 } ____cacheline_aligned;
-
-#define WWN_STAT_GRPS(tiqn)	(&(tiqn)->tiqn_stat_grps)
 
 struct iscsit_global {
 	/* In core shutdown */

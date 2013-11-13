@@ -92,6 +92,9 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		se_cmd->pr_res_key = deve->pr_res_key;
 		se_cmd->orig_fe_lun = unpacked_lun;
 		se_cmd->se_cmd_flags |= SCF_SE_LUN_CMD;
+
+		percpu_ref_get(&se_lun->lun_ref);
+		se_cmd->lun_ref_active = true;
 	}
 	spin_unlock_irqrestore(&se_sess->se_node_acl->device_list_lock, flags);
 
@@ -119,6 +122,9 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 		se_cmd->se_lun = &se_sess->se_tpg->tpg_virt_lun0;
 		se_cmd->orig_fe_lun = 0;
 		se_cmd->se_cmd_flags |= SCF_SE_LUN_CMD;
+
+		percpu_ref_get(&se_lun->lun_ref);
+		se_cmd->lun_ref_active = true;
 	}
 
 	/* Directly associate cmd with se_dev */
@@ -133,10 +139,6 @@ transport_lookup_cmd_lun(struct se_cmd *se_cmd, u32 unpacked_lun)
 	else if (se_cmd->data_direction == DMA_FROM_DEVICE)
 		dev->read_bytes += se_cmd->data_length;
 	spin_unlock_irqrestore(&dev->stats_lock, flags);
-
-	spin_lock_irqsave(&se_lun->lun_cmd_lock, flags);
-	list_add_tail(&se_cmd->se_lun_node, &se_lun->lun_cmd_list);
-	spin_unlock_irqrestore(&se_lun->lun_cmd_lock, flags);
 
 	return 0;
 }
@@ -1407,6 +1409,7 @@ static void scsi_dump_inquiry(struct se_device *dev)
 struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 {
 	struct se_device *dev;
+	struct se_lun *xcopy_lun;
 
 	dev = hba->transport->alloc_device(hba, name);
 	if (!dev)
@@ -1468,6 +1471,14 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
 	dev->dev_attrib.max_write_same_len = DA_MAX_WRITE_SAME_LEN;
 	dev->dev_attrib.fabric_max_sectors = DA_FABRIC_MAX_SECTORS;
 	dev->dev_attrib.optimal_sectors = DA_FABRIC_MAX_SECTORS;
+
+	xcopy_lun = &dev->xcopy_lun;
+	xcopy_lun->lun_se_dev = dev;
+	init_completion(&xcopy_lun->lun_shutdown_comp);
+	INIT_LIST_HEAD(&xcopy_lun->lun_acl_list);
+	spin_lock_init(&xcopy_lun->lun_acl_lock);
+	spin_lock_init(&xcopy_lun->lun_sep_lock);
+	init_completion(&xcopy_lun->lun_ref_comp);
 
 	return dev;
 }
