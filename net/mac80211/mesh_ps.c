@@ -736,7 +736,7 @@ void ieee80211_mps_sta_tbtt_update(struct sta_info *sta,
 	else
 		clear_sta_flag(sta, WLAN_STA_MPS_WAIT_FOR_CAB);
 
-	tsf_local = mgmt->u.beacon.timestamp - sta->t_offset;
+	tsf_local = le64_to_cpu(mgmt->u.beacon.timestamp) - sta->t_offset;
 	mps_sta_nexttbtt_calc(sta, tim, tsf_local);
 
 	mps_queue_work(sdata, MESH_WORK_PS_DOZE);
