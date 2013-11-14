@@ -788,21 +788,17 @@ void ieee80211_mps_awake_window_start(struct ieee80211_sub_if_data *sdata)
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	unsigned long timeout;
-	/* FIXME this is hardcoded for now; device should really handle
-	 * this timer.
-	 */
-	unsigned long pre_tbtt_lead = 10;
 
 	if (!local->mps_enabled)
 		return;
 
-	mps_dbg(sdata, "awake window start (%d TU), beacon in %lu TU\n",
+	mps_dbg(sdata, "awake window start (%d TU), starting in %d TU\n",
 		ifmsh->mshcfg.dot11MeshAwakeWindowDuration,
-		pre_tbtt_lead);
+		local->hw.pre_tbtt_lead);
 
 	timeout = jiffies + usecs_to_jiffies(ieee80211_tu_to_usec(
 			ifmsh->mshcfg.dot11MeshAwakeWindowDuration +
-			pre_tbtt_lead));
+			local->hw.pre_tbtt_lead));
 	mod_timer(&ifmsh->awake_window_end_timer, timeout);
 }
 

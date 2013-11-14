@@ -745,6 +745,7 @@ struct mwl8787_priv *mwl8787_init(void)
 	hw->max_rate_tries = 11;
 	hw->max_tx_aggregation_subframes = 16;
 	hw->channel_change_time = 100;
+	hw->pre_tbtt_lead = MWL8787_PRE_TBTT_LEAD;
 	hw->sta_data_size = sizeof(struct mwl8787_sta);
 	hw->wiphy->bands[IEEE80211_BAND_2GHZ] = &mwl8787_2ghz_band;
 	hw->wiphy->bands[IEEE80211_BAND_5GHZ] = &mwl8787_5ghz_band;

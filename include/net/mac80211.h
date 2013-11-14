@@ -1681,6 +1681,7 @@ struct ieee80211_hw {
 	netdev_features_t netdev_features;
 	u8 uapsd_queues;
 	u8 uapsd_max_sp_len;
+	u8 pre_tbtt_lead;
 };
 
 /**
