@@ -46,9 +46,13 @@ mwl8787_radio_set_write(struct file *file,
 {
 	struct mwl8787_priv *priv =
 		(struct mwl8787_priv *) file->private_data;
+	int ret;
 	int state;
 
-	sscanf(ubuf, "%d", &state);
+	ret = kstrtoint_from_user(ubuf, count, 10, &state);
+	if (ret)
+		return ret;
+
 	mwl8787_cmd_radio_ctrl(priv, state);
 	return count;
 }
