@@ -2299,6 +2299,20 @@ void ieee80211_radar_detected(struct ieee80211_hw *hw)
 
 	ieee80211_queue_work(hw, &local->radar_detected_work);
 }
+
+void ieee80211_update_link_stats(struct ieee80211_local *local,
+				 struct ieee80211_sub_if_data *sdata,
+				 struct sta_info *sta)
+{
+	struct ieee80211_link_stats link_stats;
+	int err;
+
+	err = drv_get_link_stats(local, sdata, sta->sta.addr, &link_stats);
+	if (!err) {
+		sta->fail_avg = link_stats.fail_avg;
+		sta->last_tx_rate = link_stats.last_tx_rate;
+	}
+}
 EXPORT_SYMBOL(ieee80211_radar_detected);
 
 u32 ieee80211_chandef_downgrade(struct cfg80211_chan_def *c)
