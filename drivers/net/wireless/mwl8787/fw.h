@@ -410,7 +410,8 @@ struct mwl8787_cmd_subscribe_events {
 struct mwl8787_cmd_beacon_ctrl {
 	__le16 action;
 	__le16 beacon_enable;
-	__le16 beacon_period;
+	__le16 beacon_interval;
+	u8 dtim_period;
 } __packed;
 
 struct mwl8787_cmd_beacon_set {
