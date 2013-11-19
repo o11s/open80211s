@@ -191,7 +191,7 @@ int mwl8787_cmd_radio_ctrl(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_monitor(struct mwl8787_priv *priv, bool on);
 int mwl8787_cmd_beacon_set(struct mwl8787_priv *priv, struct sk_buff *skb);
 int mwl8787_cmd_beacon_ctrl(struct mwl8787_priv *priv, u16 beacon_int,
-			    bool enable_beacon);
+			    u8 dtim_period, bool enable_beacon);
 int mwl8787_cmd_subscribe_events(struct mwl8787_priv *priv, u16 action,
 				 u16 events);
 int mwl8787_cmd_snmp_mib(struct mwl8787_priv *priv, enum mwl8787_oid oid,

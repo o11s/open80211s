@@ -467,6 +467,7 @@ static void mwl8787_bss_info_changed(struct ieee80211_hw *hw,
 			MWL8787_ACT_BITWISE_SET : MWL8787_ACT_BITWISE_CLR,
 			MWL8787_EVT_SUB_PRE_TBTT);
 		mwl8787_cmd_beacon_ctrl(priv, info->beacon_int,
+					info->dtim_period,
 					info->enable_beacon);
 	}
 
