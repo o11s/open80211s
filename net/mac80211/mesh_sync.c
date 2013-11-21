@@ -72,7 +72,7 @@ void mesh_sync_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 
 	tsf = drv_get_tsf(local, sdata);
 	if (tsf != -1ULL)
-		drv_set_tsf(local, sdata, tsf + tsfdelta);
+		ieee80211_set_tsf(local, sdata, tsf + tsfdelta);
 }
 
 static void mesh_sync_offset_rx_bcn_presp(struct ieee80211_sub_if_data *sdata,

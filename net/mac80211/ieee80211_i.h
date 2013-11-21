@@ -1633,6 +1633,9 @@ void ieee80211_dfs_radar_detected_work(struct work_struct *work);
 void ieee80211_update_link_stats(struct ieee80211_local *local,
 				 struct ieee80211_sub_if_data *sdata,
 				 struct sta_info *sta);
+void ieee80211_set_tsf(struct ieee80211_local *local,
+		       struct ieee80211_sub_if_data *sdata,
+		       u64 tsf);
 
 #ifdef CONFIG_MAC80211_NOINLINE
 #define debug_noinline noinline

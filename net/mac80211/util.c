@@ -2244,3 +2244,32 @@ void ieee80211_update_link_stats(struct ieee80211_local *local,
 		sta->last_tx_rate = link_stats.last_tx_rate;
 	}
 }
+
+void ieee80211_set_tsf(struct ieee80211_local *local,
+		       struct ieee80211_sub_if_data *sdata, u64 tsf)
+{
+	u64 next_dtim = tsf;
+	u64 dtim_count = 0;
+	u16 beacon_int = sdata->vif.bss_conf.beacon_int * 1024;
+	u8 dtim_period = sdata->vif.bss_conf.dtim_period;
+	u8 bcns_from_dtim;
+
+	if (tsf != 0) {
+		/* dtim_count = (tsf / bcn_int) % dtim_period */
+		do_div(next_dtim, beacon_int);
+		bcns_from_dtim = do_div(next_dtim, dtim_period);
+		/* if (tsf / bcn_int) % dtim_period == 0, dtim_count should be 0 */
+		/* if (tsf / bcn_int) % dtim_period == 1, dtim_count should be 3 */
+		/* if (tsf / bcn_int) % dtim_period == 2, dtim_count should be 2 */
+		/* if (tsf / bcn_int) % dtim_period == 3, dtim_count should be 1 */
+		if (!bcns_from_dtim)
+			dtim_count = 0;
+		else
+			dtim_count = dtim_period - bcns_from_dtim;
+	} else
+		dtim_count = 0;
+
+	sdata->u.mesh.ps.dtim_count = dtim_count;
+
+	drv_set_tsf(local, sdata, tsf);
+}
