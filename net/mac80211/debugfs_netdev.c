@@ -468,6 +468,7 @@ static ssize_t ieee80211_if_parse_tsf(
 		}
 	}
 
+	ieee80211_recalc_dtim(local, sdata);
 	return buflen;
 }
 __IEEE80211_IF_FILE_W(tsf);
