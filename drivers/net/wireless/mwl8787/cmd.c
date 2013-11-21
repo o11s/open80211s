@@ -754,7 +754,7 @@ int mwl8787_cmd_set_peer(struct mwl8787_priv *priv, struct ieee80211_sta *sta)
 	supp_rates = sta->supp_rates[priv->hw->conf.chandef.chan->band];
 	supp_rates = mwl8787_rates_to_hw_values(priv, supp_rates,
 			sta->ht_cap.mcs.rx_mask,
-			sta->ht_cap.cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40);
+			sta->bandwidth == IEEE80211_STA_RX_BW_40);
 
 	cmd->u.set_peer.supp_rate_map = cpu_to_le32(supp_rates);
 
