@@ -2229,6 +2229,7 @@ void ieee80211_radar_detected(struct ieee80211_hw *hw)
 
 	ieee80211_queue_work(hw, &local->radar_detected_work);
 }
+EXPORT_SYMBOL(ieee80211_radar_detected);
 
 void ieee80211_update_link_stats(struct ieee80211_local *local,
 				 struct ieee80211_sub_if_data *sdata,
@@ -2243,4 +2244,3 @@ void ieee80211_update_link_stats(struct ieee80211_local *local,
 		sta->last_tx_rate = link_stats.last_tx_rate;
 	}
 }
-EXPORT_SYMBOL(ieee80211_radar_detected);
