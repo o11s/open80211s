@@ -1039,6 +1039,7 @@ void ieee80211_ibss_notify_scan_completed(struct ieee80211_local *local)
 int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 			struct cfg80211_ibss_params *params)
 {
+	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
 	u32 changed = 0;
 
 	mutex_lock(&sdata->u.ibss.mtx);
@@ -1054,7 +1055,8 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	sdata->u.ibss.basic_rates = params->basic_rates;
 	memcpy(sdata->vif.bss_conf.mcast_rate, params->mcast_rate,
 	       sizeof(params->mcast_rate));
-	changed |= BSS_CHANGED_MCAST_RATE;
+	if (sdata->vif.bss_conf.mcast_rate[band] != 0)
+		changed |= BSS_CHANGED_MCAST_RATE;
 
 	sdata->vif.bss_conf.beacon_int = params->beacon_interval;
 

@@ -746,14 +746,16 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 		      BSS_CHANGED_HT |
 		      BSS_CHANGED_BASIC_RATES |
 		      BSS_CHANGED_BEACON_INT |
-		      BSS_CHANGED_LOW_ACK_COUNT |
-		      BSS_CHANGED_MCAST_RATE;
+		      BSS_CHANGED_LOW_ACK_COUNT;
 	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
 
 	local->fif_other_bss++;
 	/* mesh ifaces must set allmulti to forward mcast traffic */
 	atomic_inc(&local->iff_allmultis);
 	ieee80211_configure_filter(local);
+
+	if (sdata->vif.bss_conf.mcast_rate[band] != 0)
+		changed |= BSS_CHANGED_MCAST_RATE;
 
 	ifmsh->mesh_cc_id = 0;	/* Disabled */
 	ifmsh->mesh_auth_id = 0;	/* Disabled */
