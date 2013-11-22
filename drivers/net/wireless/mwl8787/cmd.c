@@ -33,7 +33,7 @@ int mwl8787_send_cmd_reply(struct mwl8787_priv *priv,
 	priv->cmd_resp_skb = NULL;
 	priv->cmd_result = 0;
 	priv->keep_resp = reply != NULL;
-	init_completion(&priv->cmd_wait);
+	reinit_completion(&priv->cmd_wait);
 	spin_unlock(&priv->cmd_resp_lock);
 
 	ret = __mwl8787_send_cmd(priv, cmd);
