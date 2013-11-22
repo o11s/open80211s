@@ -246,6 +246,7 @@ const struct ieee80211_mesh_sync_ops *ieee80211_mesh_sync_ops_get(u8 method);
 /* wrapper for ieee80211_bss_info_change_notify() */
 void ieee80211_mbss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 				       u32 changed);
+int ieee80211_mesh_rebuild_beacon(struct ieee80211_if_mesh *ifmsh);
 
 /* mesh power save */
 u32 ieee80211_mps_local_status_update(struct ieee80211_sub_if_data *sdata);

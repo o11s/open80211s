@@ -169,6 +169,7 @@ no_sync:
 static void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	bool adjusting_tbtt = ifmsh->adjusting_tbtt;
 
 	WARN_ON(ifmsh->mesh_sp_id != IEEE80211_SYNC_METHOD_NEIGHBOR_OFFSET);
 	BUG_ON(!rcu_read_lock_held());
@@ -196,6 +197,15 @@ static void mesh_sync_offset_adjust_tbtt(struct ieee80211_sub_if_data *sdata)
 		ifmsh->adjusting_tbtt = false;
 	}
 	spin_unlock_bh(&ifmsh->sync_offset_lock);
+
+	if (adjusting_tbtt != ifmsh->adjusting_tbtt)
+		/*
+		 * NOTE: we need a meshconf ie rebuild now, but we *know* this
+		 * is in the beacon pre-tbtt path, so don't trigger a
+		 * bss_info_changed_notify() and instead just refresh the
+		 * beacon which is about to be returned.
+		 */
+		ieee80211_mesh_rebuild_beacon(ifmsh);
 }
 
 static const struct sync_method sync_methods[] = {

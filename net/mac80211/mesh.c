@@ -702,8 +702,7 @@ out_free:
 	return -ENOMEM;
 }
 
-static int
-ieee80211_mesh_rebuild_beacon(struct ieee80211_if_mesh *ifmsh)
+int ieee80211_mesh_rebuild_beacon(struct ieee80211_if_mesh *ifmsh)
 {
 	struct beacon_data *old_bcn;
 	int ret;
