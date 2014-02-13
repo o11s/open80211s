@@ -96,7 +96,7 @@ int bcma_gpio_init(struct bcma_drv_cc *cc)
 	chip->direction_input	= bcma_gpio_direction_input;
 	chip->direction_output	= bcma_gpio_direction_output;
 	chip->to_irq		= bcma_gpio_to_irq;
-	chip->ngpio		= 16;
+	chip->ngpio		= 32;
 	/* There is just one SoC in one device and its GPIO addresses should be
 	 * deterministic to address them more easily. The other buses could get
 	 * a random base number. */
