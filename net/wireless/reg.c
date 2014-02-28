@@ -2492,6 +2492,7 @@ static int reg_set_rd_country_ie(const struct ieee80211_regdomain *rd,
 int set_regdom(const struct ieee80211_regdomain *rd)
 {
 	struct regulatory_request *lr;
+	bool user_reset = false;
 	int r;
 
 	if (!reg_is_valid_request(rd->alpha2)) {
@@ -2508,6 +2509,7 @@ int set_regdom(const struct ieee80211_regdomain *rd)
 		break;
 	case NL80211_REGDOM_SET_BY_USER:
 		r = reg_set_rd_user(rd, lr);
+		user_reset = true;
 		break;
 	case NL80211_REGDOM_SET_BY_DRIVER:
 		r = reg_set_rd_driver(rd, lr);
@@ -2521,8 +2523,14 @@ int set_regdom(const struct ieee80211_regdomain *rd)
 	}
 
 	if (r) {
-		if (r == -EALREADY)
+		switch (r) {
+		case -EALREADY:
 			reg_set_request_processed();
+			break;
+		default:
+			/* Back to world regulatory in case of errors */
+			restore_regulatory_settings(user_reset);
+		}
 
 		kfree(rd);
 		return r;
