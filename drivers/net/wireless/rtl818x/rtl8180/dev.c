@@ -476,13 +476,21 @@ static int rtl8180_init_rx_ring(struct ieee80211_hw *dev)
 		struct sk_buff *skb = dev_alloc_skb(MAX_RX_SIZE);
 		dma_addr_t *mapping;
 		entry = &priv->rx_ring[i];
-		if (!skb)
-			return 0;
-
+		if (!skb) {
+			wiphy_err(dev->wiphy, "Cannot allocate RX skb\n");
+			return -ENOMEM;
+		}
 		priv->rx_buf[i] = skb;
 		mapping = (dma_addr_t *)skb->cb;
 		*mapping = pci_map_single(priv->pdev, skb_tail_pointer(skb),
 					  MAX_RX_SIZE, PCI_DMA_FROMDEVICE);
+
+		if (pci_dma_mapping_error(priv->pdev, *mapping)) {
+			kfree_skb(skb);
+			wiphy_err(dev->wiphy, "Cannot map DMA for RX skb\n");
+			return -ENOMEM;
+		}
+
 		entry->rx_buf = cpu_to_le32(*mapping);
 		entry->flags = cpu_to_le32(RTL818X_RX_DESC_FLAG_OWN |
 					   MAX_RX_SIZE);
@@ -619,11 +627,23 @@ static int rtl8180_start(struct ieee80211_hw *dev)
 
 	if (priv->r8185) {
 		reg = rtl818x_ioread8(priv, &priv->map->CW_CONF);
+
+		/* CW is not on per-packet basis.
+		 * in rtl8185 the CW_VALUE reg is used.
+		 */
 		reg &= ~RTL818X_CW_CONF_PERPACKET_CW;
+		/* retry limit IS on per-packet basis.
+		 * the short and long retry limit in TX_CONF
+		 * reg are ignored
+		 */
 		reg |= RTL818X_CW_CONF_PERPACKET_RETRY;
 		rtl818x_iowrite8(priv, &priv->map->CW_CONF, reg);
 
 		reg = rtl818x_ioread8(priv, &priv->map->TX_AGC_CTL);
+		/* TX antenna and TX gain are not on per-packet basis.
+		 * TX Antenna is selected by ANTSEL reg (RX in BB regs).
+		 * TX gain is selected with CCK_TX_AGC and OFDM_TX_AGC regs
+		 */
 		reg &= ~RTL818X_TX_AGC_CTL_PERPACKET_GAIN;
 		reg &= ~RTL818X_TX_AGC_CTL_PERPACKET_ANTSEL;
 		reg |=  RTL818X_TX_AGC_CTL_FEEDBACK_ANT;
@@ -641,6 +661,8 @@ static int rtl8180_start(struct ieee80211_hw *dev)
 		reg &= ~RTL818X_TX_CONF_PROBE_DTS;
 	else
 		reg &= ~RTL818X_TX_CONF_HW_SEQNUM;
+
+	reg &= ~RTL818X_TX_CONF_DISCW;
 
 	/* different meaning, same value on both rtl8185 and rtl8180 */
 	reg &= ~RTL818X_TX_CONF_SAT_HWPLCP;
@@ -1135,7 +1157,7 @@ static int rtl8180_probe(struct pci_dev *pdev,
 	return 0;
 
  err_iounmap:
-	iounmap(priv->map);
+	pci_iounmap(pdev, priv->map);
 
  err_free_dev:
 	ieee80211_free_hw(dev);
