@@ -2439,6 +2439,15 @@ static inline void brcmf_sdio_clrintr(struct brcmf_sdio *bus)
 	}
 }
 
+static void atomic_orr(int val, atomic_t *v)
+{
+	int old_val;
+
+	old_val = atomic_read(v);
+	while (atomic_cmpxchg(v, old_val, val | old_val) != old_val)
+		old_val = atomic_read(v);
+}
+
 static int brcmf_sdio_intr_rstatus(struct brcmf_sdio *bus)
 {
 	struct brcmf_core *buscore;
@@ -2461,7 +2470,7 @@ static int brcmf_sdio_intr_rstatus(struct brcmf_sdio *bus)
 	if (val) {
 		brcmf_sdiod_regwl(bus->sdiodev, addr, val, &ret);
 		bus->sdcnt.f1regdata++;
-		atomic_set_mask(val, &bus->intstatus);
+		atomic_orr(val, &bus->intstatus);
 	}
 
 	return ret;
@@ -2578,7 +2587,7 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 
 	/* Keep still-pending events for next scheduling */
 	if (intstatus)
-		atomic_set_mask(intstatus, &bus->intstatus);
+		atomic_orr(intstatus, &bus->intstatus);
 
 	brcmf_sdio_clrintr(bus);
 
