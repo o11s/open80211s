@@ -515,6 +515,8 @@ enum P2P_MODES {
 #define ACT_TDLS_CREATE            0x01
 #define ACT_TDLS_CONFIG            0x02
 
+#define MWIFIEX_FW_V15		   15
+
 struct mwifiex_ie_types_header {
 	__le16 type;
 	__le16 len;
@@ -1103,6 +1105,7 @@ struct mwifiex_rate_scope {
 	__le16 hr_dsss_rate_bitmap;
 	__le16 ofdm_rate_bitmap;
 	__le16 ht_mcs_rate_bitmap[8];
+	__le16 vht_mcs_rate_bitmap[8];
 } __packed;
 
 struct mwifiex_rate_drop_pattern {
