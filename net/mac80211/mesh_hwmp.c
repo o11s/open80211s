@@ -511,7 +511,8 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 
 static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 				    struct ieee80211_mgmt *mgmt,
-				    const u8 *preq_elem, u32 metric)
+				    const u8 *preq_elem, u32 metric,
+				    bool have_old, u32 old_sn)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	struct mesh_path *mpath = NULL;
@@ -541,12 +542,11 @@ static void hwmp_preq_frame_process(struct ieee80211_sub_if_data *sdata,
 		forward = false;
 		reply = true;
 		metric = 0;
-		if (time_after(jiffies, ifmsh->last_sn_update +
-					net_traversal_jiffies(sdata)) ||
-		    time_before(jiffies, ifmsh->last_sn_update)) {
-			target_sn = ++ifmsh->sn;
-			ifmsh->last_sn_update = jiffies;
-		}
+	if (have_old && SN_LT(old_sn, orig_sn)) {
+		mhwmp_dbg(sdata, "meet update condition\n");
+		ifmsh->sn = max(ifmsh->sn, target_sn)+1;
+	}
+	target_sn = ifmsh->sn;
 	} else if (is_broadcast_ether_addr(target_addr) &&
 		   (target_flags & IEEE80211_PREQ_TO_FLAG)) {
 		rcu_read_lock();
@@ -855,7 +855,11 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 	struct ieee802_11_elems elems;
 	size_t baselen;
 	u32 last_hop_metric;
+	const u8 *orig_addr;
 	struct sta_info *sta;
+	bool have_old = false;
+	u32 old_sn;
+	struct mesh_path *mpath = NULL;
 
 	/* need action_code */
 	if (len < IEEE80211_MIN_ACTION_SIZE + 1)
@@ -877,11 +881,33 @@ void mesh_rx_path_sel_frame(struct ieee80211_sub_if_data *sdata,
 		if (elems.preq_len != 37)
 			/* Right now we support just 1 destination and no AE */
 			return;
+
+		orig_addr = PREQ_IE_ORIG_ADDR(elems.preq);
+
+		rcu_read_lock();
+		mpath = mesh_path_lookup(sdata, orig_addr);
+		/*
+		* Sec. 13.10.8.3 HWMP sequence numbering calls for the target
+		* HWMP seq number to be incremented after each processed PREQ,
+		* but that would result in all but the last PREP metric info
+		* to be ignored.  Instead, we only increment the target SN
+		* when we detect that the originator SN has changed.  This
+		* results in all the PREPs generated in response to a single
+		* PREQ to have the same seq num, and, therefore, for the
+		* metrics for the different paths to be taken into account.
+		*/
+		if (mpath) {
+			mhwmp_dbg(sdata, "have old\n");
+			have_old = true;
+			old_sn = mpath->sn;
+		}
+		rcu_read_unlock();
+
 		last_hop_metric = hwmp_route_info_get(sdata, mgmt, elems.preq,
 						      MPATH_PREQ);
 		if (last_hop_metric)
 			hwmp_preq_frame_process(sdata, mgmt, elems.preq,
-						last_hop_metric);
+						last_hop_metric, have_old, old_sn);
 	}
 	if (elems.prep) {
 		if (elems.prep_len != 31)
